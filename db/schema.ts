@@ -1,13 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-
-export const tasks = sqliteTable('tasks', {
-  id: text('id').primaryKey(), userId: text('user_id').notNull(), title: text('title').notNull(),
-  projectId: text('project_id'),
-  label: text('label').notNull().default('신규'), owner: text('owner').notNull().default('Nori'),
-  status: text('status').notNull().default('대기'), due: text('due').notNull().default('일정 미정'),
-  accent: text('accent').notNull().default('#ff7557'), result: text('result'),
-  createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
-}, (table) => [index('idx_tasks_user_status').on(table.userId, table.status), index('idx_tasks_user_created').on(table.userId, table.createdAt)]);
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(), userId: text('user_id').notNull(), name: text('name').notNull(),
@@ -22,11 +13,29 @@ export const agents = sqliteTable('agents', {
   createdAt: integer('created_at').notNull(),
 }, (table) => [index('idx_agents_user_role').on(table.userId, table.role)]);
 
+export const tasks = sqliteTable('tasks', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(), title: text('title').notNull(),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  label: text('label').notNull().default('신규'), owner: text('owner').notNull().default('Nori'),
+  status: text('status').notNull().default('대기'),
+  // epoch milliseconds. NULL 이면 '일정 미정'.
+  due: integer('due'),
+  accent: text('accent').notNull().default('#ff7557'), result: text('result'),
+  createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
+}, (table) => [
+  index('idx_tasks_user_status').on(table.userId, table.status),
+  index('idx_tasks_user_created').on(table.userId, table.createdAt),
+  index('idx_tasks_user_due').on(table.userId, table.due),
+]);
+
 export const projectAgents = sqliteTable('project_agents', {
   projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(), assignedAt: integer('assigned_at').notNull(),
-}, (table) => [index('idx_project_agents_user_project').on(table.userId, table.projectId)]);
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.agentId] }),
+  index('idx_project_agents_user_project').on(table.userId, table.projectId),
+]);
 
 export const chatMessages = sqliteTable('chat_messages', {
   id: text('id').primaryKey(), userId: text('user_id').notNull(), projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
@@ -39,4 +48,22 @@ export const agentRuns = sqliteTable('agent_runs', {
   userId: text('user_id').notNull(), agentName: text('agent_name').notNull(), status: text('status').notNull(),
   prompt: text('prompt').notNull(), output: text('output'), responseId: text('response_id'),
   startedAt: integer('started_at').notNull(), completedAt: integer('completed_at'),
-}, (table) => [index('idx_agent_runs_user_task').on(table.userId, table.taskId)]);
+}, (table) => [
+  index('idx_agent_runs_user_task').on(table.userId, table.taskId),
+  index('idx_agent_runs_user_started').on(table.userId, table.startedAt),
+]);
+
+export const usageEvents = sqliteTable('usage_events', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  kind: text('kind').notNull(), model: text('model').notNull(),
+  refId: text('ref_id'), projectId: text('project_id'), agentName: text('agent_name'),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+  cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+  webSearchRequests: integer('web_search_requests').notNull().default(0),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  index('idx_usage_user_created').on(table.userId, table.createdAt),
+  index('idx_usage_user_kind').on(table.userId, table.kind),
+]);

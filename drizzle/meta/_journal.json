@@ -15,6 +15,20 @@
       "when": 1788521203918,
       "tag": "0001_dashing_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788523259534,
+      "tag": "0002_happy_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788524915179,
+      "tag": "0003_fluffy_energizer",
+      "breakpoints": true
     }
   ]
 }
