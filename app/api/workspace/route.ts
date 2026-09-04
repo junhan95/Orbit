@@ -1,4 +1,4 @@
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 
 const defaults = [
@@ -9,26 +9,45 @@ const defaults = [
   ['Lint', 'QA 엔지니어', '품질 기준과 테스트 시나리오를 점검합니다.', '실패 가능성이 높은 경로를 우선해 재현 가능한 테스트와 품질 리스크를 작성하세요.', '#3478f6'],
 ];
 
+const SELECT_PROJECTS = `SELECT p.id, p.name, p.description, p.color, p.status, p.created_at AS createdAt,
+    COUNT(DISTINCT t.id) AS taskCount, COUNT(DISTINCT pa.agent_id) AS agentCount
+  FROM projects p
+  LEFT JOIN tasks t ON t.project_id = p.id AND t.user_id = p.user_id
+  LEFT JOIN project_agents pa ON pa.project_id = p.id AND pa.user_id = p.user_id
+  WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC`;
+const SELECT_AGENTS = 'SELECT id, name, role, description, instructions, color, is_default AS isDefault FROM agents WHERE user_id = ? ORDER BY is_default DESC, created_at ASC';
+
 export async function GET() {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+  const user = getCurrentUser();
   const db = getDatabase();
-  let projects = await db.prepare('SELECT p.id, p.name, p.description, p.color, p.status, p.created_at AS createdAt, COUNT(DISTINCT t.id) AS taskCount, COUNT(DISTINCT pa.agent_id) AS agentCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.user_id = p.user_id LEFT JOIN project_agents pa ON pa.project_id = p.id AND pa.user_id = p.user_id WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC').bind(user.userId).all();
-  let agents = await db.prepare('SELECT id, name, role, description, instructions, color, is_default AS isDefault FROM agents WHERE user_id = ? ORDER BY is_default DESC, created_at ASC').bind(user.userId).all();
+  let projects = await db.prepare(SELECT_PROJECTS).bind(user.userId).all();
+  let agents = await db.prepare(SELECT_AGENTS).bind(user.userId).all();
 
   if (!projects.results.length && !agents.results.length) {
     const now = Date.now();
     const projectId = crypto.randomUUID();
     const agentRows = defaults.map((agent, index) => ({ id: crypto.randomUUID(), agent, index }));
     await db.batch([
-      db.prepare('INSERT INTO projects (id, user_id, name, description, color, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(projectId, user.userId, 'AI 협업 보드 MVP', '에이전트가 함께 제품을 설계하고 구현하는 첫 프로젝트', '#6651f2', '진행 중', now, now),
-      ...agentRows.map(({ id, agent, index }) => db.prepare('INSERT INTO agents (id, user_id, name, role, description, instructions, color, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(id, user.userId, ...agent, 1, now + index)),
-      ...agentRows.map(({ id, index }) => db.prepare('INSERT INTO project_agents (project_id, agent_id, user_id, assigned_at) VALUES (?, ?, ?, ?)').bind(projectId, id, user.userId, now + index)),
+      db.prepare('INSERT INTO projects (id, user_id, name, description, color, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(projectId, user.userId, 'AI 협업 보드 MVP', 'Claude 에이전트가 함께 제품을 설계하고 구현하는 첫 프로젝트', '#6651f2', '진행 중', now, now),
+      ...agentRows.map(({ id, agent, index }) => db.prepare('INSERT INTO agents (id, user_id, name, role, description, instructions, color, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, user.userId, ...agent, 1, now + index)),
+      ...agentRows.map(({ id, index }) => db.prepare('INSERT OR IGNORE INTO project_agents (project_id, agent_id, user_id, assigned_at) VALUES (?, ?, ?, ?)')
+        .bind(projectId, id, user.userId, now + index)),
       db.prepare('UPDATE tasks SET project_id = ? WHERE user_id = ? AND project_id IS NULL').bind(projectId, user.userId),
     ]);
-    projects = await db.prepare('SELECT p.id, p.name, p.description, p.color, p.status, p.created_at AS createdAt, COUNT(DISTINCT t.id) AS taskCount, COUNT(DISTINCT pa.agent_id) AS agentCount FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.user_id = p.user_id LEFT JOIN project_agents pa ON pa.project_id = p.id AND pa.user_id = p.user_id WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC').bind(user.userId).all();
-    agents = await db.prepare('SELECT id, name, role, description, instructions, color, is_default AS isDefault FROM agents WHERE user_id = ? ORDER BY is_default DESC, created_at ASC').bind(user.userId).all();
+    projects = await db.prepare(SELECT_PROJECTS).bind(user.userId).all();
+    agents = await db.prepare(SELECT_AGENTS).bind(user.userId).all();
   }
-  const assignments = await db.prepare('SELECT project_id AS projectId, agent_id AS agentId FROM project_agents WHERE user_id = ?').bind(user.userId).all();
+
+  // 프로젝트보다 먼저 만들어진 업무가 남아 있으면 가장 최근 프로젝트에 연결합니다.
+  const latestProject = (projects.results[0] ?? null) as { id: string } | null;
+  if (latestProject) {
+    await db.prepare('UPDATE tasks SET project_id = ? WHERE user_id = ? AND project_id IS NULL')
+      .bind(latestProject.id, user.userId).run();
+  }
+
+  const assignments = await db.prepare('SELECT project_id AS projectId, agent_id AS agentId FROM project_agents WHERE user_id = ?')
+    .bind(user.userId).all();
   return Response.json({ projects: projects.results, agents: agents.results, assignments: assignments.results });
 }
