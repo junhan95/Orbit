@@ -13,11 +13,11 @@ export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: '로그인이 필요합니다.' }, { status: 401 });
   const db = getDatabase();
-  let result = await db.prepare('SELECT id, title, label, owner, status, due, accent, result FROM tasks WHERE user_id = ? ORDER BY created_at ASC').bind(user.userId).all();
+  let result = await db.prepare('SELECT id, title, label, owner, status, due, accent, result, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY created_at ASC').bind(user.userId).all();
   if (!result.results.length) {
     const now = Date.now();
     await db.batch(starters.map((task, index) => db.prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), user.userId, ...task, now + index, now + index)));
-    result = await db.prepare('SELECT id, title, label, owner, status, due, accent, result FROM tasks WHERE user_id = ? ORDER BY created_at ASC').bind(user.userId).all();
+    result = await db.prepare('SELECT id, title, label, owner, status, due, accent, result, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY created_at ASC').bind(user.userId).all();
   }
   return Response.json({ tasks: result.results });
 }
@@ -27,8 +27,9 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: '로그인이 필요합니다.' }, { status: 401 });
   const body = await request.json().catch(() => null) as { title?: unknown } | null;
   if (typeof body?.title !== 'string' || !body.title.trim() || body.title.trim().length > 100) return Response.json({ error: '업무 이름은 1~100자로 입력해 주세요.' }, { status: 400 });
-  const task = { id: crypto.randomUUID(), title: body.title.trim(), label: '신규', owner: 'Nori', status: '대기', due: '일정 미정', accent: '#ff7557', result: null };
+  const project = await getDatabase().prepare('SELECT id FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1').bind(user.userId).first<{ id: string }>();
+  const task = { id: crypto.randomUUID(), title: body.title.trim(), label: '신규', owner: 'Nori', status: '대기', due: '일정 미정', accent: '#ff7557', result: null, projectId: project?.id ?? null };
   const now = Date.now();
-  await getDatabase().prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(task.id, user.userId, task.title, task.label, task.owner, task.status, task.due, task.accent, now, now).run();
+  await getDatabase().prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(task.id, user.userId, task.title, task.label, task.owner, task.status, task.due, task.accent, task.projectId, now, now).run();
   return Response.json({ task }, { status: 201 });
 }

@@ -8,6 +8,13 @@
       "when": 1788520788584,
       "tag": "0000_rare_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788521203918,
+      "tag": "0001_dashing_rockslide",
+      "breakpoints": true
     }
   ]
 }

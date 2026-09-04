@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowUpRight, Bell, Bot, Check, ChevronDown, Clock3, Command, Gauge, LayoutDashboard, ListChecks, LoaderCircle, LogOut, MessageSquareText, MoreHorizontal, Play, Plus, Search, Settings, Sparkles, WandSparkles, Zap } from 'lucide-react';
+import { Activity, ArrowUpRight, Bell, Bot, Check, ChevronDown, Clock3, Command, Gauge, LayoutDashboard, ListChecks, LoaderCircle, MessageSquareText, MoreHorizontal, Play, Plus, Search, Settings, Sparkles, WandSparkles, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { WorkspaceView, type WorkspaceSection } from '@/components/workspace-views';
 
 type Status = '대기' | '진행 중' | '검토';
 type Task = { id: string; title: string; label: string; owner: string; avatar?: string; status: Status; due: string; accent: string; result?: string | null };
@@ -24,6 +25,7 @@ export default function Home() {
   const [newTitle, setNewTitle] = useState('');
   const [notice, setNotice] = useState('');
   const [displayName, setDisplayName] = useState('사용자');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [selectedResult, setSelectedResult] = useState<Task | null>(null);
@@ -38,9 +40,10 @@ export default function Home() {
       .then(async ([taskResponse, meResponse]) => {
         if (!taskResponse.ok) throw new Error('업무를 불러오지 못했습니다.');
         const taskData = await taskResponse.json() as { tasks: Task[] };
-        const me = meResponse.ok ? await meResponse.json() as { displayName: string } : null;
+        const me = meResponse.ok ? await meResponse.json() as { displayName: string; email: string } : null;
         setTasks(taskData.tasks);
         if (me?.displayName) setDisplayName(me.displayName.split('@')[0]);
+        if (me?.email) setEmail(me.email);
       })
       .catch((error) => flash(error instanceof Error ? error.message : '데이터를 불러오지 못했습니다.'))
       .finally(() => setLoading(false));
@@ -123,16 +126,15 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand-mark" aria-label="Orbit 홈"><Command size={20} strokeWidth={2.5} /></div>
         <nav className="primary-nav" aria-label="주 메뉴">
-          {([['개요', LayoutDashboard], ['업무', ListChecks], ['에이전트', Bot], ['대화', MessageSquareText]] as const).map(([label, Icon]) => (
+          {([['개요', LayoutDashboard], ['프로젝트', ListChecks], ['에이전트', Bot], ['대화', MessageSquareText]] as const).map(([label, Icon]) => (
             <button className={activeNav === label ? 'nav-button active' : 'nav-button'} key={label} onClick={() => setActiveNav(label)} aria-label={label} title={label}>
               <Icon size={20} /><span>{label}</span>
             </button>
           ))}
         </nav>
         <div className="sidebar-spacer" />
-        <button className="nav-button" aria-label="설정" title="설정"><Settings size={20} /><span>설정</span></button>
-        {/* oxlint-disable-next-line next/no-html-link-for-pages -- dispatch-owned authentication route requires top-level navigation */}
-        <a className="user-avatar" aria-label="로그아웃" title="로그아웃" href="/signout-with-chatgpt?return_to=/"><LogOut size={15} /></a>
+        <button className={activeNav === '설정' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveNav('설정')} aria-label="설정" title="설정"><Settings size={20} /><span>설정</span></button>
+        <button className={activeNav === '계정' ? 'user-avatar active' : 'user-avatar'} onClick={() => setActiveNav('계정')} aria-label="계정" title="계정">ID</button>
       </aside>
 
       <section className="workspace">
@@ -158,6 +160,7 @@ export default function Home() {
         </header>
 
         <div className="page-content">
+          {activeNav === '개요' ? <>
           <div className="page-heading">
             <div><p className="eyebrow">2026년 9월 4일 · 금요일</p><h1>좋은 오후예요, {displayName}님.</h1><p>{loading ? '저장된 워크스페이스를 불러오는 중이에요.' : `4명의 에이전트가 ${tasks.length}개 업무에서 협업하고 있어요.`}</p></div>
             <fieldset className="view-switch" aria-label="업무 필터">{(['전체', '내 업무'] as const).map((item) => <button className={filter === item ? 'selected' : ''} key={item} onClick={() => setFilter(item)}>{item}</button>)}</fieldset>
@@ -210,6 +213,7 @@ export default function Home() {
               <button className="agent-cta" onClick={() => flash('팀 성과 리포트를 생성하고 있어요.')}><WandSparkles size={16} /> 팀 성과 요약하기</button>
             </aside>
           </section>
+          </> : <WorkspaceView section={activeNav as WorkspaceSection} displayName={displayName} email={email} onNotice={flash} />}
         </div>
       </section>
       {notice && <output className="toast"><Check size={16} /> {notice}</output>}
