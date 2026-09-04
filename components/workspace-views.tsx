@@ -116,5 +116,5 @@ function SettingsView({ onNotice }: { onNotice: (message: string) => void }) {
 }
 
 function AccountView({ displayName, email }: { displayName: string; email: string }) {
-  return <div className="workspace-view narrow-view"><ViewHeading eyebrow="Account" title="계정" description="현재 로그인된 계정과 보안 상태를 확인합니다." /><section className="account-card"><span className="account-avatar"><UserRound size={27} /></span><div><h2>{displayName}</h2><p>{email}</p><em><ShieldCheck size={13} /> ChatGPT로 안전하게 로그인됨</em></div>{/* oxlint-disable-next-line next/no-html-link-for-pages -- dispatch-owned authentication route requires top-level navigation */}<a href="/signout-with-chatgpt?return_to=/">로그아웃</a></section></div>;
+  return <div className="workspace-view narrow-view"><ViewHeading eyebrow="Account" title="계정" description="이 워크스페이스가 어떤 사용자로 동작하는지 확인합니다." /><section className="account-card"><span className="account-avatar"><UserRound size={27} /></span><div><h2>{displayName}</h2><p>{email}</p><em><ShieldCheck size={13} /> 로컬 전용 모드 · 외부 인증 없음</em></div></section><p className="account-note">표시 이름과 이메일은 <code>LOCAL_USER_NAME</code>, <code>LOCAL_USER_EMAIL</code> 환경변수로 바꿀 수 있습니다. 여러 사용자를 지원하려면 <code>app/auth.ts</code>의 <code>getCurrentUser()</code>에 실제 인증을 연결하세요.</p></div>;
 }
