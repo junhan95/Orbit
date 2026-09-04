@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowUpRight, Bell, Bot, Check, ChevronDown, Clock3, Command, Gauge, LayoutDashboard, ListChecks, MessageSquareText, MoreHorizontal, Plus, Search, Settings, Sparkles, WandSparkles, Zap } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, ArrowUpRight, Bell, Bot, Check, ChevronDown, Clock3, Command, Gauge, LayoutDashboard, ListChecks, LoaderCircle, LogOut, MessageSquareText, MoreHorizontal, Play, Plus, Search, Settings, Sparkles, WandSparkles, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 type Status = '대기' | '진행 중' | '검토';
-type Task = { id: number; title: string; label: string; owner: string; avatar: string; status: Status; due: string; accent: string };
+type Task = { id: string; title: string; label: string; owner: string; avatar?: string; status: Status; due: string; accent: string; result?: string | null };
 
 const agents = [
   { name: 'Mira', role: '리서치', status: '리서치 정리 중', color: '#7559ff', avatar: 'M' },
@@ -15,22 +15,36 @@ const agents = [
   { name: 'Lint', role: '품질 검토', status: '대기 중', color: '#3478f6', avatar: 'L' },
 ];
 
-const seedTasks: Task[] = [
-  { id: 1, title: '경쟁 제품 핵심 흐름 분석', label: '리서치', owner: 'Mira', avatar: 'M', status: '진행 중', due: '오늘', accent: '#7559ff' },
-  { id: 2, title: '온보딩 사용자 여정 설계', label: '프로덕트', owner: 'Nori', avatar: 'N', status: '진행 중', due: '내일', accent: '#ff7557' },
-  { id: 3, title: '에이전트 실행 로그 구조화', label: '개발', owner: 'Bolt', avatar: 'B', status: '대기', due: '9월 8일', accent: '#16a98c' },
-  { id: 4, title: '프로젝트 권한 정책 검토', label: '운영', owner: 'Mira', avatar: 'M', status: '대기', due: '9월 9일', accent: '#7559ff' },
-  { id: 5, title: '모바일 칸반 상호작용 QA', label: 'QA', owner: 'Lint', avatar: 'L', status: '검토', due: '오늘', accent: '#3478f6' },
-];
 const columns: Status[] = ['대기', '진행 중', '검토'];
 
 export default function Home() {
-  const [tasks, setTasks] = useState(seedTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [activeNav, setActiveNav] = useState('개요');
   const [filter, setFilter] = useState<'전체' | '내 업무'>('전체');
   const [newTitle, setNewTitle] = useState('');
   const [notice, setNotice] = useState('');
+  const [displayName, setDisplayName] = useState('사용자');
+  const [loading, setLoading] = useState(true);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [selectedResult, setSelectedResult] = useState<Task | null>(null);
   const visibleTasks = useMemo(() => filter === '내 업무' ? tasks.filter((task) => task.owner === 'Nori') : tasks, [filter, tasks]);
+  const flash = useCallback((message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(''), 2600);
+  }, []);
+
+  useEffect(() => {
+    Promise.all([fetch('/api/tasks'), fetch('/api/me')])
+      .then(async ([taskResponse, meResponse]) => {
+        if (!taskResponse.ok) throw new Error('업무를 불러오지 못했습니다.');
+        const taskData = await taskResponse.json() as { tasks: Task[] };
+        const me = meResponse.ok ? await meResponse.json() as { displayName: string } : null;
+        setTasks(taskData.tasks);
+        if (me?.displayName) setDisplayName(me.displayName.split('@')[0]);
+      })
+      .catch((error) => flash(error instanceof Error ? error.message : '데이터를 불러오지 못했습니다.'))
+      .finally(() => setLoading(false));
+  }, [flash]);
 
   useEffect(() => {
     const context = (document as Document & {
@@ -58,30 +72,50 @@ export default function Home() {
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
-      execute(input) {
+      async execute(input) {
         const value = input as { title?: unknown };
         if (typeof value?.title !== 'string' || !value.title.trim() || value.title.trim().length > 100) {
           throw new Error('title은 1~100자의 문자열이어야 합니다.');
         }
-        const task = { id: Date.now(), title: value.title.trim(), label: '신규', owner: 'Nori', avatar: 'N', status: '대기' as const, due: '일정 미정', accent: '#ff7557' };
+        const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: value.title.trim() }) });
+        const data = await response.json() as { task?: Task; error?: string };
+        if (!response.ok || !data.task) throw new Error(data.error || '업무를 만들지 못했습니다.');
+        const task = data.task;
         setTasks((current) => [...current, task]);
         flash('새 업무가 Nori에게 배정되었습니다.');
         return { id: task.id, title: task.title, owner: task.owner, status: task.status };
       },
     }, { signal: lifecycle.signal })).catch(() => undefined);
     return () => lifecycle.abort();
-  }, []);
-
-  function flash(message: string) {
-    setNotice(message);
-    window.setTimeout(() => setNotice(''), 2600);
-  }
-  function createTask() {
+  }, [flash]);
+  async function createTask() {
     const title = newTitle.trim();
     if (!title) return;
-    setTasks((current) => [...current, { id: Date.now(), title, label: '신규', owner: 'Nori', avatar: 'N', status: '대기', due: '일정 미정', accent: '#ff7557' }]);
-    setNewTitle('');
-    flash('새 업무가 Nori에게 배정되었습니다.');
+    try {
+      const response = await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      const data = await response.json() as { task?: Task; error?: string };
+      if (!response.ok || !data.task) throw new Error(data.error || '업무를 만들지 못했습니다.');
+      setTasks((current) => [...current, data.task!]);
+      setNewTitle('');
+      flash('새 업무가 Nori에게 배정되었습니다.');
+    } catch (error) { flash(error instanceof Error ? error.message : '업무를 만들지 못했습니다.'); }
+  }
+
+  async function runAgent(task: Task) {
+    setRunningId(task.id);
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status: '진행 중' } : item));
+    try {
+      const response = await fetch('/api/agents/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id }) });
+      const data = await response.json() as { output?: string; status?: Status; error?: string };
+      if (!response.ok || !data.output) throw new Error(data.error || '에이전트 실행에 실패했습니다.');
+      const completed = { ...task, status: '검토' as const, result: data.output };
+      setTasks((current) => current.map((item) => item.id === task.id ? completed : item));
+      setSelectedResult(completed);
+      flash(`${task.owner}가 업무를 완료했습니다.`);
+    } catch (error) {
+      setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status: task.status } : item));
+      flash(error instanceof Error ? error.message : '에이전트 실행에 실패했습니다.');
+    } finally { setRunningId(null); }
   }
 
   return (
@@ -97,7 +131,8 @@ export default function Home() {
         </nav>
         <div className="sidebar-spacer" />
         <button className="nav-button" aria-label="설정" title="설정"><Settings size={20} /><span>설정</span></button>
-        <button className="user-avatar" aria-label="내 프로필">JP</button>
+        {/* oxlint-disable-next-line next/no-html-link-for-pages -- dispatch-owned authentication route requires top-level navigation */}
+        <a className="user-avatar" aria-label="로그아웃" title="로그아웃" href="/signout-with-chatgpt?return_to=/"><LogOut size={15} /></a>
       </aside>
 
       <section className="workspace">
@@ -114,7 +149,7 @@ export default function Home() {
               <DialogTrigger render={<Button className="create-button" />}><Plus size={16} /> 업무 만들기</DialogTrigger>
               <DialogContent className="task-dialog">
                 <DialogHeader><DialogTitle>새 업무 만들기</DialogTitle><DialogDescription>업무를 추가하면 가장 적합한 에이전트에게 바로 배정할 수 있어요.</DialogDescription></DialogHeader>
-                <label className="dialog-field"><span>업무 이름</span><input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" autoFocus /></label>
+                <label className="dialog-field"><span>업무 이름</span><input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" /></label>
                 <div className="assignee-preview"><span className="mini-avatar nori">N</span><div><strong>Nori</strong><span>프로덕트 에이전트 · 자동 추천</span></div><Sparkles size={16} /></div>
                 <DialogFooter><DialogClose render={<Button variant="outline" />}>취소</DialogClose><DialogClose render={<Button onClick={createTask} disabled={!newTitle.trim()} />}>업무 배정</DialogClose></DialogFooter>
               </DialogContent>
@@ -124,8 +159,8 @@ export default function Home() {
 
         <div className="page-content">
           <div className="page-heading">
-            <div><p className="eyebrow">2026년 9월 4일 · 금요일</p><h1>좋은 오후예요, 준한님.</h1><p>4명의 에이전트가 2개 프로젝트에서 일하고 있어요.</p></div>
-            <div className="view-switch" role="group" aria-label="업무 필터">{(['전체', '내 업무'] as const).map((item) => <button className={filter === item ? 'selected' : ''} key={item} onClick={() => setFilter(item)}>{item}</button>)}</div>
+            <div><p className="eyebrow">2026년 9월 4일 · 금요일</p><h1>좋은 오후예요, {displayName}님.</h1><p>{loading ? '저장된 워크스페이스를 불러오는 중이에요.' : `4명의 에이전트가 ${tasks.length}개 업무에서 협업하고 있어요.`}</p></div>
+            <fieldset className="view-switch" aria-label="업무 필터">{(['전체', '내 업무'] as const).map((item) => <button className={filter === item ? 'selected' : ''} key={item} onClick={() => setFilter(item)}>{item}</button>)}</fieldset>
           </div>
 
           <section className="overview-grid" aria-label="오늘의 현황">
@@ -142,7 +177,7 @@ export default function Home() {
               <div className="pulse-footer"><span>지난 60분</span><strong>42회 실행</strong></div>
             </article>
 
-            <article className="stat-card"><span className="icon-tile orange"><ListChecks size={18} /></span><div><strong>{tasks.length + 7}</strong><span>전체 업무</span></div><em>+4 이번 주</em></article>
+            <article className="stat-card"><span className="icon-tile orange"><ListChecks size={18} /></span><div><strong>{tasks.length}</strong><span>전체 업무</span></div><em>영구 저장됨</em></article>
             <article className="stat-card"><span className="icon-tile mint"><Check size={18} /></span><div><strong>24</strong><span>완료한 업무</span></div><em>완료율 72%</em></article>
             <article className="stat-card"><span className="icon-tile blue"><Gauge size={18} /></span><div><strong>11.2h</strong><span>절약한 시간</span></div><em>이번 주 기준</em></article>
           </section>
@@ -155,10 +190,11 @@ export default function Home() {
                   const columnTasks = visibleTasks.filter((task) => task.status === column);
                   return <div className="kanban-column" key={column}>
                     <div className="column-heading"><span className={`status-dot ${column === '진행 중' ? 'doing' : column === '검토' ? 'review' : ''}`} /><strong>{column}</strong><span>{columnTasks.length}</span></div>
-                    <div className="task-stack">{columnTasks.map((task) => <button className="task-card" key={task.id} onClick={() => flash(`“${task.title}” 상세 보기를 준비하고 있어요.`)}>
+                    <div className="task-stack">{columnTasks.map((task) => <article className="task-card" key={task.id}>
                       <span className="task-label" style={{ color: task.accent, backgroundColor: `${task.accent}14` }}>{task.label}</span><strong>{task.title}</strong>
-                      <div className="task-meta"><span className="mini-avatar" style={{ background: task.accent }}>{task.avatar}</span><span>{task.owner}</span><span className="task-due"><Clock3 size={13} /> {task.due}</span></div>
-                    </button>)}{columnTasks.length === 0 && <div className="empty-column">이 단계의 업무가 없어요.</div>}</div>
+                      <div className="task-meta"><span className="mini-avatar" style={{ background: task.accent }}>{task.avatar || task.owner[0]}</span><span>{task.owner}</span><span className="task-due"><Clock3 size={13} /> {task.due}</span></div>
+                      {task.result ? <button className="run-task result" onClick={() => setSelectedResult(task)}><Check size={13} /> 결과 보기</button> : <button className="run-task" disabled={runningId === task.id} onClick={() => runAgent(task)}>{runningId === task.id ? <LoaderCircle className="spin" size={13} /> : <Play size={13} fill="currentColor" />} {runningId === task.id ? '실행 중' : '에이전트 실행'}</button>}
+                    </article>)}{!loading && columnTasks.length === 0 && <div className="empty-column">이 단계의 업무가 없어요.</div>}</div>
                   </div>;
                 })}
               </div>
@@ -176,7 +212,14 @@ export default function Home() {
           </section>
         </div>
       </section>
-      {notice && <div className="toast" role="status"><Check size={16} /> {notice}</div>}
+      {notice && <output className="toast"><Check size={16} /> {notice}</output>}
+      <Dialog open={Boolean(selectedResult)} onOpenChange={(open) => !open && setSelectedResult(null)}>
+        <DialogContent className="result-dialog">
+          <DialogHeader><DialogTitle>{selectedResult?.owner}의 실행 결과</DialogTitle><DialogDescription>{selectedResult?.title}</DialogDescription></DialogHeader>
+          <div className="agent-result">{selectedResult?.result}</div>
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
