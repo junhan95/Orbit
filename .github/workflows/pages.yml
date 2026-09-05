@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - 'app/landing/**'
+      - 'components/orbit-mark.tsx'
+      - 'public/favicon.*'
+      - 'public/apple-touch-icon.png'
       - 'app/globals.css'
       - 'scripts/build-landing.mjs'
       - '.github/workflows/pages.yml'
