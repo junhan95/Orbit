@@ -13,6 +13,7 @@
 - Correct mobile and carousel state subscriptions, carousel listener cleanup, accessible labels, and lint errors while retaining documented composite ARIA semantics.
 
 ### Validation
+- Production browser flow verified: Google login, 5,000 KRW sandbox charge, three real model calls costing 10.416 promo credits, and full refund of the unused 500 paid credits. Ledger entries and released holds matched the UI; no runtime error events were observed.
 - Auth/billing integration and tracing: 87 tests, lint/build; live Claude eval 10/10 with no warnings. Real session and route integration uses mocked external providers; browser payment verification is reported separately.
 - Runtime safety follow-up: 77 tests; lint and production build; all 23 migrations. Live eval suite passed 9/10 initially; the failed approval-gate case passed on targeted retry. One soft wording warning remains.
 - 47 tests passed; lint and production build passed.
