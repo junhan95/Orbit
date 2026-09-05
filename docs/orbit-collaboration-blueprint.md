@@ -94,10 +94,13 @@ Hermes 에서 **의도적으로 가져오지 않은 것**: 임베딩 기반 검�
 - 보류: 대화 요약 배너(`GET /api/chat/summary` 서버 추가 필요) — 단계 B 로 이관.
 - 공통 스타일은 `components/governance.css`(`gov-*`), 색은 `globals.css` 의 `--c-*` 토큰만 사용.
 
-### 단계 B — 구조 정리 (서버 · 1일)
-- 대화 요약 배너: `GET /api/chat/summary?projectId&agentId` 추가 후 ChatView 상단에 압축 요약 표시.
-- `agent_id` 참조 전환과 매니저 규칙 보강(complete_task 강조), `chatgpt-auth.ts` 삭제, 시드 데이터 정리.
-- 순수 함수 단위 테스트(vitest) 6~8개, `npm test` 를 `db:migrate:check`·`evals` 와 함께 배포 전 체크리스트로.
+### 단계 B — 구조 정리 (서버 · 1일) — 대부분 완료 (2026-09-05)
+- ✅ 대화 요약 배너: `GET /api/chat` 이 `summary`(chat_summaries)를 함께 돌려주고 요약 이후 메시지만 원문으로 보냅니다. ChatView 상단에 접힌 `.chat-summary` 배너.
+- ✅ 매니저 규칙 보강: complete_task 의 summary/proof/next_actions 채우는 법과 blocked 조건을 명시 (`lib/run-task.ts`).
+- ✅ `app/chatgpt-auth.ts` 삭제 (참조 없음).
+- ✅ 단위 테스트 `tests/*.test.ts` 28개 (vitest): 관제 밴드 σ 등급, 기억 위협 스캔, 한글 바이그램·FTS 쿼리, 실행·검토 댓글 포맷, 단가, 압축 트리거, 스킬 인덱스.
+  - `npm test` = `vitest run`, `npm run check` = lint → test → `db:migrate:check` (배포 전 체크리스트).
+- 보류: `agent_id` 참조 전환 — `tasks.owner`(이름) 를 읽는 곳이 lib/app 에 16개 파일·100여 곳이라 별도 마이그레이션(컬럼 추가 → 이중 기록 → 읽기 전환 → 이름 컬럼 제거) 으로 단계 D 뒤에 진행.
 
 ### 단계 C — 배포 (반나절)
 - `npm run db:migrate:check` → `npm run build` → Sites 배포. 원격 D1 은 플랫폼이 저널 순서(0000~0017)로 적용.

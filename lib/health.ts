@@ -99,7 +99,7 @@ export async function computeHealth(db: D1Database, userId: string, now = Date.n
   return { metrics, windowFrom: since, windowTo: now };
 }
 
-function band(metric: typeof METRICS[number], points: Map<string, { value: number; samples: number }>, today: string): MetricReport {
+export function band(metric: typeof METRICS[number], points: Map<string, { value: number; samples: number }>, today: string): MetricReport {
   const current = points.get(today) ?? null;
   const baseline = [...points.entries()].filter(([day]) => day !== today).map(([, point]) => point.value);
   const base: MetricReport = {
