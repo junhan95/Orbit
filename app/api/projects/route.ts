@@ -28,7 +28,7 @@ function parseFolders(raw: unknown): FolderInput[] {
  * 나머지 팀원은 사용자가 업무를 지시할 때 매니저가 직무 카탈로그에서 골라 합류시킵니다.
  */
 export async function POST(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as { name?: unknown; description?: unknown; folders?: unknown } | null;
   if (typeof body?.name !== 'string' || !body.name.trim() || body.name.trim().length > 80) {
     return Response.json({ error: '프로젝트 이름은 1~80자로 입력해 주세요.' }, { status: 400 });

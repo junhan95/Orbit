@@ -9,7 +9,7 @@ const SELECT = 'SELECT id, scope, project_id AS projectId, name, description, bo
 
 /** PATCH /api/skills/:id { name?, description?, body? } */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });
@@ -41,7 +41,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 /** DELETE /api/skills/:id */
 export async function DELETE(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const result = await getDatabase().prepare('DELETE FROM skills WHERE id = ? AND user_id = ?').bind(id, user.userId).run();
   if (!result.meta.changes) return Response.json({ error: '스킬을 찾을 수 없습니다.' }, { status: 404 });

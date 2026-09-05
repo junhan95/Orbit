@@ -4,7 +4,7 @@ import { listApprovals, type ApprovalStatus } from '@/lib/approvals';
 
 /** GET /api/approvals?status=pending|approved|rejected|all — 승인 대기 큐 (기본 pending) */
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const raw = new URL(request.url).searchParams.get('status') ?? 'pending';
   const status = (['pending', 'approved', 'rejected', 'all'] as const).includes(raw as ApprovalStatus | 'all') ? (raw as ApprovalStatus | 'all') : 'pending';
   const approvals = await listApprovals(getDatabase(), user.userId, status);

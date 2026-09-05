@@ -16,7 +16,7 @@ const SELECT_PROJECT = `SELECT p.id, p.name, p.description, p.color, p.status, p
 
 /** 프로젝트 이름·설명·상태 수정. */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });
@@ -76,7 +76,7 @@ export async function PATCH(request: Request, context: RouteContext) {
  * ?withTasks=1 이면 이 프로젝트의 업무까지 함께 지웁니다.
  */
 export async function DELETE(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const withTasks = new URL(request.url).searchParams.get('withTasks') === '1';
 

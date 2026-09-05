@@ -1,13 +1,15 @@
 import type { Metadata } from 'next';
-import { Geist_Mono, Inter } from 'next/font/google';
+import { Figtree, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
 
-// Haas Grotesk 대체 — DESIGN-airtable.md 'Note on Font Substitutes'
-const inter = Inter({
+// Roobert PRO 대체 — DESIGN-miro.md. Roobert 는 유료라, 성격이 가장 가까운
+// 무료 기하학적 산세리프(Figtree)를 씁니다. 한글은 --font-app 의 폴백이 받습니다.
+const figtree = Figtree({
   variable: '--font-app-sans',
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
 });
 
 const geistMono = Geist_Mono({
@@ -44,7 +46,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
-      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${figtree.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>

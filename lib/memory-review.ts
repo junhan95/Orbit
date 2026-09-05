@@ -5,7 +5,7 @@
  * 응답을 막지 않도록 waitUntil 로 백그라운드에서 돌립니다.
  */
 import { waitUntil } from 'cloudflare:workers';
-import { runClaudeAgent, type ClaudeMessage } from './claude';
+import { runClaudeAgent, type ClaudeMessage, messageText } from './claude';
 import { MEMORY_REVIEW_PROMPT, MEMORY_TOOL, executeMemoryTool } from './memory';
 import { usageInsert } from './usage';
 
@@ -39,7 +39,7 @@ export type MemoryReviewParams = {
 const MIN_ASSISTANT_CHARS = 200;
 
 export async function runMemoryReview(params: MemoryReviewParams): Promise<{ saved: boolean; toolCalls: number; skipped?: string }> {
-  const assistantChars = params.transcript.filter((message) => message.role === 'assistant').reduce((sum, message) => sum + message.content.trim().length, 0);
+  const assistantChars = params.transcript.filter((message) => message.role === 'assistant').reduce((sum, message) => sum + messageText(message.content).trim().length, 0);
   if (assistantChars < MIN_ASSISTANT_CHARS) return { saved: false, toolCalls: 0, skipped: '리뷰할 내용이 너무 적음' };
   const trimmed = trimTranscript(params.transcript);
   const failures = { count: 0 };
@@ -67,8 +67,10 @@ export async function runMemoryReview(params: MemoryReviewParams): Promise<{ sav
 }
 
 function trimTranscript(transcript: ClaudeMessage[]): ClaudeMessage[] {
-  let total = transcript.reduce((sum, message) => sum + message.content.length, 0);
-  const kept = transcript.slice();
+  // 첨부가 붙은 메시지는 블록 배열이라, 여기서는 글자만 뽑아 다룹니다 (기억 리뷰는 텍스트만 봅니다).
+  const flat = transcript.map((message) => ({ role: message.role, content: messageText(message.content) }));
+  let total = flat.reduce((sum, message) => sum + message.content.length, 0);
+  const kept = flat.slice();
   while (kept.length > 2 && total > TRANSCRIPT_MAX_CHARS) {
     total -= kept[0].content.length;
     kept.shift();

@@ -5,7 +5,7 @@ type RouteContext = { params: Promise<{ id: string; folderId: string }> | { id: 
 
 /** 폴더 다시 연결 후 이름·파일 수 갱신. */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id, folderId } = await context.params;
   const body = await request.json().catch(() => null) as { name?: unknown; pathHint?: unknown; fileCount?: unknown } | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });
@@ -45,7 +45,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 /** 폴더 연결 해제. 사용자 컴퓨터의 파일은 건드리지 않습니다. */
 export async function DELETE(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id, folderId } = await context.params;
   const db = getDatabase();
   const result = await db.prepare('DELETE FROM project_folders WHERE id = ? AND project_id = ? AND user_id = ?')

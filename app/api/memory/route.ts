@@ -18,7 +18,7 @@ type Row = {
  * UI 의 기억 관리 탭이 그룹별 목록·사용률·승인 대기 배지를 그리는 데 씁니다.
  */
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const url = new URL(request.url);
   const scope = url.searchParams.get('scope');
   const scopeId = url.searchParams.get('scopeId');
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
  * 사람이 직접 기억을 추가합니다. 에이전트와 같은 검사(위협 패턴, 예산, 중복)를 거치되 actor 가 'user' 라 바로 active 로 들어갑니다.
  */
 export async function POST(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || !isScope(body.scope)) return Response.json({ error: "scope 는 'user' | 'project' | 'agent' 여야 합니다." }, { status: 400 });
   if (typeof body.content !== 'string' || !body.content.trim()) return Response.json({ error: '내용을 입력해 주세요.' }, { status: 400 });

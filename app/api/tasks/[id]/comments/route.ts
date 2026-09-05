@@ -7,7 +7,7 @@ type CommentRow = { id: string; author: string; authorKind: string; content: str
 const SELECT_COMMENTS = 'SELECT id, author, author_kind AS authorKind, content, created_at AS createdAt FROM task_comments WHERE user_id = ? AND task_id = ? ORDER BY created_at ASC';
 
 export async function GET(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
   const task = await db.prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ?').bind(id, user.userId).first<{ id: string }>();
@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 /** POST — { content, author? } author 를 에이전트 이름으로 주면 에이전트 발언으로 기록합니다. */
 export async function POST(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { content?: unknown; author?: unknown } | null;
   if (typeof body?.content !== 'string' || !body.content.trim() || body.content.length > 4000) {
@@ -44,7 +44,7 @@ export async function POST(request: Request, context: RouteContext) {
 
 /** DELETE /api/tasks/:id/comments?commentId=... */
 export async function DELETE(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const commentId = new URL(request.url).searchParams.get('commentId');
   if (!commentId) return Response.json({ error: '삭제할 댓글을 지정해 주세요.' }, { status: 400 });

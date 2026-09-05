@@ -14,6 +14,7 @@
  *   });
  *   // 저장 시 chatMessageIndex(...) 를 batch 에 함께 넣어 회상 인덱스에 반영합니다.
  */
+import type { Autonomy } from './autonomy';
 import type { ClaudeMessage, ToolDefinition, ToolExecutor } from './claude';
 import { CONTEXT_MAX_MESSAGES, loadChatSummary, renderChatSummary, type ChatSummary } from './compaction';
 import {
@@ -21,6 +22,7 @@ import {
   type ManagerContext, type ManagerEvent, type ManagerLog,
 } from './manager-tools';
 import { MEMORY_GUIDANCE, MEMORY_TOOL, executeMemoryTool, loadMemoryScopes, renderMemorySection } from './memory';
+import { loadProfile, renderProfileSection } from './profile';
 import { RECALL_TOOL, executeRecallTool, recallDocKey, recallDocUpsert } from './recall';
 import { USE_SKILL_TOOL, executeSkillTool, listSkills, renderSkillIndex } from './skills';
 import { CREATE_TASK_TOOL, createTaskToolLog, executeTaskTool, type TaskToolContext, type TaskToolLog } from './task-tools';
@@ -42,7 +44,18 @@ export type ChatManagerOptions = {
   folderContext?: string;
   /** 합류·위임 진행을 실시간으로 받고 싶을 때 (스트리밍 라우트). */
   onEvent?: (event: ManagerEvent) => void;
+  /** 사용자가 대화창에서 고른 자율도. 기본은 'auto'(전부 허용). */
+  autonomy?: Autonomy;
 };
+
+/** 자율도 'tasks' — 채용·위임 없이 카드만 만들 때의 규칙 */
+const MANAGER_TASKS_ONLY_RULES = [
+  '',
+  '## 당신은 이 프로젝트의 매니저입니다 (이번 대화는 카드 생성만 허용)',
+  '- 사용자가 자율도를 낮춰 두어 이번 대화에서는 팀원 합류(recruit_agent)와 위임(delegate_task)을 할 수 없습니다.',
+  '- 결과물이 필요한 요청이면 직접 답할 수 있는 만큼 답하고, 나머지는 create_task 로 보드에 카드만 남기세요.',
+  '- 위임이 필요하다고 판단되면 그 사실을 답변에 적고, 사용자가 자율도를 \'자동\'으로 올리면 바로 진행하겠다고 알리세요.',
+].join('\n');
 
 const MANAGER_CHAT_RULES = [
   '',
@@ -80,7 +93,7 @@ export const RECALL_CALL_LIMIT = 3;
 /** 사용자 메시지 N개마다 기억 리뷰 패스를 돌립니다 (Hermes memory.nudge_interval) */
 export const MEMORY_REVIEW_EVERY = 10;
 
-export function buildChatSystem(context: ChatContext, historyWindow = CHAT_HISTORY_WINDOW, memorySection = '', summarySection = '', skillSection = '', managerSection = ''): string {
+export function buildChatSystem(context: ChatContext, historyWindow = CHAT_HISTORY_WINDOW, memorySection = '', summarySection = '', skillSection = '', managerSection = '', profileSection = ''): string {
   return [
     `당신은 ${context.agentName}, ${context.agentRole}입니다.`,
     context.instructions,
@@ -93,6 +106,7 @@ export function buildChatSystem(context: ChatContext, historyWindow = CHAT_HISTO
       : `지금 보이는 대화는 최근 ${historyWindow}개 메시지뿐이고, 그 이전과 다른 에이전트의 실행 결과는 검색으로만 볼 수 있습니다.`,
     '답변은 한국어로, 프로젝트 맥락에 맞춰 구체적으로 작성하세요.',
     '',
+    profileSection ? `${profileSection}\n` : '',
     MEMORY_GUIDANCE,
     '',
     memorySection,
@@ -116,7 +130,7 @@ export async function prepareChatTurn(db: D1Database, userId: string, params: {
   const summary = await loadChatSummary(db, userId, params.projectId, params.agentId);
   const since = summary?.coversTo ?? 0;
   const limit = summary ? CONTEXT_MAX_MESSAGES : window;
-  const [history, sinceCount, userTurns, memory, skills] = await Promise.all([
+  const [history, sinceCount, userTurns, memory, skills, profile] = await Promise.all([
     db.prepare('SELECT id, role, content FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT ?')
       .bind(userId, params.projectId, params.agentId, since, limit).all<{ id: string; role: string; content: string }>(),
     db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? AND created_at > ?')
@@ -126,6 +140,8 @@ export async function prepareChatTurn(db: D1Database, userId: string, params: {
     // 기억 스냅샷: 이 턴 동안 동결됩니다 (Hermes 의 frozen snapshot)
     loadMemoryScopes(db, userId, { projectId: params.projectId, projectName: params.context.projectName, agentId: params.agentId, agentName: params.context.agentName }),
     listSkills(db, userId, params.projectId),
+    // 사용자 프로필: 호칭과 보고 눈높이를 맞추는 데 씁니다 (계정 화면에서 편집).
+    loadProfile(db, userId),
   ]);
   const recent = history.results.slice().reverse();
   const excludeDocKeys = recent.map((item) => recallDocKey('chat', item.id));
@@ -151,19 +167,22 @@ export async function prepareChatTurn(db: D1Database, userId: string, params: {
   const taskContext: TaskToolContext = {
     db, userId, agentName: params.context.agentName, projectId: params.projectId, taskId: '',
   };
+  // 자율도가 'tasks' 면 채용·위임 도구를 아예 붙이지 않습니다 (모델에게 없는 도구는 쓸 수 없습니다).
+  const canDelegate = Boolean(managerContext) && (params.manager?.autonomy ?? 'auto') === 'auto';
   const managerSection = managerContext
-    ? `${MANAGER_CHAT_RULES}\n\n${renderTeam(await loadMembers(db, userId, params.projectId))}`
+    ? `${canDelegate ? MANAGER_CHAT_RULES : MANAGER_TASKS_ONLY_RULES}\n\n${renderTeam(await loadMembers(db, userId, params.projectId))}`
     : '';
 
   return {
-    system: buildChatSystem(params.context, window, renderMemorySection(memory), renderChatSummary(summary), renderSkillIndex(skills), managerSection),
+    system: buildChatSystem(params.context, window, renderMemorySection(memory), renderChatSummary(summary), renderSkillIndex(skills), managerSection, renderProfileSection(profile, '')),
     messages: recent.map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: item.content })),
     tools: [
       RECALL_TOOL as unknown as ToolDefinition, MEMORY_TOOL, USE_SKILL_TOOL,
-      ...(managerContext ? [...MANAGER_TOOLS, CREATE_TASK_TOOL] : []),
+      ...(managerContext ? [...(canDelegate ? MANAGER_TOOLS : []), CREATE_TASK_TOOL] : []),
     ],
     executeTool: (name, input) => {
       if (managerContext && MANAGER_TOOL_NAMES.has(name)) {
+        if (!canDelegate) return Promise.resolve({ error: '이번 대화는 자율도가 낮아 합류·위임을 할 수 없습니다. create_task 로 카드만 남기고 직접 답하세요.' });
         return executeManagerTool(name, input, managerContext, managerLog);
       }
       if (managerContext && name === 'create_task') {

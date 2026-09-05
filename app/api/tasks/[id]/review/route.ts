@@ -10,7 +10,7 @@ type RouteContext = { params: Promise<{ id: string }> | { id: string } };
  * 응답: { reviewer, verdict: 'approve'|'changes_requested', summary, findings[], hiddenNits }
  */
 export async function POST(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const { apiKey, model } = getRuntimeConfig();
   if (!apiKey) return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.' }, { status: 503 });

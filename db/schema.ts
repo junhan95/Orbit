@@ -249,3 +249,38 @@ export const memories = sqliteTable('memories', {
   createdBy: text('created_by').notNull(),
   createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
 }, (table) => [index('idx_memories_user_scope').on(table.userId, table.scope, table.scopeId, table.status)]);
+
+/**
+ * 사용자 프로필 — 계정 화면에서 직접 고치는 표시 정보입니다.
+ * app/auth.ts 의 getCurrentUser() 가 환경변수로 정하는 "계정"과 별개이고,
+ * 겹치는 이름·이메일은 여기 값이 있으면 그것이 화면에 쓰입니다.
+ * avatar 는 256px 로 줄인 data URL (lib/profile.ts AVATAR_SIZE).
+ */
+export const userProfiles = sqliteTable('user_profiles', {
+  userId: text('user_id').primaryKey(),
+  displayName: text('display_name'), email: text('email'),
+  company: text('company'), department: text('department'), title: text('title'),
+  phone: text('phone'), bio: text('bio'), avatar: text('avatar'),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+/**
+ * 로그인 계정 (Google / GitHub OAuth). Claude 계정 로그인은 Anthropic 정책상 제3자 앱에서 금지라
+ * 신원은 별도 제공자로 받고, Claude 는 사용자 본인의 API 키(BYOK)로 씁니다 — docs/auth-flow.md.
+ * id 는 모든 테이블의 user_id 가 되므로 한 번 발급되면 바뀌지 않습니다.
+ */
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(),          // 'google' | 'github'
+  providerId: text('provider_id').notNull(),     // 제공자가 준 고유 id (sub / GitHub id)
+  email: text('email'), name: text('name'), avatarUrl: text('avatar_url'),
+  createdAt: integer('created_at').notNull(), lastLoginAt: integer('last_login_at').notNull(),
+}, (table) => [uniqueIndex('idx_users_provider').on(table.provider, table.providerId)]);
+
+/** 서버 세션. 쿠키에는 id 만 들어가고, 로그아웃은 행 삭제로 즉시 무효화됩니다. */
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at').notNull(), expiresAt: integer('expires_at').notNull(),
+  userAgent: text('user_agent'),
+}, (table) => [index('idx_sessions_user').on(table.userId, table.expiresAt)]);

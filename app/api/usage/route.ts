@@ -32,7 +32,7 @@ function add(bucket: Bucket, row: Row, cost: number) {
 }
 
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const url = new URL(request.url);
 
   const requestedDays = Number(url.searchParams.get('days'));

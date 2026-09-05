@@ -4,7 +4,7 @@ import { type RecallDocInput, recallDocUpsert, searchRecall } from '@/lib/recall
 
 /** GET /api/recall?q=… — 화면·디버깅용 검색. 모델이 쓰는 recall_history 와 같은 엔진입니다. */
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const url = new URL(request.url);
   const query = url.searchParams.get('q')?.trim();
   if (!query) return Response.json({ hits: [] });
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
  * 마이그레이션 직후 한 번, 또는 인덱스가 어긋났다고 의심될 때 실행합니다.
  */
 export async function POST() {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const db = getDatabase();
 
   const [chats, runs, tasks] = await Promise.all([

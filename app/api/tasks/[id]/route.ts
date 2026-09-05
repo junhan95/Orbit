@@ -14,7 +14,7 @@ type TaskRow = {
 const SELECT_TASK = 'SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId FROM tasks WHERE id = ? AND user_id = ?';
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });
@@ -84,7 +84,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
   const existing = await db.prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ?').bind(id, user.userId).first<{ id: string }>();

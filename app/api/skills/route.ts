@@ -10,7 +10,7 @@ type Row = {
 
 /** GET /api/skills?projectId= — 전역 스킬 + (projectId 가 있으면) 그 프로젝트 스킬. 없으면 전부. */
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const projectId = new URL(request.url).searchParams.get('projectId');
   const db = getDatabase();
   const rows = await db.prepare(`SELECT s.id, s.scope, s.project_id AS projectId, p.name AS projectName, s.name, s.description, s.body,
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
 /** POST /api/skills { name, description, body, scope?, projectId? } — 사람이 직접 스킬 작성 (같은 이름이면 갱신) */
 export async function POST(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });
 

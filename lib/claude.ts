@@ -12,7 +12,8 @@ const WEB_SEARCH_TOOL = 'web_search_20250305';
 /** tool_result 로 되돌려 주는 문자열 상한. 검색 결과가 컨텍스트를 삼키지 않게 합니다. */
 const TOOL_RESULT_MAX_CHARS = 12_000;
 
-export type ClaudeMessage = { role: 'user' | 'assistant'; content: string };
+/** content 가 배열이면 Anthropic 콘텐츠 블록(text·image·document)을 그대로 보냅니다 — 대화 첨부에 씁니다. */
+export type ClaudeMessage = { role: 'user' | 'assistant'; content: string | unknown[] };
 export type ClaudeUsage = {
   inputTokens: number; outputTokens: number;
   cacheCreationTokens: number; cacheReadTokens: number;
@@ -444,7 +445,7 @@ export async function streamClaude(options: Omit<StreamOptions, 'tools' | 'execu
  * 저장된 대화 이력을 잘라서 보낼 때 이 조건이 깨질 수 있어 여기서 정규화합니다.
  */
 export function normalizeMessages(rows: ClaudeMessage[]): ClaudeMessage[] {
-  const cleaned = rows.filter((row) => row.content.trim().length > 0);
+  const cleaned = rows.filter((row) => (typeof row.content === 'string' ? row.content.trim().length > 0 : row.content.length > 0));
   let start = 0;
   while (start < cleaned.length && cleaned[start].role !== 'user') start += 1;
 
@@ -452,10 +453,32 @@ export function normalizeMessages(rows: ClaudeMessage[]): ClaudeMessage[] {
   for (const message of cleaned.slice(start)) {
     const last = merged[merged.length - 1];
     if (last && last.role === message.role) {
-      last.content = `${last.content}\n\n${message.content}`;
+      last.content = typeof last.content === 'string' && typeof message.content === 'string'
+        ? `${last.content}\n\n${message.content}`
+        : [...toBlocks(last.content), ...toBlocks(message.content)];
     } else {
       merged.push({ role: message.role, content: message.content });
     }
   }
   return merged;
+}
+
+/** 문자열이든 블록 배열이든 블록 배열로 맞춥니다 (같은 role 이 연속될 때 합치는 용도). */
+function toBlocks(content: string | unknown[]): unknown[] {
+  return typeof content === 'string' ? [{ type: 'text', text: content }] : content;
+}
+
+/** 블록 배열이 섞여 있어도 글자만 뽑습니다 — 길이 검사·요약처럼 텍스트만 필요할 때 씁니다. */
+export function messageText(content: string | unknown[]): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((block) => {
+      if (block && typeof block === 'object' && (block as { type?: unknown }).type === 'text') {
+        const text = (block as { text?: unknown }).text;
+        return typeof text === 'string' ? text : '';
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
 }

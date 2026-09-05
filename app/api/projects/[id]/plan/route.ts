@@ -15,7 +15,7 @@ type ProjectRow = { id: string; name: string; description: string };
  * 두 단계로 나눈 이유: 자동 분해 결과를 사람이 한 번 보고 고칠 수 있게 (Hermes 도 planner 산출물은 사람이 승인).
  */
 export async function POST(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });

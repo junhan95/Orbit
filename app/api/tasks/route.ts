@@ -19,7 +19,7 @@ const SELECT_PROJECT_TASKS = `SELECT id, title, label, owner, status, priority, 
  * ?projectId=... 를 주면 그 프로젝트의 업무만 돌려줍니다.
  */
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const db = getDatabase();
   const projectId = new URL(request.url).searchParams.get('projectId');
   const result = projectId
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as {
     title?: unknown; owner?: unknown; label?: unknown; priority?: unknown; status?: unknown; projectId?: unknown; description?: unknown;
   } | null;

@@ -16,7 +16,7 @@ type AgentRow = { id: string; name: string; role: string; description: string; i
  * - name 은 업무의 owner 가 문자열로 참조하고 있어 여기서 바꾸지 않습니다.
  */
 export async function PATCH(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as
     { id?: unknown; model?: unknown; role?: unknown; description?: unknown; instructions?: unknown } | null;
   if (typeof body?.id !== 'string' || !body.id) {

@@ -15,7 +15,7 @@ const SELECT_TASK = `SELECT id, title, label, owner, status, priority, accent, r
 
 /** GET /api/tasks/:id/detail — 상세 패널이 필요한 모든 것을 한 번에 돌려줍니다. */
 export async function GET(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
 
@@ -55,7 +55,7 @@ export async function GET(_request: Request, context: RouteContext) {
  * 태스크의 title/status/owner/priority/label 은 기존 /api/tasks/:id 를 그대로 씁니다.
  */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { description?: unknown; values?: unknown } | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });

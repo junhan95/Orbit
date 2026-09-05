@@ -13,7 +13,7 @@ async function assertProject(db: D1Database, projectId: string, userId: string) 
 
 /** 프로젝트에 연결된 폴더 목록. 실제 파일 접근 권한은 브라우저가 따로 관리합니다. */
 export async function GET(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
   if (!await assertProject(db, id, user.userId)) return Response.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
@@ -24,7 +24,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 /** 폴더 연결 추가. 브라우저에서 고른 폴더의 이름과 파일 수만 받습니다. */
 export async function POST(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { name?: unknown; pathHint?: unknown; fileCount?: unknown } | null;
   if (typeof body?.name !== 'string' || !body.name.trim() || body.name.trim().length > 120) {

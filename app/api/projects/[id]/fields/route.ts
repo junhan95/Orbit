@@ -18,7 +18,7 @@ async function assertProject(db: D1Database, userId: string, projectId: string) 
  * GET /api/projects/:id/fields?values=1 → { fields, values }  (보드 카드 배지에 씁니다)
  */
 export async function GET(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
   if (!await assertProject(db, user.userId, id)) return Response.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
@@ -45,7 +45,7 @@ export async function GET(request: Request, context: RouteContext) {
 
 /** POST /api/projects/:id/fields — 필드 정의를 추가합니다. { name, type, options?, showOnCard? } */
 export async function POST(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { name?: unknown; type?: unknown; options?: unknown; showOnCard?: unknown } | null;
 
@@ -82,7 +82,7 @@ export async function POST(request: Request, context: RouteContext) {
 
 /** PATCH /api/projects/:id/fields — { fieldId, name?, options?, showOnCard? } */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { fieldId?: unknown; name?: unknown; options?: unknown; showOnCard?: unknown } | null;
   if (typeof body?.fieldId !== 'string') return Response.json({ error: '수정할 필드를 지정해 주세요.' }, { status: 400 });
@@ -115,7 +115,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 /** DELETE /api/projects/:id/fields?fieldId=... — 값도 FK CASCADE 로 함께 지워집니다. */
 export async function DELETE(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const fieldId = new URL(request.url).searchParams.get('fieldId');
   if (!fieldId) return Response.json({ error: '삭제할 필드를 지정해 주세요.' }, { status: 400 });

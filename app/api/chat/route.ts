@@ -15,7 +15,7 @@ const MANAGER_MAX_ITERATIONS = 14;
 const MAX_FOLDER_CONTEXT = 60_000;
 
 export async function GET(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const url = new URL(request.url);
   const projectId = url.searchParams.get('projectId');
   const agentId = url.searchParams.get('agentId');
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 
 /** 비스트리밍 대화. 스트리밍은 /api/chat/stream 이 같은 lib/chat-agent 헬퍼로 처리합니다. */
 export async function POST(request: Request) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as { projectId?: unknown; agentId?: unknown; message?: unknown; folderContext?: unknown } | null;
   if (typeof body?.projectId !== 'string' || typeof body.agentId !== 'string' || typeof body.message !== 'string' || !body.message.trim()) {
     return Response.json({ error: '프로젝트, 에이전트, 메시지가 필요합니다.' }, { status: 400 });

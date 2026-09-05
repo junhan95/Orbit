@@ -10,6 +10,7 @@ import {
   type ManagerContext,
 } from '@/lib/manager-tools';
 import { MEMORY_GUIDANCE, MEMORY_TOOL, executeMemoryTool, loadMemoryScopes, renderMemorySection } from '@/lib/memory';
+import { loadProfile, renderProfileSection } from '@/lib/profile';
 import { gateCreateTask } from '@/lib/approvals';
 import { logGate } from '@/lib/gates';
 import { maybeRunHealthCheck } from '@/lib/health';
@@ -144,13 +145,15 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
 
   const toolContext: TaskToolContext = { db, userId: user.userId, agentName: task.owner, projectId: task.projectId, taskId: task.id };
   // 기억 스냅샷 (이 실행 동안 동결) — user / project / agent 세 스코프
-  const [cardSection, fieldGuide, memory, skills] = await Promise.all([
+  const [cardSection, fieldGuide, memory, skills, profile] = await Promise.all([
     describeTaskCard(db, user.userId, task),
     describeFields(toolContext),
     loadMemoryScopes(db, user.userId, {
       projectId: task.projectId, projectName: project?.name ?? null, agentId: agent?.id ?? null, agentName: task.owner,
     }),
     listSkills(db, user.userId, task.projectId),
+    // 사용자 프로필: 호칭과 보고 눈높이를 맞추는 데 씁니다 (계정 화면에서 편집).
+    loadProfile(db, user.userId),
   ]);
   contextSections.push(cardSection);
   if (fieldGuide) contextSections.push(fieldGuide);
@@ -204,6 +207,8 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     ...(isManager ? managerRules : workerRules),
     '- 이 업무를 추적하는 데 반복적으로 필요한 정보가 있으면 define_field 로 필드를 만들고 set_field 로 값을 채우세요. 한 번 쓰고 마는 메모는 요약에 적습니다.',
     '- 마지막에는 반드시 complete_task 를 호출해 요약을 남기세요. 툴을 호출하지 않고 끝내면 보고가 남지 않고, proof 가 비면 "검증 근거 없음" 으로 표시되어 검토 에이전트가 수정 요청을 냅니다.',
+    '',
+    renderProfileSection(profile, ''),
     '',
     MEMORY_GUIDANCE,
     '',

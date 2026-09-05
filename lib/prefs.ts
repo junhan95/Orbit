@@ -13,11 +13,16 @@ import { type Lang, isLang, setLang } from './i18n';
 export const THEME_CHOICES = ['system', 'dark', 'light'] as const;
 export type ThemeChoice = (typeof THEME_CHOICES)[number];
 
+/** 세로 메뉴바 상태 — 확장(라벨까지) / 축소(아이콘 위주) */
+export const NAV_MODES = ['expanded', 'collapsed'] as const;
+export type NavMode = (typeof NAV_MODES)[number];
+
 export type Prefs = {
   notifications: boolean;
   autoAssign: boolean;
   theme: ThemeChoice;
   lang: Lang;
+  nav: NavMode;
 };
 
 export const PREFS_KEY = 'orbit-preferences';
@@ -27,6 +32,7 @@ export const DEFAULT_PREFS: Prefs = {
   autoAssign: true,
   theme: 'system',
   lang: 'ko',
+  nav: 'expanded',
 };
 
 let prefs: Prefs = DEFAULT_PREFS;
@@ -36,6 +42,10 @@ const listeners = new Set<() => void>();
 
 function isTheme(value: unknown): value is ThemeChoice {
   return value === 'system' || value === 'dark' || value === 'light';
+}
+
+function isNav(value: unknown): value is NavMode {
+  return value === 'expanded' || value === 'collapsed';
 }
 
 /** localStorage 에 저장된 값을 읽어 기본값과 합칩니다. 값이 깨져 있으면 기본값으로 돌아갑니다. */
@@ -48,6 +58,7 @@ export function readPrefs(): Prefs {
       autoAssign: typeof saved.autoAssign === 'boolean' ? saved.autoAssign : DEFAULT_PREFS.autoAssign,
       theme: isTheme(saved.theme) ? saved.theme : DEFAULT_PREFS.theme,
       lang: isLang(saved.lang) ? saved.lang : DEFAULT_PREFS.lang,
+      nav: isNav(saved.nav) ? saved.nav : DEFAULT_PREFS.nav,
     };
   } catch {
     return DEFAULT_PREFS;

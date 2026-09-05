@@ -18,7 +18,7 @@ const SELECT_MEMORY = `SELECT id, scope, scope_id AS scopeId, content, status, c
  * - content: 사람이 문구를 다듬는 경우. 에이전트와 같은 위협 스캔·예산 검사를 거칩니다.
  */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: '요청 본문이 올바르지 않습니다.' }, { status: 400 });
@@ -65,7 +65,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 /** DELETE /api/memory/:id — 기억 삭제 (pending 거절도 여기로) */
 export async function DELETE(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
   const result = await db.prepare('DELETE FROM memories WHERE id = ? AND user_id = ?').bind(id, user.userId).run();

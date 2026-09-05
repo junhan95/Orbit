@@ -12,7 +12,7 @@ async function assertTask(db: D1Database, userId: string, taskId: string) {
 }
 
 export async function GET(_request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const db = getDatabase();
   if (!await assertTask(db, user.userId, id)) return Response.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 });
@@ -22,7 +22,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 /** POST — { title, owner? } */
 export async function POST(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { title?: unknown; owner?: unknown } | null;
   if (typeof body?.title !== 'string' || !body.title.trim() || body.title.trim().length > 120) {
@@ -50,7 +50,7 @@ export async function POST(request: Request, context: RouteContext) {
 
 /** PATCH — { subtaskId, done?, title?, owner? } */
 export async function PATCH(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const body = await request.json().catch(() => null) as { subtaskId?: unknown; done?: unknown; title?: unknown; owner?: unknown } | null;
   if (typeof body?.subtaskId !== 'string') return Response.json({ error: '수정할 하위 작업을 지정해 주세요.' }, { status: 400 });
@@ -85,7 +85,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
 /** DELETE /api/tasks/:id/subtasks?subtaskId=... */
 export async function DELETE(request: Request, context: RouteContext) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const { id } = await context.params;
   const subtaskId = new URL(request.url).searchParams.get('subtaskId');
   if (!subtaskId) return Response.json({ error: '삭제할 하위 작업을 지정해 주세요.' }, { status: 400 });

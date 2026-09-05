@@ -16,7 +16,7 @@ const SELECT_AGENTS = `SELECT id, name, role, description, instructions, model, 
   FROM agents WHERE user_id = ? ORDER BY is_manager DESC, created_at ASC`;
 
 export async function GET() {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const db = getDatabase();
   const projects = await db.prepare(SELECT_PROJECTS).bind(user.userId).all();
   const agents = await db.prepare(SELECT_AGENTS).bind(user.userId).all();

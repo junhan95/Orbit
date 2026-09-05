@@ -10,7 +10,7 @@ const DAY = 86_400_000;
  * UI 대시보드가 "실행 건강" 카드를 그리는 데 씁니다.
  */
 export async function GET() {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const db = getDatabase();
   const [health, gates, diagnoses, lastCheck] = await Promise.all([
     computeHealth(db, user.userId),
@@ -28,7 +28,7 @@ export async function GET() {
  * 응답: { metrics, raised: [{ key, taskId }], skipped: [{ key, reason }] }
  */
 export async function POST() {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
   const db = getDatabase();
   const { metrics } = await computeHealth(db, user.userId);
   const raised: { key: string; taskId: string }[] = [];

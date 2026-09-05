@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, Flag, FolderKanban, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronDown, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -19,7 +19,16 @@ import {
   inspectFolder, pickDirectory, saveHandle, scanDirectory, supportsFolderPicker,
 } from '@/lib/folder-access';
 import { AGENT_MODELS, agentModelLabel } from '@/lib/models';
+import {
+  ATTACHMENT_ACCEPT, type ChatAttachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_TOTAL_BYTES,
+  formatBytes, readAttachment, toPayload,
+} from '@/lib/attachments';
+import { AUTONOMY_HINT, AUTONOMY_LABEL, AUTONOMY_LEVELS, type Autonomy, DEFAULT_AUTONOMY, isAutonomy } from '@/lib/autonomy';
 import { LANGUAGES, LANGUAGE_LABEL, type Lang, t, tf } from '@/lib/i18n';
+import {
+  AVATAR_MAX_CHARS, AVATAR_SIZE, EMPTY_PROFILE, PROFILE_LIMITS,
+  type ProfileField, type UserProfile, affiliationLine,
+} from '@/lib/profile';
 import { type Prefs, THEME_CHOICES, type ThemeChoice, updatePrefs, usePrefs } from '@/lib/prefs';
 
 export type WorkspaceSection = '프로젝트' | '에이전트' | '대화' | '설정' | '계정';
@@ -57,9 +66,11 @@ type TaskDetail = {
 };
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: number };
 
-export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat }: {
+export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat, onProfileSaved }: {
   section: WorkspaceSection; displayName: string; email: string; onNotice: (message: string) => void;
   chatTarget?: ChatTarget | null; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void;
+  /** 계정 화면에서 프로필을 저장했을 때 — 사이드바 아바타·인사말을 바로 맞춥니다. */
+  onProfileSaved?: (next: { displayName: string; email: string; avatar: string }) => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -84,7 +95,7 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
   if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
   if (section === '대화') return <ChatView key={chatTarget?.key ?? 'chat'} projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
-  return <AccountView displayName={displayName} email={email} />;
+  return <AccountView displayName={displayName} email={email} onNotice={onNotice} onProfileSaved={onProfileSaved} />;
 }
 
 function ViewHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: React.ReactNode }) {
@@ -93,6 +104,8 @@ function ViewHeading({ eyebrow, title, description, action }: { eyebrow: string;
 
 const PROJECT_VIEW_KEY = 'cowork.projects.view';
 const AGENT_VIEW_KEY = 'cowork.agents.view';
+// 대화창에서 고른 자율도. 이 기기에만 남습니다.
+const CHAT_AUTONOMY_KEY = 'cowork.chat.autonomy';
 // 프로젝트 삭제는 되돌릴 수 없어서, 이름을 그대로 입력하고 삭제 버튼을 이만큼 누르고 있어야 실행됩니다.
 const DELETE_HOLD_MS = 3000;
 type ProjectLayout = 'card' | 'list';
@@ -1380,6 +1393,15 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
   const [steps, setSteps] = useState<ManagerStep[]>([]);
   // 사이드바에 띄우는 이 프로젝트의 업무. 대화 중 매니저가 카드를 만들거나 끝내면 다시 읽습니다.
   const [boardTasks, setBoardTasks] = useState<ProjectTask[]>([]);
+  // 이번 턴에만 함께 보낼 첨부 파일 (보관하지 않습니다 — lib/attachments 주석 참고).
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // 이 대화에서 에이전트에게 허용할 자율도.
+  const [autonomy, setAutonomy] = useState<Autonomy>(DEFAULT_AUTONOMY);
+  // 대화창 아래에서 바로 관리하는 이 프로젝트의 작업 폴더.
+  const [folders, setFolders] = useState<ProjectFolder[]>([]);
+  const [folderBusy, setFolderBusy] = useState(false);
+  const pickerReady = useFolderPicker();
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -1396,6 +1418,71 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
   }, [projectId]);
 
   useEffect(() => { loadBoardTasks(); }, [loadBoardTasks]);
+
+  const loadFolders = useCallback(() => {
+    if (!projectId) return;
+    fetchProjectFolders(projectId).then(setFolders).catch(() => setFolders([]));
+  }, [projectId]);
+
+  useEffect(() => { loadFolders(); }, [loadFolders]);
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem(CHAT_AUTONOMY_KEY); } catch { /* 저장소 접근 불가 시 기본값 유지 */ }
+    if (!isAutonomy(stored)) return;
+    // oxlint-disable-next-line react/react-compiler -- 브라우저에서만 읽을 수 있는 저장값이라 마운트 후에 한 번 반영합니다.
+    setAutonomy(stored);
+  }, []);
+
+  const changeAutonomy = useCallback((next: Autonomy) => {
+    setAutonomy(next);
+    try { window.localStorage.setItem(CHAT_AUTONOMY_KEY, next); } catch { /* 저장 실패는 무시 */ }
+  }, []);
+
+  /** 대화창의 '폴더 추가' — 프로젝트 상세의 작업 폴더와 같은 목록을 씁니다. */
+  async function addChatFolder() {
+    if (!projectId || folderBusy) return;
+    setFolderBusy(true);
+    try {
+      const handle = await pickDirectory();
+      if (!handle) return;
+      const { files } = await scanDirectory(handle);
+      const response = await fetch(`/api/projects/${projectId}/folders`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: handle.name, pathHint: handle.name, fileCount: files.length }),
+      });
+      const data = await response.json() as { folder?: ProjectFolder; error?: string };
+      if (!response.ok || !data.folder) throw new Error(data.error || t("폴더를 연결하지 못했습니다."));
+      await saveHandle(data.folder.id, handle);
+      loadFolders();
+      onNotice(tf("'{0}' 폴더를 연결했습니다 (파일 {1}개).", handle.name, files.length));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더를 연결하지 못했습니다.")); }
+    finally { setFolderBusy(false); }
+  }
+
+  /** '+' 로 고른 파일을 첨부 목록에 담습니다. 형식·크기가 안 맞으면 그 파일만 건너뜁니다. */
+  async function pickAttachments(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!files.length) return;
+    const accepted: ChatAttachment[] = [];
+    const skipped: string[] = [];
+    let total = attachments.reduce((sum, item) => sum + item.size, 0);
+    for (const file of files) {
+      if (attachments.length + accepted.length >= MAX_ATTACHMENTS) { skipped.push(file.name); continue; }
+      if (total + file.size > MAX_ATTACHMENT_TOTAL_BYTES) { skipped.push(file.name); continue; }
+      const result = await readAttachment(file);
+      if ('error' in result) { skipped.push(file.name); continue; }
+      accepted.push(result.attachment);
+      total += file.size;
+    }
+    if (accepted.length) setAttachments((current) => [...current, ...accepted]);
+    if (skipped.length) onNotice(tf("첨부하지 못한 파일: {0}", skipped.join(', ')));
+  }
+
+  const removeAttachment = useCallback((key: string) => {
+    setAttachments((current) => current.filter((item) => item.key !== key));
+  }, []);
 
   // 다른 창에 다녀오면 그 사이 바뀐 카드를 반영합니다.
   useEffect(() => {
@@ -1428,15 +1515,23 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
   useEffect(() => { pinnedRef.current = true; }, [projectId, selectedAgentId]);
 
   async function sendMessage() {
-    const message = draft.trim(); if (!message || !selectedAgentId || sending) return;
-    setDraft(''); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
-    const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: message, createdAt: Date.now() };
+    const typed = draft.trim();
+    // 파일만 보내도 되게, 글이 비어 있으면 한 줄을 대신 넣습니다.
+    const message = typed || (attachments.length ? t("첨부한 파일을 확인해 주세요.") : '');
+    if (!message || !selectedAgentId || sending) return;
+    const sent = attachments;
+    setDraft(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
+    const shown = sent.length ? `${message}\n\n📎 ${sent.map((item) => item.name).join(', ')}` : message;
+    const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: shown, createdAt: Date.now() };
     setMessages((current) => [...current, optimistic]);
     let boardChanged = false;
     try {
       // 연결된 폴더가 있으면 브라우저에서 읽어 함께 보냅니다 (서버는 파일시스템에 접근할 수 없습니다).
       const folderContext = await buildProjectFolderContext(projectId);
-      const response = await fetch('/api/chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, agentId: selectedAgentId, message, folderContext }) });
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, agentId: selectedAgentId, message, folderContext, autonomy, attachments: toPayload(sent) }),
+      });
       if (!response.ok || !response.body) {
         const failure = await response.json().catch(() => null) as { error?: string } | null;
         throw new Error(failure?.error || t("메시지를 보내지 못했습니다."));
@@ -1563,7 +1658,41 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
           : <div className="message assistant"><span>{selectedAgent?.name[0]}</span>{toolNote
               ? <div className="bubble tool-note"><LoaderCircle className="spin" size={13} /> {toolNote}</div>
               : <div className="bubble thinking"><i /><i /><i /></div>}</div>)}<div ref={bottomRef} className="message-anchor" /></div>
-        <div className="chat-composer"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} /><button onClick={() => void sendMessage()} disabled={!draft.trim() || sending}><Send size={17} /></button><small>{t("Enter 전송 · Shift+Enter 줄바꿈")}</small></div></section>
+        <div className="chat-composer">
+          {Boolean(attachments.length) && <ul className="composer-chips">
+            {attachments.map((item) => <li key={item.key}>
+              {item.kind === 'image' ? <FileImage size={13} /> : <FileText size={13} />}
+              <b>{item.name}</b><small>{formatBytes(item.size)}</small>
+              <button type="button" onClick={() => removeAttachment(item.key)} aria-label={tf("{0} 첨부 취소", item.name)}><X size={12} /></button>
+            </li>)}
+          </ul>}
+          <button className="composer-add" type="button" onClick={() => fileInputRef.current?.click()}
+            disabled={!selectedAgentId || sending || attachments.length >= MAX_ATTACHMENTS}
+            title={t("파일·사진 첨부")} aria-label={t("파일·사진 첨부")}><Plus size={18} /></button>
+          <input className="composer-file" ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT}
+            onChange={(event) => void pickAttachments(event)} tabIndex={-1} aria-hidden="true" />
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
+          <button onClick={() => void sendMessage()} disabled={(!draft.trim() && !attachments.length) || sending}><Send size={17} /></button>
+          <div className="composer-bar">
+            <button className="composer-tool" type="button" onClick={() => void addChatFolder()} disabled={!projectId || !pickerReady || folderBusy}
+              title={pickerReady ? t("이 프로젝트에 작업 폴더를 연결합니다.") : t("이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.")}>
+              {folderBusy ? <LoaderCircle className="spin" size={13} /> : <FolderPlus size={13} />} {t("폴더 추가")}
+              {Boolean(folders.length) && <em>{folders.length}</em>}
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<button className="composer-tool" type="button" aria-label={t("자율도 선택")} title={t(AUTONOMY_HINT[autonomy])} />}>
+                <ShieldCheck size={13} /> {t(AUTONOMY_LABEL[autonomy])} <ChevronDown size={12} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="autonomy-menu" align="start">
+                {AUTONOMY_LEVELS.map((level) => <DropdownMenuItem key={level} onClick={() => changeAutonomy(level)}>
+                  <span className="autonomy-check">{autonomy === level ? <Check size={13} /> : null}</span>
+                  <span><b>{t(AUTONOMY_LABEL[level])}</b><small>{t(AUTONOMY_HINT[level])}</small></span>
+                </DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <small>{t("Enter 전송 · Shift+Enter 줄바꿈")}</small>
+          </div>
+        </div></section>
     </div>
   </div>;
 }
@@ -1632,6 +1761,238 @@ function SettingsView({ onNotice }: { onNotice: (message: string) => void }) {
   </div>;
 }
 
-function AccountView({ displayName, email }: { displayName: string; email: string }) {
-  return <div className="workspace-view narrow-view"><ViewHeading eyebrow="Account" title={t("계정")} description={t("이 워크스페이스가 어떤 사용자로 동작하는지 확인합니다.")} /><section className="account-card"><span className="account-avatar"><UserRound size={27} /></span><div><h2>{displayName}</h2><p>{email}</p><em><ShieldCheck size={13} /> {t("로컬 전용 모드 · 외부 인증 없음")}</em></div></section><p className="account-note">{t("표시 이름과 이메일은")} <code>LOCAL_USER_NAME</code>, <code>LOCAL_USER_EMAIL</code> {t("환경변수로 바꿀 수 있습니다. 여러 사용자를 지원하려면")} <code>app/auth.ts</code>{t("의")} <code>getCurrentUser()</code>{t("에 실제 인증을 연결하세요.")}</p></div>;
+/** 프로필 편집 폼의 자유 입력 항목. 상한은 서버(lib/profile.ts)와 같은 값을 씁니다. */
+const PROFILE_FORM: { key: ProfileField; label: string; placeholder: string; area?: boolean }[] = [
+  { key: 'displayName', label: '이름', placeholder: '예: 박준한' },
+  { key: 'title', label: '직급', placeholder: '예: 부장' },
+  { key: 'company', label: '회사', placeholder: '예: WISEQUERY' },
+  { key: 'department', label: '소속', placeholder: '예: 기술영업팀' },
+  { key: 'email', label: '이메일', placeholder: '예: junhan@example.com' },
+  { key: 'phone', label: '연락처', placeholder: '예: 010-0000-0000' },
+  { key: 'bio', label: '한 줄 소개', placeholder: '에이전트가 참고할 한 줄. 예: EMC 챔버 견적·규격 검토를 주로 합니다.', area: true },
+];
+
+/**
+ * 고른 이미지를 정사각형 256px 로 줄여 data URL 로 만듭니다.
+ * 원본을 그대로 저장하면 몇 MB 가 DB 에 들어가므로 화면에서 먼저 줄입니다.
+ * 가운데를 기준으로 잘라내 얼굴이 치우치지 않게 합니다.
+ */
+async function toAvatarDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = AVATAR_SIZE; canvas.height = AVATAR_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error(t('이 브라우저에서는 이미지를 처리할 수 없습니다.'));
+    const side = Math.min(bitmap.width, bitmap.height);
+    ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+    const webp = canvas.toDataURL('image/webp', 0.85);
+    // webp 를 못 만드는 브라우저는 toDataURL 이 조용히 png 를 돌려줍니다.
+    return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.85);
+  } finally { bitmap.close(); }
+}
+
+/**
+ * 프로필 사진, 없으면 이니셜, 그것도 없으면 기본 아이콘.
+ * 사진은 256px data URL 이라 next/image 로 최적화할 수 없어 img 를 그대로 씁니다.
+ */
+function AvatarFace({ name, size, src }: { name: string; size: number; src: string }) {
+  // oxlint-disable-next-line next/no-img-element -- data URL 은 next/image 최적화 대상이 아닙니다
+  if (src) return <img alt="" src={src} />;
+  if (name.trim()) return <b>{initialsOf(name)}</b>;
+  return <UserRound size={size} />;
+}
+
+function initialsOf(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '??';
+  // 한글 이름은 성을 뺀 이름 두 글자, 영문은 이니셜 두 자가 자연스럽습니다.
+  if (/^[A-Za-z]/.test(trimmed)) {
+    const parts = trimmed.split(/\s+/);
+    return (parts.length > 1 ? parts[0][0] + parts[1][0] : trimmed.slice(0, 2)).toUpperCase();
+  }
+  return trimmed.length > 2 ? trimmed.slice(1, 3) : trimmed;
+}
+
+/**
+ * 계정 화면.
+ *
+ * 카드를 누르면 프로필 편집 모달이 열립니다. 여기서 고친 이름·이메일은
+ * 환경변수(LOCAL_USER_NAME 등)로 정해진 계정 값보다 우선해서 화면에 쓰이고,
+ * 회사·소속·직급·한 줄 소개는 에이전트 실행·대화 프롬프트에도 들어갑니다.
+ */
+function AccountView({ displayName, email, onNotice, onProfileSaved }: {
+  displayName: string; email: string;
+  onNotice: (message: string) => void;
+  onProfileSaved?: (next: { displayName: string; email: string; avatar: string }) => void;
+}) {
+  const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
+  const [account, setAccount] = useState({ displayName, email });
+  const [authMode, setAuthMode] = useState<'local' | 'oauth'>('local');
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<UserProfile>(EMPTY_PROFILE);
+  const [saving, setSaving] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  type MeResponse = { displayName?: string; email?: string; account?: { displayName: string; email: string }; authMode?: 'local' | 'oauth'; profile?: UserProfile; error?: string };
+
+  // oxlint-disable-next-line react/react-compiler -- async server hydration is intentional here
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const response = await fetch('/api/me');
+        const data = await response.json() as MeResponse;
+        if (!alive) return;
+        if (!response.ok) throw new Error(data.error || t('프로필을 불러오지 못했습니다.'));
+        if (data.profile) setProfile({ ...EMPTY_PROFILE, ...data.profile });
+        if (data.account) setAccount(data.account);
+        if (data.authMode) setAuthMode(data.authMode);
+      } catch (error) {
+        if (alive) onNotice(error instanceof Error ? error.message : t('프로필을 불러오지 못했습니다.'));
+      } finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [onNotice]);
+
+  const shownName = profile.displayName || account.displayName;
+  const shownEmail = profile.email || account.email;
+  const affiliation = affiliationLine(profile);
+
+  const openEditor = useCallback(() => { setDraft(profile); setEditing(true); }, [profile]);
+
+  async function pickAvatar(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { onNotice(t('이미지 파일만 올릴 수 있습니다.')); return; }
+    try {
+      const avatar = await toAvatarDataUrl(file);
+      if (avatar.length > AVATAR_MAX_CHARS) { onNotice(t('사진이 너무 큽니다. 더 작은 이미지를 골라주세요.')); return; }
+      setDraft((current) => ({ ...current, avatar }));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t('사진을 처리하지 못했습니다.')); }
+  }
+
+  async function saveProfileDraft() {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/me', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+      });
+      const data = await response.json() as MeResponse;
+      if (!response.ok) throw new Error(data.error || t('프로필을 저장하지 못했습니다.'));
+      const saved = { ...EMPTY_PROFILE, ...(data.profile ?? draft) };
+      setProfile(saved);
+      if (data.account) setAccount(data.account);
+      setEditing(false);
+      onProfileSaved?.({
+        displayName: data.displayName || saved.displayName || account.displayName,
+        email: data.email || saved.email || account.email,
+        avatar: saved.avatar,
+      });
+      onNotice(t('프로필을 저장했습니다.'));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t('프로필을 저장하지 못했습니다.')); }
+    finally { setSaving(false); }
+  }
+
+  const details: { label: string; value: string }[] = [
+    { label: t('회사'), value: profile.company },
+    { label: t('소속'), value: profile.department },
+    { label: t('직급'), value: profile.title },
+    { label: t('연락처'), value: profile.phone },
+    { label: t('한 줄 소개'), value: profile.bio },
+  ];
+
+  if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t('프로필을 불러오는 중')}</span></div>;
+
+  return <div className="workspace-view narrow-view">
+    <ViewHeading
+      eyebrow="Account"
+      title={t('계정')}
+      description={t('이 워크스페이스가 어떤 사용자로 동작하는지 확인하고, 프로필을 고칩니다.')}
+    />
+
+    <button className="account-card account-card-edit" type="button" onClick={openEditor}>
+      <span className="account-avatar"><AvatarFace name={shownName} size={27} src={profile.avatar} /></span>
+      <div>
+        <h2>{shownName}</h2>
+        {affiliation ? <p className="account-affiliation">{affiliation}</p> : null}
+        <p>{shownEmail}</p>
+        <em><ShieldCheck size={13} /> {authMode === 'oauth' ? t('OAuth 로그인 · 세션 30일') : t('로컬 전용 모드 · 외부 인증 없음')}</em>
+      </div>
+      <span className="account-edit-hint"><Pencil size={12} /> {t('편집')}</span>
+    </button>
+
+    <dl className="account-details">
+      {details.map((item) => <div key={item.label}>
+        <dt>{item.label}</dt>
+        <dd className={item.value ? '' : 'empty'}>{item.value || t('아직 없음')}</dd>
+      </div>)}
+    </dl>
+
+    {authMode === 'oauth' ? <form action="/api/auth/logout" className="account-logout" method="post">
+      <Button type="submit" variant="outline">{t('로그아웃')}</Button>
+      <small className="entity-hint">{t('이 기기의 세션만 끝납니다. 다시 로그인하면 같은 워크스페이스로 돌아옵니다.')}</small>
+    </form> : null}
+
+    <p className="account-note">
+      {t('여기 적은 이름·소속·한 줄 소개는 에이전트 실행과 대화의 시스템 프롬프트에 들어갑니다. 사진과 연락처는 화면에만 쓰입니다.')}
+      {' '}
+      {t('비워 두면 계정 기본값')} <code>LOCAL_USER_NAME</code>, <code>LOCAL_USER_EMAIL</code> {t('을(를) 씁니다. 여러 사용자를 지원하려면')} <code>app/auth.ts</code>{t('의')} <code>getCurrentUser()</code>{t('에 실제 인증을 연결하세요.')}
+    </p>
+
+    <Dialog open={editing} onOpenChange={(open) => { if (!open) setEditing(false); }}>
+      <DialogContent className="create-entity-dialog profile-dialog">
+        <DialogHeader>
+          <DialogTitle>{t('프로필 편집')}</DialogTitle>
+          <DialogDescription>{t('사진과 소속을 정해 두면 에이전트가 사용자를 알고 그에 맞춰 보고합니다.')}</DialogDescription>
+        </DialogHeader>
+
+        <div className="profile-photo-row">
+          <span className="account-avatar large"><AvatarFace name={draft.displayName || shownName} size={30} src={draft.avatar} /></span>
+          <div className="profile-photo-actions">
+            <Button onClick={() => fileInput.current?.click()} size="sm" type="button" variant="outline">
+              <FileImage size={13} /> {draft.avatar ? t('사진 바꾸기') : t('사진 올리기')}
+            </Button>
+            {draft.avatar
+              ? <Button onClick={() => setDraft((current) => ({ ...current, avatar: '' }))} size="sm" type="button" variant="ghost">
+                  <X size={13} /> {t('제거')}
+                </Button>
+              : null}
+            <small className="entity-hint">{tf('올린 사진은 {0}px 정사각형으로 줄여 저장합니다.', AVATAR_SIZE)}</small>
+          </div>
+          <input
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => { void pickAvatar(event.target.files?.[0]); event.target.value = ''; }}
+            ref={fileInput}
+            type="file"
+          />
+        </div>
+
+        <div className="profile-grid">
+          {PROFILE_FORM.map((field) => <label className={field.area ? 'entity-field wide' : 'entity-field'} key={field.key}>
+            <span>{t(field.label)}</span>
+            {field.area
+              ? <textarea
+                  maxLength={PROFILE_LIMITS[field.key]}
+                  onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
+                  placeholder={t(field.placeholder)}
+                  value={draft[field.key]}
+                />
+              : <input
+                  maxLength={PROFILE_LIMITS[field.key]}
+                  onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
+                  placeholder={t(field.placeholder)}
+                  value={draft[field.key]}
+                />}
+          </label>)}
+        </div>
+
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>{t('취소')}</DialogClose>
+          <Button disabled={saving} onClick={saveProfileDraft}>{saving ? t('저장 중') : t('프로필 저장')}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }
