@@ -1,46 +1,35 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 import { isTaskStatus } from '@/lib/due';
-
-const DAY = 86_400_000;
+import { recallDocUpsert } from '@/lib/recall';
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string;
-  due: number | null; accent: string; result: string | null; projectId: string | null;
+  due: number | null; accent: string; result: string | null; summary: string | null; blockedReason: string | null; projectId: string | null;
 };
 
-const SELECT_TASKS = 'SELECT id, title, label, owner, status, due, accent, result, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY created_at ASC';
+const SELECT_TASKS = 'SELECT id, title, label, owner, status, due, accent, result, summary, blocked_reason AS blockedReason, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY created_at ASC';
+const SELECT_PROJECT_TASKS = 'SELECT id, title, label, owner, status, due, accent, result, summary, blocked_reason AS blockedReason, project_id AS projectId FROM tasks WHERE user_id = ? AND project_id = ? ORDER BY created_at ASC';
 
-// [제목, 분류, 담당, 상태, 마감(오늘 기준 +N일 / null=미정), 색]
-const starters: Array<[string, string, string, string, number | null, string]> = [
-  ['경쟁 제품 핵심 흐름 분석', '리서치', 'Mira', '진행 중', 0, '#7559ff'],
-  ['온보딩 사용자 여정 설계', '프로덕트', 'Nori', '진행 중', 1, '#ff7557'],
-  ['에이전트 실행 로그 구조화', '개발', 'Bolt', '대기', 4, '#16a98c'],
-  ['프로젝트 권한 정책 검토', '운영', 'Mira', '대기', 5, '#7559ff'],
-  ['모바일 칸반 상호작용 QA', 'QA', 'Lint', '검토', 0, '#3478f6'],
-];
-
-export async function GET() {
+/**
+ * 업무 목록.
+ * 데모용 시드는 만들지 않습니다 — 업무는 항상 사용자가(또는 에이전트가) 프로젝트 안에서 만든 것만 존재합니다.
+ * ?projectId=... 를 주면 그 프로젝트의 업무만 돌려줍니다.
+ */
+export async function GET(request: Request) {
   const user = getCurrentUser();
   const db = getDatabase();
-  let result = await db.prepare(SELECT_TASKS).bind(user.userId).all<TaskRow>();
-
-  if (!result.results.length) {
-    const now = Date.now();
-    // 이미 프로젝트가 있으면 시드 업무를 거기에 붙입니다. (없으면 /api/workspace 시드가 나중에 연결)
-    const project = await db.prepare('SELECT id FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1').bind(user.userId).first<{ id: string }>();
-    await db.batch(starters.map(([title, label, owner, status, dueOffset, accent], index) =>
-      db.prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(crypto.randomUUID(), user.userId, title, label, owner, status, dueOffset === null ? null : now + dueOffset * DAY, accent, project?.id ?? null, now + index, now + index)));
-    result = await db.prepare(SELECT_TASKS).bind(user.userId).all<TaskRow>();
-  }
+  const projectId = new URL(request.url).searchParams.get('projectId');
+  const result = projectId
+    ? await db.prepare(SELECT_PROJECT_TASKS).bind(user.userId, projectId).all<TaskRow>()
+    : await db.prepare(SELECT_TASKS).bind(user.userId).all<TaskRow>();
   return Response.json({ tasks: result.results });
 }
 
 export async function POST(request: Request) {
   const user = getCurrentUser();
   const body = await request.json().catch(() => null) as {
-    title?: unknown; owner?: unknown; label?: unknown; due?: unknown; status?: unknown; projectId?: unknown;
+    title?: unknown; owner?: unknown; label?: unknown; due?: unknown; status?: unknown; projectId?: unknown; description?: unknown;
   } | null;
 
   if (typeof body?.title !== 'string' || !body.title.trim() || body.title.trim().length > 100) {
@@ -54,13 +43,9 @@ export async function POST(request: Request) {
   }
 
   const db = getDatabase();
-  // 담당 에이전트를 지정하면 그 에이전트의 색을 쓰고, 없으면 기본 에이전트로 배정합니다.
-  const requestedOwner = typeof body.owner === 'string' && body.owner.trim() ? body.owner.trim() : null;
-  const agent = requestedOwner
-    ? await db.prepare('SELECT name, color FROM agents WHERE user_id = ? AND name = ? LIMIT 1').bind(user.userId, requestedOwner).first<{ name: string; color: string }>()
-    : await db.prepare('SELECT name, color FROM agents WHERE user_id = ? ORDER BY is_default DESC, created_at ASC LIMIT 1').bind(user.userId).first<{ name: string; color: string }>();
-  if (requestedOwner && !agent) return Response.json({ error: '존재하지 않는 에이전트입니다.' }, { status: 400 });
 
+  // 업무는 반드시 프로젝트에 속합니다. 지정이 없으면 가장 최근에 손댄 프로젝트로 붙이고,
+  // 프로젝트가 하나도 없으면 만들지 않습니다(대쉬보드에서 영영 안 보이는 고아 업무 방지).
   let projectId = typeof body.projectId === 'string' && body.projectId ? body.projectId : null;
   if (projectId) {
     const owned = await db.prepare('SELECT id FROM projects WHERE user_id = ? AND id = ?').bind(user.userId, projectId).first<{ id: string }>();
@@ -69,25 +54,38 @@ export async function POST(request: Request) {
     const fallback = await db.prepare('SELECT id FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1').bind(user.userId).first<{ id: string }>();
     projectId = fallback?.id ?? null;
   }
+  if (!projectId) return Response.json({ error: '먼저 프로젝트를 만들어 주세요. 업무는 프로젝트 안에서만 만들 수 있습니다.' }, { status: 400 });
+
+  // 담당을 지정하면 그 에이전트에게, 비워 두면 그 프로젝트의 매니저에게 갑니다.
+  // (사용자는 매니저에게 지시하고, 매니저가 필요한 직무를 합류시켜 나눠 맡깁니다.)
+  const requestedOwner = typeof body.owner === 'string' && body.owner.trim() ? body.owner.trim() : null;
+  const agent = requestedOwner
+    ? await db.prepare('SELECT name, color FROM agents WHERE user_id = ? AND name = ? LIMIT 1').bind(user.userId, requestedOwner).first<{ name: string; color: string }>()
+    : await db.prepare('SELECT name, color FROM agents WHERE user_id = ? AND project_id = ? AND is_manager = 1 LIMIT 1').bind(user.userId, projectId).first<{ name: string; color: string }>();
+  if (requestedOwner && !agent) return Response.json({ error: '존재하지 않는 에이전트입니다.' }, { status: 400 });
+  if (!agent) return Response.json({ error: '이 프로젝트의 매니저를 찾지 못했습니다.' }, { status: 400 });
 
   const task: TaskRow = {
     id: crypto.randomUUID(),
     title: body.title.trim(),
     label: typeof body.label === 'string' && body.label.trim() ? body.label.trim().slice(0, 20) : '신규',
-    owner: agent?.name ?? 'Nori',
+    owner: agent.name,
     status: isTaskStatus(body.status) ? body.status : '대기',
     due: typeof body.due === 'number' ? Math.trunc(body.due) : null,
-    accent: agent?.color ?? '#ff7557',
+    accent: agent.color,
     result: null,
+    summary: null,
+    blockedReason: null,
     projectId,
   };
 
+  const description = typeof body.description === 'string' ? body.description.slice(0, 8000) : '';
   const now = Date.now();
-  await db.prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(task.id, user.userId, task.title, task.label, task.owner, task.status, task.due, task.accent, task.projectId, now, now)
-    .run();
-  if (task.projectId) {
-    await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ? AND user_id = ?').bind(now, task.projectId, user.userId).run();
-  }
+  await db.batch([
+    db.prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(task.id, user.userId, task.title, task.label, task.owner, task.status, task.due, task.accent, task.projectId, description, now, now),
+    recallDocUpsert(db, { userId: user.userId, kind: 'task', refId: task.id, projectId: task.projectId, agentName: task.owner, title: task.title, content: `[${task.label}] ${task.title} — 담당 ${task.owner}`, createdAt: now }),
+  ]);
+  await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ? AND user_id = ?').bind(now, task.projectId, user.userId).run();
   return Response.json({ task }, { status: 201 });
 }

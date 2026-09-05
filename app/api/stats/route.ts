@@ -8,7 +8,10 @@ const BUCKET_MS = HOUR / BUCKETS;
 type StatusRow = { status: string; count: number };
 type RunSummaryRow = { total: number | null; running: number | null; completed: number | null; failed: number | null; lastHour: number | null; avgMs: number | null };
 type RunTickRow = { startedAt: number };
-type FocusRow = { id: string; name: string; description: string; color: string; taskCount: number; reviewCount: number; nextDue: number | null };
+type ProjectRow = {
+  id: string; name: string; description: string; color: string; status: string;
+  taskCount: number; waitingCount: number; doingCount: number; reviewCount: number; nextDue: number | null;
+};
 type AgentRow = { id: string; name: string; role: string; color: string; runningCount: number; activeTasks: number; lastRunAt: number | null };
 
 export async function GET() {
@@ -17,8 +20,9 @@ export async function GET() {
   const now = Date.now();
   const since = now - HOUR;
 
-  const [statusRows, runSummary, runTicks, focus, agentRows] = await Promise.all([
-    db.prepare('SELECT status, COUNT(*) AS count FROM tasks WHERE user_id = ? GROUP BY status')
+  const [statusRows, runSummary, runTicks, projectRows, agentRows] = await Promise.all([
+    // 대쉬보드는 프로젝트에 속한 업무만 셉니다. (프로젝트가 지워져 연결이 끊긴 업무는 집계에서 제외)
+    db.prepare('SELECT status, COUNT(*) AS count FROM tasks WHERE user_id = ? AND project_id IS NOT NULL GROUP BY status')
       .bind(user.userId).all<StatusRow>(),
     db.prepare(`SELECT COUNT(*) AS total,
         SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
@@ -29,15 +33,18 @@ export async function GET() {
       FROM agent_runs WHERE user_id = ?`).bind(since, user.userId).first<RunSummaryRow>(),
     db.prepare('SELECT started_at AS startedAt FROM agent_runs WHERE user_id = ? AND started_at >= ?')
       .bind(user.userId, since).all<RunTickRow>(),
-    db.prepare(`SELECT p.id, p.name, p.description, p.color,
+    // 프로젝트별 진행 상황 — 대쉬보드의 프로젝트 선택기와 집중 카드가 이 배열을 씁니다.
+    db.prepare(`SELECT p.id, p.name, p.description, p.color, p.status,
         COUNT(t.id) AS taskCount,
+        SUM(CASE WHEN t.status = '대기' THEN 1 ELSE 0 END) AS waitingCount,
+        SUM(CASE WHEN t.status = '진행 중' THEN 1 ELSE 0 END) AS doingCount,
         SUM(CASE WHEN t.status = '검토' THEN 1 ELSE 0 END) AS reviewCount,
         MIN(CASE WHEN t.status != '검토' THEN t.due END) AS nextDue
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.user_id = p.user_id
-      WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC LIMIT 1`).bind(user.userId).first<FocusRow>(),
+      WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC`).bind(user.userId).all<ProjectRow>(),
     db.prepare(`SELECT a.id, a.name, a.role, a.color,
         (SELECT COUNT(*) FROM agent_runs r WHERE r.user_id = a.user_id AND r.agent_name = a.name AND r.status = 'running') AS runningCount,
-        (SELECT COUNT(*) FROM tasks t WHERE t.user_id = a.user_id AND t.owner = a.name AND t.status = '진행 중') AS activeTasks,
+        (SELECT COUNT(*) FROM tasks t WHERE t.user_id = a.user_id AND t.owner = a.name AND t.status = '진행 중' AND t.project_id IS NOT NULL) AS activeTasks,
         (SELECT MAX(r.started_at) FROM agent_runs r WHERE r.user_id = a.user_id AND r.agent_name = a.name) AS lastRunAt
       FROM agents a WHERE a.user_id = ? ORDER BY a.is_default DESC, a.created_at ASC`).bind(user.userId).all<AgentRow>(),
   ]);
@@ -57,6 +64,20 @@ export async function GET() {
 
   const avgMs = runSummary?.avgMs ?? null;
 
+  const projects = projectRows.results.map((project) => {
+    const taskCount = Number(project.taskCount) || 0;
+    const reviewCount = Number(project.reviewCount) || 0;
+    return {
+      id: project.id, name: project.name, description: project.description, color: project.color, status: project.status,
+      taskCount,
+      waitingCount: Number(project.waitingCount) || 0,
+      doingCount: Number(project.doingCount) || 0,
+      reviewCount,
+      progress: taskCount ? Math.round((reviewCount / taskCount) * 100) : 0,
+      nextDue: project.nextDue ?? null,
+    };
+  });
+
   return Response.json({
     tasks: {
       total, waiting, doing, review,
@@ -71,15 +92,9 @@ export async function GET() {
       avgSeconds: avgMs === null ? null : Math.round(avgMs / 1000),
       histogram,
     },
-    focus: focus
-      ? {
-          id: focus.id, name: focus.name, description: focus.description, color: focus.color,
-          taskCount: Number(focus.taskCount) || 0,
-          reviewCount: Number(focus.reviewCount) || 0,
-          progress: Number(focus.taskCount) ? Math.round((Number(focus.reviewCount) / Number(focus.taskCount)) * 100) : 0,
-          nextDue: focus.nextDue ?? null,
-        }
-      : null,
+    projects,
+    // 가장 최근에 손댄 프로젝트 = 지금 집중할 프로젝트 (대쉬보드 기본 선택값)
+    focus: projects[0] ?? null,
     agents: agentRows.results.map((agent) => ({
       id: agent.id, name: agent.name, role: agent.role, color: agent.color,
       runningCount: Number(agent.runningCount) || 0,

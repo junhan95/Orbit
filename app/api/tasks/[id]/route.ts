@@ -1,15 +1,16 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 import { isTaskStatus } from '@/lib/due';
+import { recallDocDelete, recallDocUpsert } from '@/lib/recall';
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string;
-  due: number | null; accent: string; result: string | null; projectId: string | null;
+  due: number | null; accent: string; result: string | null; summary: string | null; blockedReason: string | null; projectId: string | null;
 };
 
-const SELECT_TASK = 'SELECT id, title, label, owner, status, due, accent, result, project_id AS projectId FROM tasks WHERE id = ? AND user_id = ?';
+const SELECT_TASK = 'SELECT id, title, label, owner, status, due, accent, result, summary, blocked_reason AS blockedReason, project_id AS projectId FROM tasks WHERE id = ? AND user_id = ?';
 
 export async function PATCH(request: Request, context: RouteContext) {
   const user = getCurrentUser();
@@ -33,6 +34,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body.status !== undefined) {
     if (!isTaskStatus(body.status)) return Response.json({ error: '업무 상태가 올바르지 않습니다.' }, { status: 400 });
     columns.push('status = ?'); values.push(body.status);
+    // 사람이 상태를 직접 옮기면 '막힘' 표시는 해제합니다 (다음 실행 컨텍스트에는 댓글로 남은 사유가 여전히 보입니다).
+    if (existing.blockedReason) { columns.push('blocked_reason = ?'); values.push(null); }
   }
   if (body.label !== undefined) {
     if (typeof body.label !== 'string' || !body.label.trim()) return Response.json({ error: '분류를 입력해 주세요.' }, { status: 400 });
@@ -64,6 +67,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   // 상태를 '검토' 밖으로 되돌리면 이전 실행 결과는 지웁니다.
   if (body.status !== undefined && body.status !== '검토' && existing.result) {
     columns.push('result = ?'); values.push(null);
+    columns.push('summary = ?'); values.push(null);
   }
 
   if (!columns.length) return Response.json({ error: '변경할 항목이 없습니다.' }, { status: 400 });
@@ -72,6 +76,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   await db.prepare(`UPDATE tasks SET ${columns.join(', ')} WHERE id = ? AND user_id = ?`).bind(...values, id, user.userId).run();
 
   const task = await db.prepare(SELECT_TASK).bind(id, user.userId).first<TaskRow>();
+  if (task) {
+    await recallDocUpsert(db, { userId: user.userId, kind: 'task', refId: task.id, projectId: task.projectId, agentName: task.owner, title: task.title, content: `[${task.label}] ${task.title} — 담당 ${task.owner}`, createdAt: Date.now() }).run();
+  }
   return Response.json({ task });
 }
 
@@ -81,7 +88,11 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const db = getDatabase();
   const existing = await db.prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ?').bind(id, user.userId).first<{ id: string }>();
   if (!existing) return Response.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 });
-  // agent_runs 는 FK ON DELETE CASCADE 로 함께 정리됩니다.
-  await db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?').bind(id, user.userId).run();
+  // agent_runs 는 FK ON DELETE CASCADE 로 함께 정리됩니다. 회상 인덱스는 FK 가 없어 직접 지웁니다.
+  await db.batch([
+    db.prepare(`DELETE FROM recall_docs WHERE user_id = ? AND ((kind = 'task' AND ref_id = ?) OR (kind = 'run' AND ref_id IN (SELECT id FROM agent_runs WHERE task_id = ?)))`).bind(user.userId, id, id),
+    recallDocDelete(db, 'task', id),
+    db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?').bind(id, user.userId),
+  ]);
   return Response.json({ id });
 }
