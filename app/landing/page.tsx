@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { LandingView } from './landing-view';
 
 export const metadata: Metadata = {
-  title: 'orbitcrew.ai — 매니저 한 명이 팀 전체를 굴립니다',
+  title: 'orbitcrew.ai — One manager runs your whole team',
   description:
-    '프로젝트 매니저 에이전트가 필요한 팀원을 채용하고, 업무를 나누고, 결과를 검토해 보고합니다. 기억·회상·검증이 붙은 AI 에이전트 워크스페이스.',
+    'A project-manager agent hires the teammates it needs, splits the work, reviews the results, and reports back. An AI agent workspace with memory, recall, and verification. 매니저 한 명이 팀 전체를 굴립니다.',
 };
 
 export default function LandingPage() {

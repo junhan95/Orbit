@@ -85,14 +85,14 @@ if (APP_URL) body = body.replaceAll('href="/login"', `href="${APP_URL}/login"`);
 for (const path of ['/privacy', '/terms']) body = body.replaceAll(`href="${path}"`, `href="${SITE_URL}${path}"`);
 
 const html = `<!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>orbitcrew.ai — 매니저 한 명이 팀 전체를 굴립니다</title>
-<meta name="description" content="프로젝트 매니저 에이전트가 필요한 팀원을 채용하고, 업무를 나누고, 결과를 검토해 보고합니다. 기억·회상·검증이 붙은 AI 에이전트 워크스페이스.">
+<title>orbitcrew.ai — One manager runs your whole team</title>
+<meta name="description" content="A project-manager agent hires the teammates it needs, splits the work, reviews the results, and reports back. An AI agent workspace with memory, recall, and verification. 매니저 한 명이 팀 전체를 굴립니다.">
 <meta property="og:title" content="orbitcrew.ai — AI Agent Command Center">
-<meta property="og:description" content="매니저 한 명이 팀 전체를 굴립니다.">
+<meta property="og:description" content="One manager runs your whole team.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -103,18 +103,20 @@ const html = `<!doctype html>
 ${tokens}
 /* next/font 가 없으므로 본문 폰트 변수를 직접 채웁니다 */
 :root{--font-app-sans:'Figtree'}
-html,body{margin:0;background:var(--c-app-bg);color:var(--c-ink)}
+html,body{margin:0;background:#09090b;color:#fafafa}
 </style>
-<script>(function(){try{if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark')}catch(e){}})()</script>
 </head>
 <body>
 ${body}
 <script>
 (function(){
-  var b=document.querySelector('.lp-burger'),m=document.getElementById('lp-mobile-menu');
-  if(!b||!m)return;
-  b.addEventListener('click',function(){var open=m.hidden;m.hidden=!open;b.setAttribute('aria-expanded',String(open));});
-  m.addEventListener('click',function(e){if(e.target.tagName==='A'){m.hidden=true;b.setAttribute('aria-expanded','false');}});
+  /* 언어 트리마다 버거 메뉴가 하나씩 있으므로 전부 연결합니다 */
+  document.querySelectorAll('.lp-burger').forEach(function(b){
+    var m=document.getElementById(b.getAttribute('aria-controls'));
+    if(!m)return;
+    b.addEventListener('click',function(){var open=m.hidden;m.hidden=!open;b.setAttribute('aria-expanded',String(open));});
+    m.addEventListener('click',function(e){if(e.target.tagName==='A'){m.hidden=true;b.setAttribute('aria-expanded','false');}});
+  });
 })();
 ${enhance ? `(${enhance})(document.querySelector('.lp'));` : ''}
 </script>

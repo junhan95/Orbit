@@ -13,6 +13,11 @@ import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
  * 브랜드 노랑(#ffd02f)을 별빛처럼 소량 얹었습니다. 시스템 라이트/다크와 무관하게 항상 다크입니다
  * (앱 쪽 --c-* 토큰은 쓰지 않습니다 — 랜딩 전용 --lp-* 값만 씁니다).
  *
+ * 언어: 영어(기본) / 한국어. 두 언어 트리를 모두 렌더해 두고 루트의 data-lang 으로 하나만
+ * 보입니다(CSS). 그래서 정적 빌드(scripts/build-landing.mjs, React 없음)에서도 같은 토글이
+ * 동작합니다 — 전환·저장(localStorage 'orbit-landing-lang')은 enhanceLanding() 이 맡습니다.
+ * 앵커 id 는 영어 트리가 원본(#features), 한국어 트리는 ko- 접두(#ko-features)를 씁니다.
+ *
  * 섹션: 히어로(+앱 목업) → 신뢰 스트립 → 제품 노트 → 어바웃 → 기능(벤토) → 작동 방식
  *       → 크루(에이전트 팀) → 비교표 → 시작 안내(무료 + Claude API 키) → FAQ → CTA → 푸터
  *
@@ -22,148 +27,439 @@ import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
  * 전부 보이는 상태가 기본이라 정적 빌드·검색엔진에서도 내용이 빠지지 않습니다.
  */
 
-const NAV_LINKS = [
-  ['제품', '#product'],
-  ['기능', '#features'],
-  ['작동 방식', '#how'],
-  ['크루', '#crew'],
-  ['시작하기', '#start'],
-] as const;
+export type LandingLang = 'en' | 'ko';
+export const LANDING_LANGS: LandingLang[] = ['en', 'ko'];
 
-const TRUST = [
-  { icon: 'key', t: '이용료 없음', d: 'Claude API 키만 있으면 됩니다' },
-  { icon: 'lock', t: '암호화 저장', d: 'API 키는 서버에서 암호화' },
-  { icon: 'login', t: 'Google · GitHub 로그인', d: '별도 가입 절차 없음' },
-  { icon: 'code', t: '오픈소스', d: 'AGPL-3.0 · 저장소 공개' },
-  { icon: 'globe', t: '한국어 · English', d: '라이트 · 다크 테마' },
-] as const;
+/* ─────────────────────────────────────────────────────────── */
+/* 사전                                                          */
+/* ─────────────────────────────────────────────────────────── */
 
-const FEATURES = [
-  {
-    k: '01',
-    t: '프로젝트 매니저',
-    d: '프로젝트를 만들면 전용 매니저가 배정됩니다. 지시를 읽고 필요한 직무의 에이전트를 합류시키고, 업무를 나누고, 보고를 모아 정리해 돌려줍니다.',
-    span: 'lp-b-7',
-    art: 'manager',
-  },
-  {
-    k: '02',
-    t: '4층 기억',
-    d: '사용자·프로젝트·에이전트 기억을 문자 예산 안에서 관리합니다. 턴 시작에 동결하고, 실행이 끝나면 리뷰가 돌며, 프로젝트 기억은 사람 승인을 거칩니다.',
-    span: 'lp-b-5',
-    art: 'memory',
-  },
-  {
-    k: '03',
-    t: '회상',
-    d: '지난 실행과 대화를 FTS5 로 되찾습니다. 한국어 두 글자 단어까지 바이그램으로 잡고, 실행당 호출 횟수에 상한을 둬 비용이 새지 않습니다.',
-    span: 'lp-b-4',
-    art: 'recall',
-  },
-  {
-    k: '04',
-    t: '검증된 완료',
-    d: '에이전트는 근거를 붙여야 완료로 보고할 수 있습니다. 근거가 없으면 카드에 표시가 남고, 다른 에이전트가 버그·스펙·정책·근거 네 패스로 검토합니다.',
-    span: 'lp-b-4',
-    art: 'verify',
-  },
-  {
-    k: '05',
-    t: '승인 게이트',
-    d: '카드를 많이 만들거나 전역 스킬을 저장하려 하면 승인 큐로 넘어갑니다. 연속 실패는 서킷브레이커가 끊고, 사람 댓글이 다시 풀어줍니다.',
-    span: 'lp-b-4',
-    art: 'gate',
-  },
-  {
-    k: '06',
-    t: '관제 밴드',
-    d: '실패·막힘·근거 누락·게이트 차단·실행당 비용을 14일 기준선과 비교합니다. 밴드를 벗어나면 매니저에게 진단 카드가 자동으로 올라갑니다.',
-    span: 'lp-b-12',
-    art: 'band',
-  },
-] as const;
+type IconName = 'key' | 'lock' | 'login' | 'code' | 'globe' | 'chart' | 'board' | 'chat' | 'check';
+type ArtKind = 'manager' | 'memory' | 'recall' | 'verify' | 'gate' | 'band';
+type Tone = 'brand' | 'mint' | 'ink' | 'coral' | 'dash';
+type Span = 'lp-b-7' | 'lp-b-5' | 'lp-b-4' | 'lp-b-12';
 
-const STEPS = [
-  { n: '01', t: '목표를 말합니다', d: '대화창에 하고 싶은 일을 그대로 적습니다. 상태를 손으로 옮길 필요가 없습니다.', chip: '사용자' },
-  { n: '02', t: '매니저가 팀을 짭니다', d: '직무 카탈로그에서 필요한 에이전트를 부르고, 없으면 새로 만들어 프로젝트에 합류시킵니다.', chip: '매니저' },
-  { n: '03', t: '에이전트가 실행합니다', d: '기억과 회상을 안고 일하고, 근거를 붙여 구조화된 완료 보고를 남깁니다.', chip: '에이전트' },
-  { n: '04', t: '검토하고 승인합니다', d: '작성자가 아닌 에이전트가 먼저 걸러내고, 마지막 판단만 사람이 합니다.', chip: '검토 → 사람' },
-];
+interface Dict {
+  nav: { label: string; id: string }[];
+  openApp: string;
+  menu: string;
+  langLabel: string;
+  eyebrow: string;
+  h1a: string;
+  h1b: string;
+  h1accent: string;
+  heroSub: string;
+  ctaStart: string;
+  ctaTour: string;
+  facts: { n: string; l: string }[];
+  factsLabel: string;
+  trust: { icon: IconName; t: string; d: string }[];
+  trustLabel: string;
+  product: { eyebrow: string; h: string; p: string; notes: { icon: IconName; t: string; d: string }[] };
+  about: { a: string; b: string; p: string; more: string };
+  features: { eyebrow: string; h: string; items: { k: string; t: string; d: string; span: Span; art: ArtKind }[] };
+  how: { eyebrow: string; h: string; steps: { n: string; t: string; d: string; chip: string }[]; convoLabel: string };
+  convo: { me: string; user: string; pm: string; pmMsg: string; card1: string; card1meta: string; card2: string; card2meta: string; reviewer: string; reviewMsg: string };
+  crew: { eyebrow: string; h: string; p: string; items: { role: string; tag: string; d: string; tone: Tone }[] };
+  compare: { eyebrow: string; h: string; colLabel: string; cols: string[]; rows: { k: string; v: string[] }[] };
+  start: { eyebrow: string; h: string; p1: string; p2: string; p3: string; perks: string[]; cta: string; steps: { n: string; t: string; d: string }[] };
+  faq: { eyebrow: string; h: string; items: { q: string; a: string }[] };
+  cta: { a: string; b: string; p: string; btn: string };
+  footer: { tag: string; product: string; legal: string; contact: string; legalLine: string; navLabel: string; legalNavLabel: string };
+  art: { pm: string; roles: [string, string, string]; layers: [string, string, string, string]; approve: string; query: string; evidence: string; pending: string; alert: string };
+  board: { cols: [string, string, string]; cards: { t: string; tag: 'high' | 'mid' | 'low'; who: string }[][]; tags: { high: string; mid: string; low: string } };
+  mock: { url: string; side: string[]; title: string; project: string; focus: string; kpis: [string, string, string]; weekly: string; status: string; board: string; boardBy: string; cols: [string, string[]][]; chat: string; chatWho: string; msgU: string; msgA: string; input: string };
+  orbitChips: [string, string, string];
+}
 
-const CREW = [
-  { role: '프로젝트 매니저', tag: '항상 배정', d: '지시를 읽고 팀을 꾸리고, 업무를 나누고, 보고를 검토해 사용자에게 안내합니다.', tone: 'brand' },
-  { role: '리서처', tag: '카탈로그', d: '웹 검색과 연결 폴더를 뒤져 근거가 붙은 조사 결과를 냅니다.', tone: 'mint' },
-  { role: '작성자', tag: '카탈로그', d: '문서·릴리스 노트·이메일 초안을 프로젝트 기억에 맞춰 씁니다.', tone: 'ink' },
-  { role: '검토자', tag: '자동 합류', d: '버그·스펙·정책·근거 네 패스로 다른 에이전트의 결과를 거릅니다.', tone: 'coral' },
-  { role: '데이터 분석가', tag: '카탈로그', d: '표와 수치를 읽고 요약과 다음 액션을 제안합니다.', tone: 'mint' },
-  { role: '필요한 직무', tag: '자동 생성', d: '카탈로그에 없으면 매니저가 역할·지침을 정의해 새로 만듭니다.', tone: 'dash' },
-] as const;
-
-const COMPARE = {
-  cols: ['일반 챗봇', '단일 에이전트', 'orbitcrew'],
-  rows: [
-    { k: '기억', v: ['대화 한 번', '세션 안에서만', '사용자·프로젝트·에이전트 4층 기억'] },
-    { k: '팀 구성', v: ['없음', '한 명이 전부', '매니저가 직무별 에이전트 채용'] },
-    { k: '완료 기준', v: ['답변이 오면 끝', '스스로 끝났다고 보고', '근거 없으면 완료 불가'] },
-    { k: '검토', v: ['사람이 전부', '사람이 전부', '다른 에이전트가 4패스 선검토'] },
-    { k: '비용 관제', v: ['알 수 없음', '실행 후 확인', '14일 기준선 밴드 이탈 시 자동 진단'] },
-    { k: '사람의 역할', v: ['질문·복붙', '지시·상태 변경', '승인 · 거절 · 방향만'] },
+const KO: Dict = {
+  nav: [
+    { label: '제품', id: 'product' },
+    { label: '기능', id: 'features' },
+    { label: '작동 방식', id: 'how' },
+    { label: '크루', id: 'crew' },
+    { label: '시작하기', id: 'start' },
   ],
-} as const;
+  openApp: '앱 열기',
+  menu: '메뉴',
+  langLabel: '언어',
+  eyebrow: 'AI AGENT COMMAND CENTER',
+  h1a: 'ONE MANAGER RUNS',
+  h1b: 'YOUR WHOLE',
+  h1accent: 'TEAM',
+  heroSub: '프로젝트 하나에 매니저 한 명. 나머지는 매니저가 뽑고, 나누고, 받아냅니다.',
+  ctaStart: '시작하기',
+  ctaTour: '제품 둘러보기',
+  facts: [{ n: '4', l: '층 기억' }, { n: '4', l: '패스 검토' }, { n: '14', l: '일 관제 기준선' }, { n: '3', l: '단계 승인 레벨' }],
+  factsLabel: '핵심 수치',
+  trust: [
+    { icon: 'key', t: '이용료 없음', d: 'Claude API 키만 있으면 됩니다' },
+    { icon: 'lock', t: '암호화 저장', d: 'API 키는 서버에서 암호화' },
+    { icon: 'login', t: 'Google · GitHub 로그인', d: '별도 가입 절차 없음' },
+    { icon: 'code', t: '오픈소스', d: 'AGPL-3.0 · 저장소 공개' },
+    { icon: 'globe', t: '한국어 · English', d: '라이트 · 다크 테마' },
+  ],
+  trustLabel: '신뢰 요소',
+  product: {
+    eyebrow: 'PRODUCT',
+    h: '대쉬보드 · 보드 · 대화, 한 화면에서',
+    p: '매니저가 채운 보드와 실행 기록을 보고, 궁금하면 그 자리에서 담당 에이전트에게 말을 겁니다.',
+    notes: [
+      { icon: 'chart', t: '대쉬보드', d: '집중 프로젝트 · 주간 처리량 · 검토 도달률' },
+      { icon: 'board', t: 'TASK 보드', d: '담당자 · 상태 · 분류로 묶어 보기' },
+      { icon: 'chat', t: '대화', d: '업무 카드에서 바로 ‘대화하기’' },
+    ],
+  },
+  about: {
+    a: 'ABOUT',
+    b: 'ORBITCREW',
+    p: 'orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을 되찾아 읽고, 근거를 붙여 보고하고, 서로의 결과를 검토합니다. 사람은 상태를 옮기지 않습니다. 루프 위에서 승인하고, 거절하고, 방향만 잡습니다.',
+    more: '더 알아보기',
+  },
+  features: {
+    eyebrow: 'CAPABILITIES',
+    h: '에이전트가 혼자 일해도 되는 이유',
+    items: [
+      { k: '01', t: '프로젝트 매니저', d: '프로젝트를 만들면 전용 매니저가 배정됩니다. 지시를 읽고 필요한 직무의 에이전트를 합류시키고, 업무를 나누고, 보고를 모아 정리해 돌려줍니다.', span: 'lp-b-7', art: 'manager' },
+      { k: '02', t: '4층 기억', d: '사용자·프로젝트·에이전트 기억을 문자 예산 안에서 관리합니다. 턴 시작에 동결하고, 실행이 끝나면 리뷰가 돌며, 프로젝트 기억은 사람 승인을 거칩니다.', span: 'lp-b-5', art: 'memory' },
+      { k: '03', t: '회상', d: '지난 실행과 대화를 FTS5 로 되찾습니다. 한국어 두 글자 단어까지 바이그램으로 잡고, 실행당 호출 횟수에 상한을 둬 비용이 새지 않습니다.', span: 'lp-b-4', art: 'recall' },
+      { k: '04', t: '검증된 완료', d: '에이전트는 근거를 붙여야 완료로 보고할 수 있습니다. 근거가 없으면 카드에 표시가 남고, 다른 에이전트가 버그·스펙·정책·근거 네 패스로 검토합니다.', span: 'lp-b-4', art: 'verify' },
+      { k: '05', t: '승인 게이트', d: '카드를 많이 만들거나 전역 스킬을 저장하려 하면 승인 큐로 넘어갑니다. 연속 실패는 서킷브레이커가 끊고, 사람 댓글이 다시 풀어줍니다.', span: 'lp-b-4', art: 'gate' },
+      { k: '06', t: '관제 밴드', d: '실패·막힘·근거 누락·게이트 차단·실행당 비용을 14일 기준선과 비교합니다. 밴드를 벗어나면 매니저에게 진단 카드가 자동으로 올라갑니다.', span: 'lp-b-12', art: 'band' },
+    ],
+  },
+  how: {
+    eyebrow: 'HOW IT WORKS',
+    h: '네 단계로 끝납니다',
+    steps: [
+      { n: '01', t: '목표를 말합니다', d: '대화창에 하고 싶은 일을 그대로 적습니다. 상태를 손으로 옮길 필요가 없습니다.', chip: '사용자' },
+      { n: '02', t: '매니저가 팀을 짭니다', d: '직무 카탈로그에서 필요한 에이전트를 부르고, 없으면 새로 만들어 프로젝트에 합류시킵니다.', chip: '매니저' },
+      { n: '03', t: '에이전트가 실행합니다', d: '기억과 회상을 안고 일하고, 근거를 붙여 구조화된 완료 보고를 남깁니다.', chip: '에이전트' },
+      { n: '04', t: '검토하고 승인합니다', d: '작성자가 아닌 에이전트가 먼저 걸러내고, 마지막 판단만 사람이 합니다.', chip: '검토 → 사람' },
+    ],
+    convoLabel: '대화 예시',
+  },
+  convo: {
+    me: '나',
+    user: '경쟁사 세 곳 가격표 비교해서 다음 주 릴리스 노트 초안까지 만들어 줘.',
+    pm: '프로젝트 매니저',
+    pmMsg: '리서처와 작성자를 합류시켰습니다. 업무 2건을 만들었고, 조사 결과는 검토자가 먼저 봅니다.',
+    card1: '경쟁사 가격표 조사', card1meta: '리서처 · 높음',
+    card2: '릴리스 노트 초안', card2meta: '작성자 · 중간',
+    reviewer: '검토자',
+    reviewMsg: '조사 결과 근거 3건 확인. 스펙 패스에서 통화 단위 누락 1건을 돌려보냈습니다.',
+  },
+  crew: {
+    eyebrow: 'THE CREW',
+    h: '필요한 직무만큼 팀이 커집니다',
+    p: '매니저는 직무 카탈로그에서 에이전트를 부르고, 없으면 역할과 실행 지침을 정의해 새로 만듭니다. 팀은 프로젝트마다 다르게 꾸려집니다.',
+    items: [
+      { role: '프로젝트 매니저', tag: '항상 배정', d: '지시를 읽고 팀을 꾸리고, 업무를 나누고, 보고를 검토해 사용자에게 안내합니다.', tone: 'brand' },
+      { role: '리서처', tag: '카탈로그', d: '웹 검색과 연결 폴더를 뒤져 근거가 붙은 조사 결과를 냅니다.', tone: 'mint' },
+      { role: '작성자', tag: '카탈로그', d: '문서·릴리스 노트·이메일 초안을 프로젝트 기억에 맞춰 씁니다.', tone: 'ink' },
+      { role: '검토자', tag: '자동 합류', d: '버그·스펙·정책·근거 네 패스로 다른 에이전트의 결과를 거릅니다.', tone: 'coral' },
+      { role: '데이터 분석가', tag: '카탈로그', d: '표와 수치를 읽고 요약과 다음 액션을 제안합니다.', tone: 'mint' },
+      { role: '필요한 직무', tag: '자동 생성', d: '카탈로그에 없으면 매니저가 역할·지침을 정의해 새로 만듭니다.', tone: 'dash' },
+    ],
+  },
+  compare: {
+    eyebrow: 'WHY ORBITCREW',
+    h: '챗봇도, 혼자 뛰는 에이전트도 아닙니다',
+    colLabel: '항목',
+    cols: ['일반 챗봇', '단일 에이전트', 'orbitcrew'],
+    rows: [
+      { k: '기억', v: ['대화 한 번', '세션 안에서만', '사용자·프로젝트·에이전트 4층 기억'] },
+      { k: '팀 구성', v: ['없음', '한 명이 전부', '매니저가 직무별 에이전트 채용'] },
+      { k: '완료 기준', v: ['답변이 오면 끝', '스스로 끝났다고 보고', '근거 없으면 완료 불가'] },
+      { k: '검토', v: ['사람이 전부', '사람이 전부', '다른 에이전트가 4패스 선검토'] },
+      { k: '비용 관제', v: ['알 수 없음', '실행 후 확인', '14일 기준선 밴드 이탈 시 자동 진단'] },
+      { k: '사람의 역할', v: ['질문·복붙', '지시·상태 변경', '승인 · 거절 · 방향만'] },
+    ],
+  },
+  start: {
+    eyebrow: 'GET STARTED',
+    h: 'orbitcrew 는 무료입니다',
+    p1: '구독료도, 별도 결제도 없습니다. 다만 에이전트가 Claude 로 움직이기 때문에 ',
+    p2: '본인 Claude API 키(Anthropic 계정)',
+    p3: '가 필요합니다. AI 사용 요금은 그 계정으로 Anthropic 에 직접 내고, 얼마나 썼는지는 앱 안의 사용량 화면에서 바로 봅니다.',
+    perks: [
+      'orbitcrew 이용료 0원 — 구독 · 결제 · 광고 없음',
+      '필요한 것은 Claude API 키 하나 — 암호화 저장, 언제든 교체',
+      '에이전트별 모델 선택, 실측 토큰 + 비용 추정',
+      '오픈소스(AGPL-3.0) — 직접 배포도 가능',
+    ],
+    cta: '지금 시작하기',
+    steps: [
+      { n: '1', t: 'Google 또는 GitHub 로 로그인', d: '계정을 새로 만들지 않습니다. 첫 로그인이면 짧은 안내가 한 번 나옵니다.' },
+      { n: '2', t: 'Claude API 키 연결', d: 'Anthropic 계정에서 발급한 키를 붙입니다. 키는 서버에서 암호화돼 저장되고, 대화는 그 키로 나갑니다.' },
+      { n: '3', t: '프로젝트 이름과 작업 폴더', d: '이것만 정하면 매니저가 배정되고 첫 업무를 만들어 옵니다.' },
+    ],
+  },
+  faq: {
+    eyebrow: 'FAQ',
+    h: '자주 묻는 질문',
+    items: [
+      { q: '정말 무료인가요?', a: '네. orbitcrew 자체 이용료는 없습니다. 다만 에이전트가 Claude 로 동작하므로 본인 Claude API 키가 필요하고, AI 사용 요금은 본인 Anthropic 계정으로 직접 냅니다. 앱의 사용량 화면에서 토큰과 추정 비용을 바로 확인할 수 있습니다.' },
+      { q: 'Claude API 키는 어디서 받나요?', a: 'Anthropic 콘솔(console.anthropic.com)에서 발급합니다. claude.ai 유료 구독과는 별개로, API 사용량만큼 과금되는 계정입니다. 키를 orbitcrew 에 붙이면 바로 시작할 수 있습니다.' },
+      { q: 'Claude 계정으로 바로 로그인할 수 있나요?', a: '아니요. Anthropic 정책상 제3자 앱에서 Claude 계정 로그인은 제공되지 않습니다. 로그인은 Google · GitHub 로 하고, Claude 는 본인 API 키로 연결합니다.' },
+      { q: 'API 키는 어디에 어떻게 저장되나요?', a: '서버 측 마스터 시크릿으로 암호화해 저장하고, 실행 시에만 복호화합니다. 운영자가 대신 공용 키로 호출하는 방식은 쓰지 않습니다.' },
+      { q: '내 컴퓨터의 파일에도 접근하나요?', a: '프로젝트에 폴더를 연결한 경우에만, 브라우저의 폴더 선택기로 허용한 범위 안에서 파일 목록과 내용을 업무 실행 컨텍스트로 전달합니다.' },
+      { q: '에이전트가 마음대로 일을 벌이지는 않나요?', a: '대화창의 승인 레벨(자동 / 카드만 / 읽기 전용)로 매니저 자율도를 제한합니다. 카드를 많이 만들거나 전역 스킬을 저장하려 하면 승인 게이트로 넘어가고, 연속 실패는 서킷브레이커가 끊습니다.' },
+      { q: '어떤 모델을 쓰나요?', a: '에이전트마다 Claude 모델을 골라 배정할 수 있고, 지정하지 않으면 기본 모델로 실행됩니다. 사용량 화면에서 토큰 실측과 공개 단가 기준 비용 추정을 함께 봅니다.' },
+      { q: '오픈소스인가요?', a: '네. AGPL-3.0 라이선스로 저장소가 공개돼 있습니다. 직접 배포해 쓰거나 코드를 살펴볼 수 있습니다.' },
+    ],
+  },
+  cta: { a: 'START', b: 'TODAY', p: '프로젝트 이름과 작업 폴더만 정하면, 매니저가 첫 업무를 만들어 옵니다.', btn: 'orbitcrew 열기' },
+  footer: {
+    tag: 'AI Agent Command Center',
+    product: '제품',
+    legal: '고지',
+    contact: '문의',
+    legalLine: `${COMPANY.name} · 대표 ${COMPANY.ceo} · 사업자등록번호 ${COMPANY.registration} · ${COMPANY.address} · ${COMPANY.email}`,
+    navLabel: '페이지',
+    legalNavLabel: '법적 고지',
+  },
+  art: { pm: 'PM', roles: ['리서처', '검토자', '작성자'], layers: ['사용자', '프로젝트', '에이전트', '실행'], approve: '승인', query: '가격표 통화', evidence: '근거 3건', pending: '승인 대기 1', alert: '밴드 이탈 → 진단' },
+  board: {
+    cols: ['대기', '진행', '검토'],
+    cards: [
+      [{ t: '경쟁사 조사', tag: 'high', who: '리서처' }, { t: '릴리스 노트', tag: 'mid', who: '작성자' }],
+      [{ t: '스키마 정리', tag: 'high', who: '개발자' }],
+      [{ t: '온보딩 문서', tag: 'mid', who: '검토자' }, { t: '가격표 검증', tag: 'low', who: '검토자' }],
+    ],
+    tags: { high: '높음', mid: '중간', low: '낮음' },
+  },
+  mock: {
+    url: 'app.orbitcrew.ai',
+    side: ['대쉬보드', '프로젝트', '에이전트', '대화', '사용량', '설정'],
+    title: '대쉬보드', project: '릴리스 준비',
+    focus: '집중 프로젝트',
+    kpis: ['전체 업무', '검토 도달률', '평균 실행'],
+    weekly: '주간 업무 처리량', status: '업무 상태 분포',
+    board: 'TASK 보드', boardBy: '담당자별',
+    cols: [['리서처', ['경쟁사 조사', '시장 규모']], ['작성자', ['릴리스 노트']], ['검토자', ['가격표 검증', '온보딩 문서']]],
+    chat: '대화', chatWho: '프로젝트 매니저',
+    msgU: '가격표 검증 어디까지 됐어?',
+    msgA: '검토자가 근거 3건 확인했고, 통화 단위 1건만 되돌렸습니다.',
+    input: '메시지를 입력하세요',
+  },
+  orbitChips: ['리서처', '검토자', '작성자'],
+};
 
-const START = [
-  { n: '1', t: 'Google 또는 GitHub 로 로그인', d: '계정을 새로 만들지 않습니다. 첫 로그인이면 짧은 안내가 한 번 나옵니다.' },
-  { n: '2', t: 'Claude API 키 연결', d: 'Anthropic 계정에서 발급한 키를 붙입니다. 키는 서버에서 암호화돼 저장되고, 대화는 그 키로 나갑니다.' },
-  { n: '3', t: '프로젝트 이름과 작업 폴더', d: '이것만 정하면 매니저가 배정되고 첫 업무를 만들어 옵니다.' },
-];
+const EN: Dict = {
+  nav: [
+    { label: 'Product', id: 'product' },
+    { label: 'Features', id: 'features' },
+    { label: 'How it works', id: 'how' },
+    { label: 'Crew', id: 'crew' },
+    { label: 'Get started', id: 'start' },
+  ],
+  openApp: 'Open app',
+  menu: 'Menu',
+  langLabel: 'Language',
+  eyebrow: 'AI AGENT COMMAND CENTER',
+  h1a: 'ONE MANAGER RUNS',
+  h1b: 'YOUR WHOLE',
+  h1accent: 'TEAM',
+  heroSub: 'One project, one manager. The manager hires the rest, splits the work, and collects the results.',
+  ctaStart: 'Get started',
+  ctaTour: 'See the product',
+  facts: [{ n: '4', l: 'memory layers' }, { n: '4', l: 'review passes' }, { n: '14', l: 'day baseline' }, { n: '3', l: 'approval levels' }],
+  factsLabel: 'Key numbers',
+  trust: [
+    { icon: 'key', t: 'No fees', d: 'All you need is a Claude API key' },
+    { icon: 'lock', t: 'Encrypted at rest', d: 'API keys are encrypted server-side' },
+    { icon: 'login', t: 'Google · GitHub sign-in', d: 'No separate sign-up' },
+    { icon: 'code', t: 'Open source', d: 'AGPL-3.0 · public repository' },
+    { icon: 'globe', t: 'English · 한국어', d: 'Light · dark theme' },
+  ],
+  trustLabel: 'Trust',
+  product: {
+    eyebrow: 'PRODUCT',
+    h: 'Dashboard, board, and chat on one screen',
+    p: 'See the board and run history your manager fills in — and when you have a question, talk to the agent in charge right there.',
+    notes: [
+      { icon: 'chart', t: 'Dashboard', d: 'Focus project · weekly throughput · review rate' },
+      { icon: 'board', t: 'Task board', d: 'Group by assignee, status, or category' },
+      { icon: 'chat', t: 'Chat', d: '“Talk” straight from any task card' },
+    ],
+  },
+  about: {
+    a: 'ABOUT',
+    b: 'ORBITCREW',
+    p: 'orbitcrew is a workspace where AI agents actually finish the job. They remember, recall past runs, report with evidence, and review each other’s work. People don’t drag cards around — they sit above the loop, approving, rejecting, and setting direction.',
+    more: 'Learn more',
+  },
+  features: {
+    eyebrow: 'CAPABILITIES',
+    h: 'Why agents can be left to work alone',
+    items: [
+      { k: '01', t: 'Project manager', d: 'Every project gets a dedicated manager. It reads your instruction, brings in agents for the roles it needs, splits the work, and returns a consolidated report.', span: 'lp-b-7', art: 'manager' },
+      { k: '02', t: 'Four-layer memory', d: 'User, project, and agent memory managed within a character budget. Frozen at the start of a turn, reviewed after each run, and project memory needs a human sign-off.', span: 'lp-b-5', art: 'memory' },
+      { k: '03', t: 'Recall', d: 'Past runs and conversations are retrieved with FTS5. Bigram indexing catches even two-character Korean words, and a per-run call cap keeps cost from leaking.', span: 'lp-b-4', art: 'recall' },
+      { k: '04', t: 'Verified completion', d: 'An agent can only report “done” with evidence attached. Missing evidence is flagged on the card, and another agent reviews in four passes: bugs, spec, policy, evidence.', span: 'lp-b-4', art: 'verify' },
+      { k: '05', t: 'Approval gate', d: 'Creating many cards or saving a global skill goes to an approval queue. Repeated failures trip a circuit breaker; a human comment resets it.', span: 'lp-b-4', art: 'gate' },
+      { k: '06', t: 'Control band', d: 'Failures, stalls, missing evidence, gate blocks, and cost per run are compared against a 14-day baseline. Leave the band and a diagnostic card goes to the manager automatically.', span: 'lp-b-12', art: 'band' },
+    ],
+  },
+  how: {
+    eyebrow: 'HOW IT WORKS',
+    h: 'Done in four steps',
+    steps: [
+      { n: '01', t: 'Say the goal', d: 'Type what you want into the chat. No moving statuses by hand.', chip: 'You' },
+      { n: '02', t: 'The manager builds a team', d: 'It pulls the agents it needs from the role catalog, or creates new ones and adds them to the project.', chip: 'Manager' },
+      { n: '03', t: 'Agents execute', d: 'They work with memory and recall, then leave a structured completion report with evidence.', chip: 'Agents' },
+      { n: '04', t: 'Review and approve', d: 'An agent other than the author filters first; only the final call is yours.', chip: 'Review → You' },
+    ],
+    convoLabel: 'Example conversation',
+  },
+  convo: {
+    me: 'Me',
+    user: 'Compare pricing across three competitors and draft next week’s release notes.',
+    pm: 'Project manager',
+    pmMsg: 'Added a researcher and a writer. Created 2 tasks — the reviewer checks the research first.',
+    card1: 'Competitor pricing research', card1meta: 'Researcher · High',
+    card2: 'Release notes draft', card2meta: 'Writer · Medium',
+    reviewer: 'Reviewer',
+    reviewMsg: 'Confirmed 3 pieces of evidence. Sent back 1 item from the spec pass: missing currency unit.',
+  },
+  crew: {
+    eyebrow: 'THE CREW',
+    h: 'The team grows with the roles you need',
+    p: 'The manager pulls agents from the role catalog, and defines a role and instructions to create one when nothing fits. Every project gets a different crew.',
+    items: [
+      { role: 'Project manager', tag: 'Always assigned', d: 'Reads your instruction, builds the team, splits the work, reviews reports, and briefs you.', tone: 'brand' },
+      { role: 'Researcher', tag: 'Catalog', d: 'Digs through web search and linked folders to produce findings with evidence.', tone: 'mint' },
+      { role: 'Writer', tag: 'Catalog', d: 'Drafts documents, release notes, and emails in line with project memory.', tone: 'ink' },
+      { role: 'Reviewer', tag: 'Auto-joins', d: 'Filters other agents’ work in four passes: bugs, spec, policy, evidence.', tone: 'coral' },
+      { role: 'Data analyst', tag: 'Catalog', d: 'Reads tables and numbers, then proposes summaries and next actions.', tone: 'mint' },
+      { role: 'Any role you need', tag: 'Auto-created', d: 'Not in the catalog? The manager defines the role and instructions and creates it.', tone: 'dash' },
+    ],
+  },
+  compare: {
+    eyebrow: 'WHY ORBITCREW',
+    h: 'Not a chatbot. Not a lone agent.',
+    colLabel: 'Item',
+    cols: ['Plain chatbot', 'Single agent', 'orbitcrew'],
+    rows: [
+      { k: 'Memory', v: ['One conversation', 'Within a session', 'Four layers: user, project, agent'] },
+      { k: 'Team', v: ['None', 'One does everything', 'Manager hires agents per role'] },
+      { k: 'Done means', v: ['A reply arrived', 'Self-declared', 'No evidence, no completion'] },
+      { k: 'Review', v: ['All on you', 'All on you', 'Another agent reviews in 4 passes first'] },
+      { k: 'Cost control', v: ['Unknown', 'Check after the run', 'Auto-diagnosis when off the 14-day band'] },
+      { k: 'Your role', v: ['Ask · copy-paste', 'Instruct · move statuses', 'Approve · reject · steer'] },
+    ],
+  },
+  start: {
+    eyebrow: 'GET STARTED',
+    h: 'orbitcrew is free',
+    p1: 'No subscription, no separate payment. Because the agents run on Claude, you need ',
+    p2: 'your own Claude API key (an Anthropic account)',
+    p3: '. AI usage is billed by Anthropic to that account, and the app’s usage screen shows exactly how much you’ve spent.',
+    perks: [
+      'orbitcrew costs $0 — no subscription, no payments, no ads',
+      'All you need is one Claude API key — encrypted, replaceable anytime',
+      'Pick a model per agent, see measured tokens + estimated cost',
+      'Open source (AGPL-3.0) — self-host if you like',
+    ],
+    cta: 'Start now',
+    steps: [
+      { n: '1', t: 'Sign in with Google or GitHub', d: 'No new account to create. A short intro shows once on first sign-in.' },
+      { n: '2', t: 'Connect your Claude API key', d: 'Paste the key from your Anthropic account. It’s encrypted server-side, and chats go out on that key.' },
+      { n: '3', t: 'Name the project and pick a folder', d: 'That’s it — a manager is assigned and comes back with the first task.' },
+    ],
+  },
+  faq: {
+    eyebrow: 'FAQ',
+    h: 'Frequently asked questions',
+    items: [
+      { q: 'Is it really free?', a: 'Yes. orbitcrew itself has no fee. Because the agents run on Claude you need your own Claude API key, and AI usage is billed by Anthropic to your account. The usage screen in the app shows tokens and estimated cost as you go.' },
+      { q: 'Where do I get a Claude API key?', a: 'From the Anthropic Console (console.anthropic.com). It’s a pay-as-you-go API account, separate from a claude.ai subscription. Paste the key into orbitcrew and you’re ready.' },
+      { q: 'Can I sign in with my Claude account?', a: 'No. Anthropic’s policy doesn’t allow Claude account sign-in for third-party apps. You sign in with Google or GitHub and connect Claude with your own API key.' },
+      { q: 'Where and how is my API key stored?', a: 'Encrypted with a server-side master secret and decrypted only at run time. We never call Claude on your behalf with a shared operator key.' },
+      { q: 'Does it access files on my computer?', a: 'Only when you link a folder to a project, and only within what you allow through the browser’s folder picker. File lists and contents are passed as context for task runs.' },
+      { q: 'Won’t the agents run wild?', a: 'The approval level in the chat (auto / cards only / read-only) limits the manager’s autonomy. Creating many cards or saving a global skill goes through an approval gate, and repeated failures trip a circuit breaker.' },
+      { q: 'Which models does it use?', a: 'You can assign a Claude model to each agent; unassigned agents use the default. The usage screen shows measured tokens alongside a cost estimate based on public pricing.' },
+      { q: 'Is it open source?', a: 'Yes. The repository is public under AGPL-3.0. Self-host it or read the code.' },
+    ],
+  },
+  cta: { a: 'START', b: 'TODAY', p: 'Name a project and pick a folder — the manager comes back with the first task.', btn: 'Open orbitcrew' },
+  footer: {
+    tag: 'AI Agent Command Center',
+    product: 'Product',
+    legal: 'Legal',
+    contact: 'Contact',
+    legalLine: `${COMPANY.nameEn} · CEO ${COMPANY.ceoEn} · Business reg. no. ${COMPANY.registration} · ${COMPANY.addressEn} · ${COMPANY.email}`,
+    navLabel: 'Pages',
+    legalNavLabel: 'Legal',
+  },
+  art: { pm: 'PM', roles: ['Researcher', 'Reviewer', 'Writer'], layers: ['User', 'Project', 'Agent', 'Run'], approve: 'Approve', query: 'pricing currency', evidence: '3 evidence', pending: '1 pending', alert: 'Off band → diagnose' },
+  board: {
+    cols: ['To do', 'Doing', 'Review'],
+    cards: [
+      [{ t: 'Competitor research', tag: 'high', who: 'Researcher' }, { t: 'Release notes', tag: 'mid', who: 'Writer' }],
+      [{ t: 'Schema cleanup', tag: 'high', who: 'Developer' }],
+      [{ t: 'Onboarding doc', tag: 'mid', who: 'Reviewer' }, { t: 'Pricing check', tag: 'low', who: 'Reviewer' }],
+    ],
+    tags: { high: 'High', mid: 'Medium', low: 'Low' },
+  },
+  mock: {
+    url: 'app.orbitcrew.ai',
+    side: ['Dashboard', 'Projects', 'Agents', 'Chat', 'Usage', 'Settings'],
+    title: 'Dashboard', project: 'Release prep',
+    focus: 'Focus project',
+    kpis: ['Tasks', 'Review rate', 'Avg run'],
+    weekly: 'Weekly throughput', status: 'Task status',
+    board: 'Task board', boardBy: 'by assignee',
+    cols: [['Researcher', ['Competitor research', 'Market size']], ['Writer', ['Release notes']], ['Reviewer', ['Pricing check', 'Onboarding doc']]],
+    chat: 'Chat', chatWho: 'Project manager',
+    msgU: 'How far along is the pricing check?',
+    msgA: 'The reviewer confirmed 3 pieces of evidence and sent back only one currency-unit item.',
+    input: 'Type a message',
+  },
+  orbitChips: ['Researcher', 'Reviewer', 'Writer'],
+};
 
-const FAQ = [
-  {
-    q: '정말 무료인가요?',
-    a: '네. orbitcrew 자체 이용료는 없습니다. 다만 에이전트가 Claude 로 동작하므로 본인 Claude API 키가 필요하고, AI 사용 요금은 본인 Anthropic 계정으로 직접 냅니다. 앱의 사용량 화면에서 토큰과 추정 비용을 바로 확인할 수 있습니다.',
-  },
-  {
-    q: 'Claude API 키는 어디서 받나요?',
-    a: 'Anthropic 콘솔(console.anthropic.com)에서 발급합니다. claude.ai 유료 구독과는 별개로, API 사용량만큼 과금되는 계정입니다. 키를 orbitcrew 에 붙이면 바로 시작할 수 있습니다.',
-  },
-  {
-    q: 'Claude 계정으로 바로 로그인할 수 있나요?',
-    a: '아니요. Anthropic 정책상 제3자 앱에서 Claude 계정 로그인은 제공되지 않습니다. 로그인은 Google · GitHub 로 하고, Claude 는 본인 API 키로 연결합니다.',
-  },
-  {
-    q: 'API 키는 어디에 어떻게 저장되나요?',
-    a: '서버 측 마스터 시크릿으로 암호화해 저장하고, 실행 시에만 복호화합니다. 운영자가 대신 공용 키로 호출하는 방식은 쓰지 않습니다.',
-  },
-  {
-    q: '내 컴퓨터의 파일에도 접근하나요?',
-    a: '프로젝트에 폴더를 연결한 경우에만, 브라우저의 폴더 선택기로 허용한 범위 안에서 파일 목록과 내용을 업무 실행 컨텍스트로 전달합니다.',
-  },
-  {
-    q: '에이전트가 마음대로 일을 벌이지는 않나요?',
-    a: '대화창의 승인 레벨(자동 / 카드만 / 읽기 전용)로 매니저 자율도를 제한합니다. 카드를 많이 만들거나 전역 스킬을 저장하려 하면 승인 게이트로 넘어가고, 연속 실패는 서킷브레이커가 끊습니다.',
-  },
-  {
-    q: '어떤 모델을 쓰나요?',
-    a: '에이전트마다 Claude 모델을 골라 배정할 수 있고, 지정하지 않으면 기본 모델로 실행됩니다. 사용량 화면에서 토큰 실측과 공개 단가 기준 비용 추정을 함께 봅니다.',
-  },
-  {
-    q: '오픈소스인가요?',
-    a: '네. AGPL-3.0 라이선스로 저장소가 공개돼 있습니다. 직접 배포해 쓰거나 코드를 살펴볼 수 있습니다.',
-  },
-];
+const DICT: Record<LandingLang, Dict> = { en: EN, ko: KO };
 
 /**
- * 스크롤 등장·네브바 그림자 같은 점진적 향상. React 에서는 useEffect 로, 정적 빌드에서는
+ * 스크롤 등장·네브바 그림자·언어 토글 같은 점진적 향상. React 에서는 useEffect 로, 정적 빌드에서는
  * scripts/build-landing.mjs 가 이 함수를 문자열로 박아 넣어 같은 코드를 씁니다.
  * (그래서 import·JSX 없이 순수 DOM API 만 씁니다.)
  */
 export function enhanceLanding(root: HTMLElement | null) {
   if (!root) return () => {};
   const w = window;
-  const reduce = w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const targets = Array.from(root.querySelectorAll<HTMLElement>('.lp-reveal'));
   const cleanups: (() => void)[] = [];
 
+  /* 언어 — 저장값 → 기본 en. 루트 data-lang 만 바꾸면 CSS 가 트리를 전환합니다. */
+  const KEY = 'orbit-landing-lang';
+  const apply = (lang: string) => {
+    const next = lang === 'ko' ? 'ko' : 'en';
+    root.setAttribute('data-lang', next);
+    document.documentElement.lang = next;
+    root.querySelectorAll<HTMLElement>('[data-set-lang]').forEach((b) => {
+      const on = b.getAttribute('data-set-lang') === next;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  };
+  let saved = '';
+  try { saved = w.localStorage.getItem(KEY) || ''; } catch { /* 저장소 차단 환경 */ }
+  apply(saved || root.getAttribute('data-lang') || 'en');
+  const onLangClick = (e: Event) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-set-lang]');
+    if (!btn) return;
+    const lang = btn.getAttribute('data-set-lang') || 'en';
+    apply(lang);
+    try { w.localStorage.setItem(KEY, lang); } catch { /* 무시 */ }
+  };
+  root.addEventListener('click', onLangClick);
+  cleanups.push(() => root.removeEventListener('click', onLangClick));
+
+  /* 스크롤 등장 */
+  const reduce = w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const targets = Array.from(root.querySelectorAll<HTMLElement>('.lp-reveal'));
   if (!reduce && 'IntersectionObserver' in w && targets.length) {
     root.classList.add('lp-js');
     const io = new IntersectionObserver(
@@ -181,6 +477,7 @@ export function enhanceLanding(root: HTMLElement | null) {
     cleanups.push(() => io.disconnect());
   }
 
+  /* 네브바 그림자 */
   const nav = root.querySelector<HTMLElement>('.lp-nav');
   if (nav) {
     const onScroll = () => nav.classList.toggle('is-stuck', w.scrollY > 24);
@@ -195,39 +492,57 @@ export function enhanceLanding(root: HTMLElement | null) {
 }
 
 export function LandingView() {
-  const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => enhanceLanding(rootRef.current), []);
 
   return (
-    <div className="lp" ref={rootRef} id="top">
+    <div className="lp" ref={rootRef} id="top" data-lang="en">
       <style dangerouslySetInnerHTML={{ __html: LP_CSS }} />
+      {LANDING_LANGS.map((lang) => (
+        <div key={lang} className="lp-tree" data-lang={lang} lang={lang}>
+          <LandingContent lang={lang} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
+function LandingContent({ lang }: { lang: LandingLang }) {
+  const t = DICT[lang];
+  const [menuOpen, setMenuOpen] = useState(false);
+  /* 앵커 id — 영어 트리가 원본, 한국어 트리는 ko- 접두 */
+  const id = (s: string) => (lang === 'en' ? s : `ko-${s}`);
+  const href = (s: string) => `#${id(s)}`;
+  const legalLabel = (l: (typeof LEGAL_LINKS)[number]) => (lang === 'en' ? l.labelEn : l.label);
+
+  return (
+    <>
       {/* ── Nav (sticky, 히어로 위에 겹침) ────────────────────── */}
       <nav className="lp-nav">
-        <a className="lp-logo" href="#top">
+        <a className="lp-logo" href={href('top')}>
           <span className="lp-logo-mark"><OrbitMark size={38} /></span>
           <span className="lp-logo-word">orbitcrew</span>
         </a>
 
         <div className="lp-nav-links">
-          {NAV_LINKS.map(([label, href]) => (
-            <a key={href} href={href}>{label}</a>
+          {t.nav.map((n) => (
+            <a key={n.id} href={href(n.id)}>{n.label}</a>
           ))}
         </div>
 
+        <LangToggle label={t.langLabel} />
+
         {/* oxlint-disable-next-line next/no-html-link-for-pages -- 랜딩→앱은 전체 로드가 맞습니다 */}
         <a className="lp-nav-cta" href="/login">
-          앱 열기
+          {t.openApp}
           <ArrowIcon className="lp-nav-cta-arrow" />
         </a>
 
         <button
           className="lp-burger"
           type="button"
-          aria-label="메뉴"
-          aria-controls="lp-mobile-menu"
+          aria-label={t.menu}
+          aria-controls={id('lp-mobile-menu')}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
         >
@@ -235,78 +550,76 @@ export function LandingView() {
         </button>
 
         {/* 항상 렌더하고 hidden 으로 숨깁니다 — 정적 빌드(scripts/build-landing.mjs)에서는 작은 스크립트가 hidden 을 토글합니다 */}
-        <div className="lp-mobile-menu" hidden={!menuOpen} id="lp-mobile-menu">
-          {NAV_LINKS.map(([label, href]) => (
-            <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>
+        <div className="lp-mobile-menu" hidden={!menuOpen} id={id('lp-mobile-menu')}>
+          {t.nav.map((n) => (
+            <a key={n.id} href={href(n.id)} onClick={() => setMenuOpen(false)}>{n.label}</a>
           ))}
           {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
-          <a href="/login" onClick={() => setMenuOpen(false)}>앱 열기</a>
+          <a href="/login" onClick={() => setMenuOpen(false)}>{t.openApp}</a>
+          <LangToggle label={t.langLabel} />
         </div>
       </nav>
 
       {/* ── Section 1 — Hero ───────────────────────────────── */}
-      <section className="lp-hero">
+      <section className="lp-hero" id={id('top')}>
         <div className="lp-space" aria-hidden="true">
           <div className="lp-stars lp-stars-a" />
           <div className="lp-stars lp-stars-b" />
           <div className="lp-nebula lp-nebula-a" />
           <div className="lp-nebula lp-nebula-b" />
-          <div className="lp-hero-orbit"><OrbitDiagram /></div>
+          <div className="lp-hero-orbit"><OrbitDiagram chips={t.orbitChips} uid={lang} /></div>
         </div>
 
         <div className="lp-hero-body">
           <p className="lp-eyebrow lp-eyebrow-pill">
             <span className="lp-dot" />
-            AI AGENT COMMAND CENTER
+            {t.eyebrow}
           </p>
 
           <h1 className="lp-h1">
-            <span className="lp-h1-line" style={{ '--i': 0 } as CSSProperties}>ONE MANAGER RUNS</span>
+            <span className="lp-h1-line" style={{ '--i': 0 } as CSSProperties}>{t.h1a}</span>
             <span className="lp-h1-line" style={{ '--i': 1 } as CSSProperties}>
-              YOUR WHOLE <em className="lp-accent">TEAM</em>
+              {t.h1b} <em className="lp-accent">{t.h1accent}</em>
             </span>
           </h1>
 
-          <p className="lp-hero-sub">
-            프로젝트 하나에 매니저 한 명. 나머지는 매니저가 뽑고, 나누고, 받아냅니다.
-          </p>
+          <p className="lp-hero-sub">{t.heroSub}</p>
 
           <div className="lp-hero-cta">
-            <a className="lp-btn" href="#start">
-              시작하기
+            <a className="lp-btn" href={href('start')}>
+              {t.ctaStart}
               <i className="lp-btn-line" />
             </a>
-            <a className="lp-btn lp-btn-ghost" href="#product">
-              제품 둘러보기
+            <a className="lp-btn lp-btn-ghost" href={href('product')}>
+              {t.ctaTour}
             </a>
           </div>
 
-          <ul className="lp-hero-facts" aria-label="핵심 수치">
-            <li><strong>4</strong><span>층 기억</span></li>
-            <li><strong>4</strong><span>패스 검토</span></li>
-            <li><strong>14</strong><span>일 관제 기준선</span></li>
-            <li><strong>3</strong><span>단계 승인 레벨</span></li>
+          <ul className="lp-hero-facts" aria-label={t.factsLabel}>
+            {t.facts.map((f) => (
+              <li key={f.l}><strong>{f.n}</strong><span>{f.l}</span></li>
+            ))}
           </ul>
         </div>
 
         {/* 지평선 글로우 위로 떠오르는 앱 목업 (Launch UI 히어로 구성) */}
-        <div className="lp-hero-stage" id="product">
+        <div className="lp-hero-stage" id={id('product')}>
           <div className="lp-horizon" aria-hidden="true" />
           <div className="lp-hero-mock">
-            <AppMock />
+            <AppMock m={t.mock} />
           </div>
         </div>
       </section>
 
       {/* ── Trust strip ────────────────────────────────────── */}
-      <section className="lp-trust" id="trust" aria-label="신뢰 요소">
+      <section className="lp-trust" id={id('trust')} aria-label={t.trustLabel}>
         <ul className="lp-trust-list">
-          {TRUST.map((t) => (
-            <li key={t.t} className="lp-reveal">
-              <span className="lp-trust-icon"><Icon name={t.icon} /></span>
+          {t.trust.map((x) => (
+            <li key={x.t} className="lp-reveal">
+              <span className="lp-trust-icon"><Icon name={x.icon} /></span>
               <span className="lp-trust-text">
-                <strong>{t.t}</strong>
-                <span>{t.d}</span>
+                <strong>{x.t}</strong>
+                <span>{x.d}</span>
               </span>
             </li>
           ))}
@@ -316,53 +629,47 @@ export function LandingView() {
       {/* ── Section 2 — Product notes ─────────────────────── */}
       <section className="lp-product">
         <header className="lp-sec-head lp-sec-head-center lp-reveal">
-          <p className="lp-eyebrow">PRODUCT</p>
-          <h2 className="lp-h3">대쉬보드 · 보드 · 대화, 한 화면에서</h2>
-          <p className="lp-p lp-p-center">
-            매니저가 채운 보드와 실행 기록을 보고, 궁금하면 그 자리에서 담당 에이전트에게 말을 겁니다.
-          </p>
+          <p className="lp-eyebrow">{t.product.eyebrow}</p>
+          <h2 className="lp-h3">{t.product.h}</h2>
+          <p className="lp-p lp-p-center">{t.product.p}</p>
         </header>
         <ul className="lp-product-notes">
-          <li className="lp-reveal"><Icon name="chart" /><span><strong>대쉬보드</strong> 집중 프로젝트 · 주간 처리량 · 검토 도달률</span></li>
-          <li className="lp-reveal"><Icon name="board" /><span><strong>TASK 보드</strong> 담당자 · 상태 · 분류로 묶어 보기</span></li>
-          <li className="lp-reveal"><Icon name="chat" /><span><strong>대화</strong> 업무 카드에서 바로 &lsquo;대화하기&rsquo;</span></li>
+          {t.product.notes.map((n) => (
+            <li key={n.t} className="lp-reveal"><Icon name={n.icon} /><span><strong>{n.t}</strong> {n.d}</span></li>
+          ))}
         </ul>
       </section>
 
       {/* ── Section 3 — About ──────────────────────────────── */}
-      <section className="lp-about" id="about">
+      <section className="lp-about" id={id('about')}>
         <div className="lp-about-left lp-reveal">
           <h2 className="lp-h2">
-            <span>ABOUT</span>
-            <span className="lp-in2"><em className="lp-accent">ORBITCREW</em></span>
+            <span>{t.about.a}</span>
+            <span className="lp-in2"><em className="lp-accent">{t.about.b}</em></span>
           </h2>
-          <p className="lp-p">
-            orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을
-            되찾아 읽고, 근거를 붙여 보고하고, 서로의 결과를 검토합니다. 사람은 상태를 옮기지 않습니다.
-            루프 위에서 승인하고, 거절하고, 방향만 잡습니다.
-          </p>
-          <a className="lp-btn lp-btn-ghost" href="#features">
-            더 알아보기
+          <p className="lp-p">{t.about.p}</p>
+          <a className="lp-btn lp-btn-ghost" href={href('features')}>
+            {t.about.more}
             <i className="lp-btn-line" />
           </a>
         </div>
 
         <div className="lp-about-right lp-reveal lp-reveal-right" aria-hidden="true">
-          <BoardDiagram />
+          <BoardDiagram b={t.board} />
           <div className="lp-tint" />
         </div>
       </section>
 
       {/* ── Section 4 — Features (bento) ───────────────────── */}
-      <section className="lp-features" id="features">
+      <section className="lp-features" id={id('features')}>
         <header className="lp-sec-head lp-reveal">
-          <p className="lp-eyebrow">CAPABILITIES</p>
-          <h2 className="lp-h3">에이전트가 혼자 일해도 되는 이유</h2>
+          <p className="lp-eyebrow">{t.features.eyebrow}</p>
+          <h2 className="lp-h3">{t.features.h}</h2>
         </header>
         <div className="lp-bento">
-          {FEATURES.map((f, i) => (
+          {t.features.items.map((f, i) => (
             <article key={f.k} className={`lp-bcard ${f.span} lp-reveal`} style={{ '--d': i } as CSSProperties}>
-              <div className="lp-bcard-art" aria-hidden="true"><FeatureArt kind={f.art} /></div>
+              <div className="lp-bcard-art" aria-hidden="true"><FeatureArt kind={f.art} a={t.art} /></div>
               <div className="lp-bcard-body">
                 <span className="lp-card-k">{f.k}</span>
                 <h3>{f.t}</h3>
@@ -374,13 +681,13 @@ export function LandingView() {
       </section>
 
       {/* ── Section 5 — How it works ───────────────────────── */}
-      <section className="lp-how" id="how">
+      <section className="lp-how" id={id('how')}>
         <header className="lp-sec-head lp-reveal">
-          <p className="lp-eyebrow lp-eyebrow-dim">HOW IT WORKS</p>
-          <h2 className="lp-h3 lp-h3-inv">네 단계로 끝납니다</h2>
+          <p className="lp-eyebrow lp-eyebrow-dim">{t.how.eyebrow}</p>
+          <h2 className="lp-h3 lp-h3-inv">{t.how.h}</h2>
         </header>
         <ol className="lp-steps">
-          {STEPS.map((s, i) => (
+          {t.how.steps.map((s, i) => (
             <li key={s.n} className="lp-reveal" style={{ '--d': i } as CSSProperties}>
               <span className="lp-step-track" aria-hidden="true"><i /></span>
               <span className="lp-step-n">{s.n}</span>
@@ -391,38 +698,35 @@ export function LandingView() {
           ))}
         </ol>
 
-        <div className="lp-convo lp-reveal" aria-label="대화 예시">
+        <div className="lp-convo lp-reveal" aria-label={t.how.convoLabel}>
           <div className="lp-msg lp-msg-user">
-            <span className="lp-msg-who">나</span>
-            <p>경쟁사 세 곳 가격표 비교해서 다음 주 릴리스 노트 초안까지 만들어 줘.</p>
+            <span className="lp-msg-who">{t.convo.me}</span>
+            <p>{t.convo.user}</p>
           </div>
           <div className="lp-msg lp-msg-agent">
-            <span className="lp-msg-who"><OrbitMark size={14} /> 프로젝트 매니저</span>
-            <p>리서처와 작성자를 합류시켰습니다. 업무 2건을 만들었고, 조사 결과는 검토자가 먼저 봅니다.</p>
+            <span className="lp-msg-who"><OrbitMark size={14} /> {t.convo.pm}</span>
+            <p>{t.convo.pmMsg}</p>
             <div className="lp-msg-cards">
-              <span><b>경쟁사 가격표 조사</b> 리서처 · 높음</span>
-              <span><b>릴리스 노트 초안</b> 작성자 · 중간</span>
+              <span><b>{t.convo.card1}</b> {t.convo.card1meta}</span>
+              <span><b>{t.convo.card2}</b> {t.convo.card2meta}</span>
             </div>
           </div>
           <div className="lp-msg lp-msg-agent lp-msg-report">
-            <span className="lp-msg-who"><OrbitMark size={14} /> 검토자</span>
-            <p>조사 결과 근거 3건 확인. 스펙 패스에서 통화 단위 누락 1건을 돌려보냈습니다.</p>
+            <span className="lp-msg-who"><OrbitMark size={14} /> {t.convo.reviewer}</span>
+            <p>{t.convo.reviewMsg}</p>
           </div>
         </div>
       </section>
 
       {/* ── Section 6 — Crew ───────────────────────────────── */}
-      <section className="lp-crew" id="crew">
+      <section className="lp-crew" id={id('crew')}>
         <header className="lp-sec-head lp-reveal">
-          <p className="lp-eyebrow">THE CREW</p>
-          <h2 className="lp-h3">필요한 직무만큼 팀이 커집니다</h2>
-          <p className="lp-p">
-            매니저는 직무 카탈로그에서 에이전트를 부르고, 없으면 역할과 실행 지침을 정의해 새로 만듭니다.
-            팀은 프로젝트마다 다르게 꾸려집니다.
-          </p>
+          <p className="lp-eyebrow">{t.crew.eyebrow}</p>
+          <h2 className="lp-h3">{t.crew.h}</h2>
+          <p className="lp-p">{t.crew.p}</p>
         </header>
         <div className="lp-crew-grid">
-          {CREW.map((c, i) => (
+          {t.crew.items.map((c, i) => (
             <article key={c.role} className={`lp-crew-card lp-crew-${c.tone} lp-reveal`} style={{ '--d': i } as CSSProperties}>
               <span className="lp-crew-avatar" aria-hidden="true"><CrewGlyph tone={c.tone} /></span>
               <span className="lp-crew-tag">{c.tag}</span>
@@ -434,25 +738,25 @@ export function LandingView() {
       </section>
 
       {/* ── Section 7 — Compare ────────────────────────────── */}
-      <section className="lp-compare" id="compare">
+      <section className="lp-compare" id={id('compare')}>
         <header className="lp-sec-head lp-sec-head-center lp-reveal">
-          <p className="lp-eyebrow">WHY ORBITCREW</p>
-          <h2 className="lp-h3">챗봇도, 혼자 뛰는 에이전트도 아닙니다</h2>
+          <p className="lp-eyebrow">{t.compare.eyebrow}</p>
+          <h2 className="lp-h3">{t.compare.h}</h2>
         </header>
         <div className="lp-table-wrap lp-reveal">
           <table className="lp-table">
             <thead>
               <tr>
-                <th scope="col"><span className="lp-sr">항목</span></th>
-                {COMPARE.cols.map((c) => (
-                  <th key={c} scope="col" className={c === 'orbitcrew' ? 'is-us' : undefined}>
-                    {c === 'orbitcrew' ? <span className="lp-th-us"><OrbitMark size={16} />{c}</span> : c}
+                <th scope="col"><span className="lp-sr">{t.compare.colLabel}</span></th>
+                {t.compare.cols.map((c, i) => (
+                  <th key={c} scope="col" className={i === 2 ? 'is-us' : undefined}>
+                    {i === 2 ? <span className="lp-th-us"><OrbitMark size={16} />{c}</span> : c}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {COMPARE.rows.map((r) => (
+              {t.compare.rows.map((r) => (
                 <tr key={r.k}>
                   <th scope="row">{r.k}</th>
                   {r.v.map((v, i) => (
@@ -468,29 +772,26 @@ export function LandingView() {
       </section>
 
       {/* ── Section 8 — Start / 무료 + Claude API 키 ────────── */}
-      <section className="lp-start" id="start">
+      <section className="lp-start" id={id('start')}>
         <div className="lp-start-left lp-reveal">
-          <p className="lp-eyebrow">GET STARTED</p>
-          <h2 className="lp-h3">orbitcrew 는 무료입니다</h2>
+          <p className="lp-eyebrow">{t.start.eyebrow}</p>
+          <h2 className="lp-h3">{t.start.h}</h2>
           <p className="lp-p">
-            구독료도, 별도 결제도 없습니다. 다만 에이전트가 Claude 로 움직이기 때문에
-            <strong> 본인 Claude API 키(Anthropic 계정)</strong>가 필요합니다. AI 사용 요금은 그 계정으로
-            Anthropic 에 직접 내고, 얼마나 썼는지는 앱 안의 사용량 화면에서 바로 봅니다.
+            {t.start.p1}<strong>{t.start.p2}</strong>{t.start.p3}
           </p>
           <ul className="lp-start-perks">
-            <li><Icon name="check" />orbitcrew 이용료 0원 — 구독 · 결제 · 광고 없음</li>
-            <li><Icon name="check" />필요한 것은 Claude API 키 하나 — 암호화 저장, 언제든 교체</li>
-            <li><Icon name="check" />에이전트별 모델 선택, 실측 토큰 + 비용 추정</li>
-            <li><Icon name="check" />오픈소스(AGPL-3.0) — 직접 배포도 가능</li>
+            {t.start.perks.map((p) => (
+              <li key={p}><Icon name="check" />{p}</li>
+            ))}
           </ul>
           {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
           <a className="lp-btn" href="/login">
-            지금 시작하기
+            {t.start.cta}
             <i className="lp-btn-line" />
           </a>
         </div>
         <ol className="lp-start-steps">
-          {START.map((s, i) => (
+          {t.start.steps.map((s, i) => (
             <li key={s.n} className="lp-reveal" style={{ '--d': i } as CSSProperties}>
               <span className="lp-start-n">{s.n}</span>
               <div>
@@ -503,13 +804,13 @@ export function LandingView() {
       </section>
 
       {/* ── Section 9 — FAQ ────────────────────────────────── */}
-      <section className="lp-faq" id="faq">
+      <section className="lp-faq" id={id('faq')}>
         <header className="lp-sec-head lp-reveal">
-          <p className="lp-eyebrow">FAQ</p>
-          <h2 className="lp-h3">자주 묻는 질문</h2>
+          <p className="lp-eyebrow">{t.faq.eyebrow}</p>
+          <h2 className="lp-h3">{t.faq.h}</h2>
         </header>
         <div className="lp-faq-list">
-          {FAQ.map((f, i) => (
+          {t.faq.items.map((f, i) => (
             <details key={f.q} className="lp-faq-item lp-reveal" style={{ '--d': i } as CSSProperties}>
               <summary>
                 <span>{f.q}</span>
@@ -522,7 +823,7 @@ export function LandingView() {
       </section>
 
       {/* ── Section 10 — CTA ───────────────────────────────── */}
-      <section className="lp-cta" id="cta">
+      <section className="lp-cta" id={id('cta')}>
         <div className="lp-cta-bg" aria-hidden="true">
           <div className="lp-stars lp-stars-a" />
           <div className="lp-cta-ring" />
@@ -531,16 +832,14 @@ export function LandingView() {
           <div className="lp-horizon lp-horizon-cta" />
         </div>
         <h2 className="lp-h2 lp-h2-center lp-reveal">
-          <span>START</span>
-          <span><em className="lp-accent">TODAY</em></span>
+          <span>{t.cta.a}</span>
+          <span><em className="lp-accent">{t.cta.b}</em></span>
         </h2>
-        <p className="lp-p lp-p-center lp-reveal">
-          프로젝트 이름과 작업 폴더만 정하면, 매니저가 첫 업무를 만들어 옵니다.
-        </p>
+        <p className="lp-p lp-p-center lp-reveal">{t.cta.p}</p>
         <div className="lp-reveal">
           {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
           <a className="lp-btn" href="/login">
-            orbitcrew 열기
+            {t.cta.btn}
             <i className="lp-btn-line" />
           </a>
         </div>
@@ -551,28 +850,37 @@ export function LandingView() {
           <div className="lp-footer-brand">
             <span className="lp-logo-mark lp-footer-mark"><OrbitMark size={30} /></span>
             <span className="lp-logo-word lp-footer-word">orbitcrew</span>
-            <span className="lp-footer-tag">AI Agent Command Center</span>
+            <span className="lp-footer-tag">{t.footer.tag}</span>
           </div>
-          <nav className="lp-footer-col" aria-label="페이지">
-            <p>제품</p>
-            {NAV_LINKS.map(([label, href]) => (
-              <a key={href} href={href}>{label}</a>
+          <nav className="lp-footer-col" aria-label={t.footer.navLabel}>
+            <p>{t.footer.product}</p>
+            {t.nav.map((n) => (
+              <a key={n.id} href={href(n.id)}>{n.label}</a>
             ))}
           </nav>
-          <nav className="lp-footer-col" aria-label="법적 고지">
-            <p>고지</p>
+          <nav className="lp-footer-col" aria-label={t.footer.legalNavLabel}>
+            <p>{t.footer.legal}</p>
             {LEGAL_LINKS.map((link) => (
               // oxlint-disable-next-line next/no-html-link-for-pages -- 정적 빌드에서는 절대 주소로 치환됩니다 (scripts/build-landing.mjs)
-              <a href={link.href} key={link.href}>{link.label}</a>
+              <a href={link.href} key={link.href}>{legalLabel(link)}</a>
             ))}
-            <a href={`mailto:${COMPANY.email}`}>문의</a>
+            <a href={`mailto:${COMPANY.email}`}>{t.footer.contact}</a>
           </nav>
         </div>
-        <p className="lp-footer-legal">
-          {COMPANY.name} · 대표 {COMPANY.ceo} · 사업자등록번호 {COMPANY.registration} · {COMPANY.address} · {COMPANY.email}
-        </p>
+        <p className="lp-footer-legal">{t.footer.legalLine}</p>
       </footer>
-    </div>
+    </>
+  );
+}
+
+/** 언어 토글 — EN | 한. 실제 전환은 enhanceLanding() 의 클릭 위임이 처리합니다(정적 빌드 공용). */
+function LangToggle({ label }: { label: string }) {
+  return (
+    <fieldset className="lp-lang">
+      <legend className="lp-sr">{label}</legend>
+      <button type="button" className="lp-lang-btn" data-set-lang="en" aria-pressed="false">EN</button>
+      <button type="button" className="lp-lang-btn" data-set-lang="ko" aria-pressed="false">한</button>
+    </fieldset>
   );
 }
 
@@ -588,8 +896,6 @@ function ArrowIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-type IconName = 'key' | 'lock' | 'login' | 'code' | 'globe' | 'chart' | 'board' | 'chat' | 'check';
 
 function Icon({ name }: { name: IconName }) {
   const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -611,34 +917,35 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
-/** 히어로 비주얼 — 매니저 코어를 도는 에이전트 궤도. 영상 대신 쓰는 SVG. */
-function OrbitDiagram() {
-  const chips: { x: number; y: number; t: string; cls: string }[] = [
-    { x: 310, y: 20, t: '리서처', cls: 'lp-node-ink' },
-    { x: 600, y: 310, t: '검토자', cls: 'lp-node-mint' },
-    { x: 310, y: 600, t: '작성자', cls: 'lp-node-brand' },
+/** 히어로 비주얼 — 매니저 코어를 도는 에이전트 궤도. 영상 대신 쓰는 SVG. (uid: 두 언어 트리의 gradient id 충돌 방지) */
+function OrbitDiagram({ chips, uid }: { chips: [string, string, string]; uid: string }) {
+  const nodes: { x: number; y: number; t: string; cls: string }[] = [
+    { x: 310, y: 20, t: chips[0], cls: 'lp-node-ink' },
+    { x: 600, y: 310, t: chips[1], cls: 'lp-node-mint' },
+    { x: 310, y: 600, t: chips[2], cls: 'lp-node-brand' },
   ];
+  const core = `lpCore-${uid}`;
+  const halo = `lpHalo-${uid}`;
   return (
     <svg className="lp-orbit" viewBox="0 0 620 620" role="presentation">
       <defs>
-        <radialGradient id="lpCore" cx="50%" cy="40%" r="60%">
+        <radialGradient id={core} cx="50%" cy="40%" r="60%">
           <stop offset="0%" stopColor="#312e81" />
           <stop offset="100%" stopColor="#0b0b14" />
         </radialGradient>
-        <radialGradient id="lpHalo" cx="50%" cy="50%" r="50%">
+        <radialGradient id={halo} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="var(--lp-indigo)" stopOpacity=".35" />
           <stop offset="60%" stopColor="var(--lp-indigo)" stopOpacity=".08" />
           <stop offset="100%" stopColor="var(--lp-indigo)" stopOpacity="0" />
         </radialGradient>
       </defs>
 
-      <circle cx="310" cy="310" r="300" fill="url(#lpHalo)" />
+      <circle cx="310" cy="310" r="300" fill={`url(#${halo})`} />
 
       {[290, 230, 168, 106].map((r, i) => (
         <circle key={r} cx="310" cy="310" r={r} className={`lp-ring ${i % 2 ? 'lp-ring-dash' : ''}`} style={{ opacity: 0.16 + i * 0.08 }} />
       ))}
 
-      {/* 코어 → 궤도 연결선 (회전 그룹 밖, 정적) */}
       <g className="lp-spokes">
         {[0, 60, 120, 180, 240, 300].map((a) => {
           const rad = (a * Math.PI) / 180;
@@ -655,7 +962,7 @@ function OrbitDiagram() {
       </g>
 
       <g className="lp-spin lp-spin-a">
-        {chips.map((c) => (
+        {nodes.map((c) => (
           <g key={c.t} className="lp-chip-g" transform={`translate(${c.x} ${c.y})`}>
             <circle r="13" className={`lp-node ${c.cls}`} />
             <g className="lp-counter-a">
@@ -676,7 +983,7 @@ function OrbitDiagram() {
         <circle cx="310" cy="478" r="7" className="lp-node lp-node-ink" />
       </g>
 
-      <circle cx="310" cy="310" r="66" fill="url(#lpCore)" />
+      <circle cx="310" cy="310" r="66" fill={`url(#${core})`} />
       <circle cx="310" cy="310" r="66" className="lp-core-ring" />
       <circle cx="310" cy="310" r="90" className="lp-pulse" />
       <circle cx="310" cy="310" r="90" className="lp-pulse lp-pulse-2" />
@@ -687,22 +994,17 @@ function OrbitDiagram() {
 }
 
 /** 어바웃 비주얼 — 카드가 검토 열로 넘어가는 보드. */
-function BoardDiagram() {
-  const cols: { h: string; cards: { t: string; tag: string; who: string }[] }[] = [
-    { h: '대기', cards: [{ t: '경쟁사 조사', tag: '높음', who: '리서처' }, { t: '릴리스 노트', tag: '중간', who: '작성자' }] },
-    { h: '진행', cards: [{ t: '스키마 정리', tag: '높음', who: '개발자' }] },
-    { h: '검토', cards: [{ t: '온보딩 문서', tag: '중간', who: '검토자' }, { t: '가격표 검증', tag: '낮음', who: '검토자' }] },
-  ];
+function BoardDiagram({ b }: { b: Dict['board'] }) {
   return (
     <div className="lp-board">
-      {cols.map((c) => (
-        <div key={c.h} className="lp-board-col">
-          <p className="lp-board-h">{c.h}<span>{c.cards.length}</span></p>
-          {c.cards.map((card) => (
+      {b.cols.map((h, ci) => (
+        <div key={h} className="lp-board-col">
+          <p className="lp-board-h">{h}<span>{b.cards[ci].length}</span></p>
+          {b.cards[ci].map((card) => (
             <div key={card.t} className="lp-board-card">
               <span className="lp-board-t">{card.t}</span>
               <span className="lp-board-meta">
-                <span className={`lp-board-tag lp-tag-${card.tag === '높음' ? 'high' : card.tag === '낮음' ? 'low' : 'mid'}`}>{card.tag}</span>
+                <span className={`lp-board-tag lp-tag-${card.tag}`}>{b.tags[card.tag]}</span>
                 <span className="lp-board-who">{card.who}</span>
               </span>
             </div>
@@ -714,38 +1016,38 @@ function BoardDiagram() {
 }
 
 /** 제품 미리보기 — 앱 화면을 CSS 로 그린 목업(브라우저 프레임 + 사이드바 + 대쉬보드 + 보드 + 대화). */
-function AppMock() {
+function AppMock({ m }: { m: Dict['mock'] }) {
   const bars = [42, 58, 50, 72, 64, 80, 68];
   return (
     <div className="lp-mock">
       <div className="lp-mock-bar" aria-hidden="true">
         <span /><span /><span />
-        <i>app.orbitcrew.ai</i>
+        <i>{m.url}</i>
       </div>
       <div className="lp-mock-body">
         <aside className="lp-mock-side" aria-hidden="true">
           <div className="lp-mock-side-logo"><OrbitMark size={16} /><b>orbitcrew</b></div>
-          {['대쉬보드', '프로젝트', '에이전트', '대화', '사용량', '설정'].map((m, i) => (
-            <span key={m} className={i === 0 ? 'is-on' : undefined}><i />{m}</span>
+          {m.side.map((s, i) => (
+            <span key={s} className={i === 0 ? 'is-on' : undefined}><i />{s}</span>
           ))}
         </aside>
         <div className="lp-mock-main">
           <div className="lp-mock-head">
-            <span className="lp-mock-title">대쉬보드 <em>· 릴리스 준비</em></span>
+            <span className="lp-mock-title">{m.title} <em>· {m.project}</em></span>
             <span className="lp-mock-user" />
           </div>
           <div className="lp-mock-grid">
             <div className="lp-mock-card lp-mock-focus">
-              <p>집중 프로젝트</p>
-              <h4>릴리스 준비</h4>
+              <p>{m.focus}</p>
+              <h4>{m.project}</h4>
               <div className="lp-mock-kpis">
-                <span><b>12</b>전체 업무</span>
-                <span><b>83%</b>검토 도달률</span>
-                <span><b>2.4m</b>평균 실행</span>
+                <span><b>12</b>{m.kpis[0]}</span>
+                <span><b>83%</b>{m.kpis[1]}</span>
+                <span><b>2.4m</b>{m.kpis[2]}</span>
               </div>
             </div>
             <div className="lp-mock-card">
-              <p>주간 업무 처리량</p>
+              <p>{m.weekly}</p>
               <div className="lp-mock-bars">
                 {bars.map((h, i) => (
                   <span key={i}><i style={{ height: `${h}%` }} /><i style={{ height: `${Math.max(18, h - 22)}%` }} /></span>
@@ -753,20 +1055,16 @@ function AppMock() {
               </div>
             </div>
             <div className="lp-mock-card lp-mock-donut-card">
-              <p>업무 상태 분포</p>
+              <p>{m.status}</p>
               <div className="lp-mock-donut"><b>12</b></div>
             </div>
             <div className="lp-mock-card lp-mock-board">
-              <p>TASK 보드 <em>담당자별</em></p>
+              <p>{m.board} <em>{m.boardBy}</em></p>
               <div className="lp-mock-cols">
-                {[
-                  ['리서처', ['경쟁사 조사', '시장 규모']],
-                  ['작성자', ['릴리스 노트']],
-                  ['검토자', ['가격표 검증', '온보딩 문서']],
-                ].map(([h, cards]) => (
-                  <div key={h as string}>
-                    <span className="lp-mock-colh">{h as string}</span>
-                    {(cards as string[]).map((c) => (
+                {m.cols.map(([h, cards]) => (
+                  <div key={h}>
+                    <span className="lp-mock-colh">{h}</span>
+                    {cards.map((c) => (
                       <span key={c} className="lp-mock-task"><i />{c}</span>
                     ))}
                   </div>
@@ -774,10 +1072,10 @@ function AppMock() {
               </div>
             </div>
             <div className="lp-mock-card lp-mock-chat">
-              <p>대화 <em>프로젝트 매니저</em></p>
-              <div className="lp-mock-msg lp-mock-msg-u">가격표 검증 어디까지 됐어?</div>
-              <div className="lp-mock-msg">검토자가 근거 3건 확인했고, 통화 단위 1건만 되돌렸습니다.</div>
-              <div className="lp-mock-input"><span>메시지를 입력하세요</span><i /></div>
+              <p>{m.chat} <em>{m.chatWho}</em></p>
+              <div className="lp-mock-msg lp-mock-msg-u">{m.msgU}</div>
+              <div className="lp-mock-msg">{m.msgA}</div>
+              <div className="lp-mock-input"><span>{m.input}</span><i /></div>
             </div>
           </div>
         </div>
@@ -787,19 +1085,19 @@ function AppMock() {
 }
 
 /** 기능 카드 일러스트 — 토큰 색만 쓰는 작은 SVG. */
-function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
+function FeatureArt({ kind, a }: { kind: ArtKind; a: Dict['art'] }) {
   switch (kind) {
     case 'manager':
       return (
         <svg viewBox="0 0 280 140" className="lp-art">
           <circle cx="60" cy="70" r="24" className="lp-art-core" />
-          <text x="60" y="74" className="lp-art-core-t">PM</text>
+          <text x="60" y="74" className="lp-art-core-t">{a.pm}</text>
           {[24, 70, 116].map((y, i) => (
             <g key={y}>
               <path d={`M84 70 C 130 70, 130 ${y}, 176 ${y}`} className="lp-art-link" style={{ animationDelay: `${i * 0.4}s` }} />
-              <rect x="176" y={y - 13} width="86" height="26" rx="13" className="lp-art-pill" />
+              <rect x="176" y={y - 13} width="96" height="26" rx="13" className="lp-art-pill" />
               <circle cx="192" cy={y} r="6" className={i === 1 ? 'lp-art-dot-mint' : i === 2 ? 'lp-art-dot-brand' : 'lp-art-dot-ink'} />
-              <text x="206" y={y + 4} className="lp-art-pill-t">{['리서처', '검토자', '작성자'][i]}</text>
+              <text x="206" y={y + 4} className="lp-art-pill-t">{a.roles[i]}</text>
             </g>
           ))}
         </svg>
@@ -807,14 +1105,14 @@ function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
     case 'memory':
       return (
         <svg viewBox="0 0 280 140" className="lp-art">
-          {['사용자', '프로젝트', '에이전트', '실행'].map((t, i) => (
+          {a.layers.map((t, i) => (
             <g key={t}>
               <rect x={40 + i * 10} y={18 + i * 26} width={200 - i * 20} height="20" rx="10" className="lp-art-layer" style={{ opacity: 1 - i * 0.18 }} />
               <text x={54 + i * 10} y={32 + i * 26} className="lp-art-layer-t">{t}</text>
             </g>
           ))}
-          <rect x="196" y="18" width="44" height="20" rx="10" className="lp-art-badge" />
-          <text x="218" y="32" className="lp-art-badge-t">승인</text>
+          <rect x="186" y="18" width="54" height="20" rx="10" className="lp-art-badge" />
+          <text x="213" y="32" className="lp-art-badge-t">{a.approve}</text>
         </svg>
       );
     case 'recall':
@@ -823,7 +1121,7 @@ function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
           <rect x="30" y="30" width="220" height="30" rx="15" className="lp-art-search" />
           <circle cx="50" cy="45" r="6" className="lp-art-search-ic" />
           <path d="M54 49l5 5" className="lp-art-search-ic" />
-          <text x="66" y="49" className="lp-art-search-t">가격표 통화</text>
+          <text x="66" y="49" className="lp-art-search-t">{a.query}</text>
           {[0, 1, 2].map((i) => (
             <g key={i}>
               <rect x="30" y={74 + i * 20} width={220 - i * 40} height="12" rx="6" className="lp-art-hit" style={{ opacity: 0.9 - i * 0.28 }} />
@@ -840,7 +1138,7 @@ function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
             <rect key={y} x="58" y={y} width="120" height="8" rx="4" className="lp-art-line" />
           ))}
           <rect x="58" y="86" width="96" height="18" rx="9" className="lp-art-badge" />
-          <text x="106" y="99" className="lp-art-badge-t">근거 3건</text>
+          <text x="106" y="99" className="lp-art-badge-t">{a.evidence}</text>
           <circle cx="212" cy="46" r="16" className="lp-art-check" />
           <path d="M204 46l6 6 10-11" className="lp-art-check-m" />
         </svg>
@@ -855,7 +1153,7 @@ function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
           <circle cx="60" cy="70" r="9" className="lp-art-dot-ink lp-art-mover" />
           <circle cx="222" cy="70" r="9" className="lp-art-dot-mint" />
           <rect x="176" y="18" width="84" height="20" rx="10" className="lp-art-pill" />
-          <text x="218" y="32" className="lp-art-pill-t lp-art-center">승인 대기 1</text>
+          <text x="218" y="32" className="lp-art-pill-t lp-art-center">{a.pending}</text>
         </svg>
       );
     case 'band':
@@ -865,8 +1163,8 @@ function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
           <path d="M0 75 C 90 72, 180 84, 280 72 S 470 66, 560 72" className="lp-art-baseline" />
           <path d="M0 80 C 70 76, 120 90, 180 78 S 300 60, 360 70 S 470 30, 520 26 S 545 24, 560 22" className="lp-art-series" />
           <circle cx="520" cy="26" r="6" className="lp-art-alert" />
-          <rect x="440" y="6" width="96" height="20" rx="10" className="lp-art-badge lp-art-badge-alert" />
-          <text x="488" y="20" className="lp-art-badge-t">밴드 이탈 → 진단</text>
+          <rect x="400" y="6" width="136" height="20" rx="10" className="lp-art-badge lp-art-badge-alert" />
+          <text x="468" y="20" className="lp-art-badge-t">{a.alert}</text>
         </svg>
       );
     default:
@@ -875,7 +1173,7 @@ function FeatureArt({ kind }: { kind: (typeof FEATURES)[number]['art'] }) {
 }
 
 /** 크루 카드 아바타 — 단색 기하 글리프. */
-function CrewGlyph({ tone }: { tone: (typeof CREW)[number]['tone'] }) {
+function CrewGlyph({ tone }: { tone: Tone }) {
   if (tone === 'dash') {
     return (
       <svg viewBox="0 0 40 40" width="40" height="40">
@@ -946,6 +1244,15 @@ const LP_CSS = `
   position:relative;
 }
 .lp *{ box-sizing:border-box; }
+
+/* ── 언어 트리 전환 (루트 data-lang 이 고르는 쪽만 보임) ── */
+.lp-tree{ display:none; }
+.lp[data-lang="en"] > .lp-tree[data-lang="en"],.lp[data-lang="ko"] > .lp-tree[data-lang="ko"]{ display:block; }
+.lp-lang{ margin:0 0 0 auto; min-width:0; display:inline-flex; align-items:center; padding:3px; border:1px solid var(--lp-line); border-radius:var(--lp-r-full); background:#ffffff0a; backdrop-filter:blur(8px); }
+.lp .lp-lang-btn{ appearance:none; border:0; background:transparent; color:var(--lp-muted); font:inherit; font-size:12px; font-weight:600; letter-spacing:.04em; line-height:1; padding:7px 11px; border-radius:var(--lp-r-full); cursor:pointer; transition:background .2s ease,color .2s ease; }
+.lp .lp-lang-btn:hover{ color:var(--lp-ink); }
+.lp .lp-lang-btn.is-on{ background:var(--lp-ink); color:var(--lp-on-cta); }
+.lp-mobile-menu .lp-lang{ margin-left:0; align-self:flex-start; }
 .lp a{ color:inherit; text-decoration:none; }
 .lp :is(section){ scroll-margin-top:72px; position:relative; }
 .lp-sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
@@ -1042,7 +1349,7 @@ const LP_CSS = `
 .lp-nav-links a::after{ content:''; position:absolute; left:0; right:0; bottom:-2px; height:1.5px; border-radius:2px; background:var(--lp-violet); transform:scaleX(0); transform-origin:left; transition:transform .25s var(--lp-ease); }
 .lp-nav-links a:hover{ color:var(--lp-ink); }
 .lp-nav-links a:hover::after{ transform:scaleX(1); }
-.lp .lp-nav-cta{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; background:var(--lp-brand); border:0;
+.lp .lp-nav-cta{ margin-left:14px; display:inline-flex; align-items:center; gap:8px; background:var(--lp-brand); border:0;
   color:var(--lp-on-brand); font-size:14px; font-weight:600; padding:11px 22px; cursor:pointer;
   border-radius:var(--lp-r-full); box-shadow:0 0 24px -6px #ffd02f99; transition:background .2s ease,box-shadow .2s ease; }
 .lp .lp-nav-cta:hover{ background:var(--lp-brand-deep); box-shadow:0 0 32px -4px #ffd02fcc; }
@@ -1385,7 +1692,7 @@ const LP_CSS = `
 /* ── 모바일 ── */
 @media (max-width:700px){
   .lp{ --lp-indent:34px; --lp-nav-h:64px; }
-  .lp .lp-nav-links,.lp .lp-nav-cta{ display:none; }
+  .lp .lp-nav-links,.lp .lp-nav-cta,.lp .lp-nav > .lp-lang{ display:none; }
   .lp-burger{ display:flex; }
   .lp-hero-body{ padding-top:40px; }
   .lp-h1{ font-size:clamp(34px,10.5vw,56px); }
