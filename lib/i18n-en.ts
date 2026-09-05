@@ -23,7 +23,7 @@ export const EN: Record<string, string> = {
   '진행 중 업무 {0}건': '{0} tasks in progress',
 
   // ── 내비게이션·공통 ──
-  'Orbit 홈': 'Orbit home',
+  'Orbitcrew 홈': 'Orbitcrew home',
   '주 메뉴': 'Main menu',
   '대쉬보드': 'Dashboard',
   '프로젝트': 'Projects',
@@ -33,7 +33,7 @@ export const EN: Record<string, string> = {
   '설정': 'Settings',
   '계정': 'Account',
   '워크스페이스': 'Workspace',
-  'Orbit 워크스페이스': 'Orbit workspace',
+  'Orbitcrew 워크스페이스': 'Orbitcrew workspace',
   '팀': 'Team',
   '취소': 'Cancel',
   '저장': 'Save',
@@ -215,7 +215,7 @@ export const EN: Record<string, string> = {
 
   // ── 작업 폴더 ──
   '이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.':
-    'This browser cannot pick folders. Please open Orbit in Chrome or Edge.',
+    'This browser cannot pick folders. Please open Orbitcrew in Chrome or Edge.',
   '파일 {0}개 · 이 브라우저에서 읽을 수 있어요': '{0} files · readable in this browser',
   '읽기 권한이 꺼져 있어요 — 다시 연결하면 복구됩니다': 'Read permission is off — reconnect to restore it',
   '이 브라우저에는 연결이 없어요 — 폴더를 다시 골라 주세요': 'Not linked in this browser — pick the folder again',
@@ -299,7 +299,7 @@ export const EN: Record<string, string> = {
   '이 에이전트가 쓸 AI 모델과 역할을 바꿉니다. 이름은 업무 담당자로 참조되고 있어 변경할 수 없습니다.':
     'Change the AI model and role for this agent. The name is locked because tasks reference it as the assignee.',
   'AI 모델': 'AI model',
-  '기본 모델 사용 (.env 의 ANTHROPIC_MODEL)': 'Use the default model (ANTHROPIC_MODEL in .env)',
+  '기본 모델 사용 ({0})': 'Use the default model ({0})',
   '업무 실행과 대화 모두 이 모델로 호출합니다. 사용량·비용은 &lsquo;사용량&rsquo; 화면에 모델별로 쌓입니다.':
     'Both task runs and chat use this model. Usage and cost are tracked per model on the &lsquo;Usage&rsquo; screen.',
   '역할': 'Role',
@@ -324,7 +324,7 @@ export const EN: Record<string, string> = {
     'Every project has a dedicated manager; the manager brings in the rest of the team as needed.',
   '매니저': 'Manager',
   '이 에이전트는 {0} 로 실행됩니다.': 'This agent runs on {0}.',
-  '.env 의 ANTHROPIC_MODEL 을 그대로 씁니다.': 'Uses ANTHROPIC_MODEL from .env as-is.',
+  '모델을 따로 고르지 않아 기본 모델 {0} 로 실행됩니다.': 'No model was chosen, so this runs on the default model {0}.',
   '기본 모델': 'Default model',
   '{0} 소속': 'On {0}',
   '프로젝트 미지정': 'No project',

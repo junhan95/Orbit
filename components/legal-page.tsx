@@ -27,7 +27,7 @@ export function LegalPage({
         {/* oxlint-disable-next-line next/no-html-link-for-pages -- 랜딩 호스트의 루트로 가는 절대 링크 */}
         <a className="legal-brand" href={COMPANY.site}>
           <OrbitMark size={22} />
-          <span className="legal-word">orbit</span>
+          <span className="legal-word">orbitcrew</span>
         </a>
         <nav className="legal-nav">
           {LEGAL_LINKS.map((link) => (

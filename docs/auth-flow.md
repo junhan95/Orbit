@@ -1,4 +1,4 @@
-# Orbit 접속 흐름 — 로그인·세션·Claude 연결
+# Orbitcrew 접속 흐름 — 로그인·세션·Claude 연결
 
 작성일 2026-09-05 · 구현 범위: 로그인·로그아웃 + BYOK 온보딩
 
@@ -32,7 +32,7 @@ Anthropic 공식 문서 [Legal and compliance › Authentication and credential 
 >
 > Anthropic reserves the right to take measures to enforce these restrictions and may do so without prior notice.
 
-Orbit 은 제3자 앱이므로 세 가지가 모두 막힙니다.
+Orbitcrew 는 제3자 앱이므로 세 가지가 모두 막힙니다.
 
 | 하고 싶었던 것 | 가능 여부 | 대신 |
 |---|---|---|
@@ -49,7 +49,7 @@ Orbit 은 제3자 앱이므로 세 가지가 모두 막힙니다.
 
 | 단계 | 경로 | 누가 | 무엇 |
 |---|---|---|---|
-| 랜딩 | `/landing` | 공개 | "시작하기 / 앱 열기 / Orbit 열기" CTA 3개 → 모두 `/login` |
+| 랜딩 | `/landing` | 공개 | "시작하기 / 앱 열기 / Orbitcrew 열기" CTA 3개 → 모두 `/login` |
 | 로그인 | `/login` | 공개 | 설정된 제공자 버튼만 표시. 이미 로그인돼 있으면 middleware 가 `/` 로 보냄 |
 | 제공자 인증 | Google / GitHub | 외부 | 계정 선택·동의 |
 | 콜백 | `/api/auth/callback/{provider}` | 서버 | code→토큰→프로필, 사용자 upsert, 세션 발급, `/` 로 302 |

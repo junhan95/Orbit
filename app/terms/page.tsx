@@ -3,8 +3,8 @@ import { Clause, LegalPage } from '@/components/legal-page';
 import { COMPANY } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Orbit — 서비스 이용약관',
-  description: 'Orbit 서비스 이용에 적용되는 약관입니다.',
+  title: 'Orbitcrew.ai — 서비스 이용약관',
+  description: 'Orbitcrew 서비스 이용에 적용되는 약관입니다.',
 };
 
 /**
@@ -33,10 +33,10 @@ export default function TermsPage() {
         n="1"
         title="정의"
         titleEn="Definitions"
-        en={<p>&quot;Service&quot; is Orbit at {COMPANY.site} and {COMPANY.app}. &quot;Agent&quot; is an AI assistant that Orbit runs on your instruction. &quot;API key&quot; is your own Anthropic API key that you register to power agents. &quot;Content&quot; is anything you enter or upload and anything agents produce for you.</p>}
+        en={<p>&quot;Service&quot; is Orbitcrew at {COMPANY.site} and {COMPANY.app}. &quot;Agent&quot; is an AI assistant that Orbitcrew runs on your instruction. &quot;API key&quot; is your own Anthropic API key that you register to power agents. &quot;Content&quot; is anything you enter or upload and anything agents produce for you.</p>}
       >
         <ul>
-          <li>&quot;서비스&quot;: {COMPANY.site} 및 {COMPANY.app} 에서 제공되는 Orbit 웹 애플리케이션</li>
+          <li>&quot;서비스&quot;: {COMPANY.site} 및 {COMPANY.app} 에서 제공되는 Orbitcrew 웹 애플리케이션</li>
           <li>&quot;이용자&quot;: 이 약관에 따라 서비스를 이용하는 사람</li>
           <li>&quot;에이전트&quot;: 이용자의 지시에 따라 서비스가 실행하는 AI 보조자(프로젝트 매니저, 직무 에이전트 등)</li>
           <li>&quot;API 키&quot;: 이용자가 에이전트 실행을 위해 서비스에 등록하는 이용자 본인의 Anthropic API 키</li>
@@ -74,7 +74,7 @@ export default function TermsPage() {
         n="4"
         title="서비스의 내용"
         titleEn="The service"
-        en={<p>Orbit lets you create projects, have a manager agent recruit specialist agents, assign tasks, chat with agents, and review results. Features may change over time. The service is currently provided free of charge; we will announce any paid plans in advance.</p>}
+        en={<p>Orbitcrew lets you create projects, have a manager agent recruit specialist agents, assign tasks, chat with agents, and review results. Features may change over time. The service is currently provided free of charge; we will announce any paid plans in advance.</p>}
       >
         <p>
           서비스는 이용자가 프로젝트를 만들면 프로젝트 매니저 에이전트가 필요한 직무 에이전트를 합류시키고, 업무를 나누어 실행하고, 결과를 검토해 보고하는
@@ -88,8 +88,8 @@ export default function TermsPage() {
         titleEn="Your API key and costs (BYOK)"
         en={
           <>
-            <p>Agents run on the Anthropic API using <b>your own API key</b>. All usage billed to that key is your responsibility and is paid by you to Anthropic under Anthropic&apos;s terms — Orbit does not charge for model usage and cannot refund it. Orbit shows estimated usage for convenience; Anthropic&apos;s invoice is authoritative.</p>
-            <p>We store your key encrypted and use it only to make requests you initiate. You may delete it at any time. You must comply with Anthropic&apos;s Usage Policy when using the key through Orbit.</p>
+            <p>Agents run on the Anthropic API using <b>your own API key</b>. All usage billed to that key is your responsibility and is paid by you to Anthropic under Anthropic&apos;s terms — Orbitcrew does not charge for model usage and cannot refund it. Orbitcrew shows estimated usage for convenience; Anthropic&apos;s invoice is authoritative.</p>
+            <p>We store your key encrypted and use it only to make requests you initiate. You may delete it at any time. You must comply with Anthropic&apos;s Usage Policy when using the key through Orbitcrew.</p>
           </>
         }
       >

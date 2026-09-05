@@ -1,8 +1,8 @@
-# Orbit
+# Orbitcrew.ai
 
 **AI 에이전트 협업 워크스페이스.** 프로젝트마다 매니저 에이전트 한 명이 붙어, 필요한 직무의 에이전트를 채용하고 업무를 나누고 결과를 검토해 보고합니다. 사람은 상태를 손으로 옮기지 않습니다 — 대화로 지시하고, 루프 위에서 승인·거절만 합니다.
 
-> Orbit is an AI agent command center: one manager agent per project recruits specialists, delegates tasks, reviews their reports, and keeps memory across runs. Humans steer by chat and approve at the gates.
+> Orbitcrew is an AI agent command center: one manager agent per project recruits specialists, delegates tasks, reviews their reports, and keeps memory across runs. Humans steer by chat and approve at the gates.
 
 ---
 

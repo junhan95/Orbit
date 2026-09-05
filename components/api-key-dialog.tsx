@@ -75,7 +75,7 @@ export function ApiKeyDialog({ open, state, onOpenChange, onSaved, onNotice }: {
       <DialogHeader>
         <DialogTitle><KeyRound size={16} /> {replacing ? t('Anthropic API 키 바꾸기') : t('Anthropic API 키 연결')}</DialogTitle>
         <DialogDescription>
-          {t('Orbit 은 Claude 계정이 아니라 본인의 Anthropic API 키로 에이전트를 돌립니다. 사용량은 본인 Console 에 청구되고, 이 앱은 사용자별 토큰·비용만 실측합니다.')}
+          {t('Orbitcrew 는 Claude 계정이 아니라 본인의 Anthropic API 키로 에이전트를 돌립니다. 사용량은 본인 Console 에 청구되고, 이 앱은 사용자별 토큰·비용만 실측합니다.')}
         </DialogDescription>
       </DialogHeader>
 

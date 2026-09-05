@@ -5,7 +5,7 @@ import { OrbitMark } from '@/components/orbit-mark';
 import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
 
 /**
- * Orbit 랜딩페이지.
+ * Orbitcrew 랜딩페이지.
  *
  * 레이아웃 문법은 Targo 히어로 스펙(계단식 헤드라인, 챔퍼 코너 버튼, 왼쪽 스크림 +
  * 오른쪽 비주얼, 오른쪽 여백 없는 어바웃 2단)을 그대로 따르고,
@@ -78,7 +78,7 @@ export function LandingView() {
         <nav className="lp-nav">
           <a className="lp-logo" href="#top">
             <span className="lp-logo-mark"><OrbitMark size={38} /></span>
-            <span className="lp-logo-word">orbit</span>
+            <span className="lp-logo-word">orbitcrew</span>
           </a>
 
           <div className="lp-nav-links">
@@ -150,7 +150,7 @@ export function LandingView() {
             <span className="lp-in2 lp-accent">ORBIT</span>
           </h2>
           <p className="lp-p">
-            Orbit 은 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을
+            Orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을
             되찾아 읽고, 근거를 붙여 보고하고, 서로의 결과를 검토합니다. 사람은 상태를 옮기지 않습니다.
             루프 위에서 승인하고, 거절하고, 방향만 잡습니다.
           </p>
@@ -211,7 +211,7 @@ export function LandingView() {
         </p>
         {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
         <a className="lp-btn" href="/login">
-          Orbit 열기
+          Orbitcrew 열기
           <i className="lp-btn-line" />
         </a>
       </section>
@@ -219,7 +219,7 @@ export function LandingView() {
       <footer className="lp-footer">
         <div className="lp-footer-row">
           <span className="lp-footer-brand">
-            <span className="lp-logo-word lp-footer-word">orbit</span>
+            <span className="lp-logo-word lp-footer-word">orbitcrew</span>
             <span>AI Agent Command Center</span>
           </span>
           <nav className="lp-footer-links" aria-label="법적 고지">
@@ -272,7 +272,7 @@ function OrbitDiagram() {
       <circle cx="310" cy="310" r="66" className="lp-core-ring" />
       <circle cx="310" cy="310" r="90" className="lp-pulse" />
       <text x="310" y="305" className="lp-core-t1">MANAGER</text>
-      <text x="310" y="325" className="lp-core-t2">orbit</text>
+      <text x="310" y="325" className="lp-core-t2">orbitcrew</text>
     </svg>
   );
 }
@@ -479,7 +479,7 @@ const LP_CSS = `
 .lp-core-ring{ fill:none; stroke:rgba(255,255,255,.22); stroke-width:1; }
 .lp-pulse{ fill:none; stroke:var(--lp-brand); stroke-width:1; opacity:.5; animation:lp-pulse 3.6s ease-out infinite; transform-origin:310px 310px; }
 .lp-core-t1{ fill:#fff; font-size:13px; font-weight:700; letter-spacing:.16em; text-anchor:middle; }
-.lp-core-t2{ fill:var(--lp-brand); font-size:13px; letter-spacing:-.02em; text-anchor:middle; }
+.lp-core-t2{ fill:var(--lp-brand); font-size:11.5px; letter-spacing:-.02em; text-anchor:middle; }
 @keyframes lp-rot{ to{ transform:rotate(360deg); } }
 @keyframes lp-pulse{ 0%{ transform:scale(.82); opacity:.55; } 70%{ transform:scale(1.18); opacity:0; } 100%{ opacity:0; } }
 @media (prefers-reduced-motion:reduce){ .lp-spin,.lp-pulse{ animation:none; } }

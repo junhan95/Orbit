@@ -57,11 +57,11 @@ export function LoginView() {
 
   return <main className="login-page">
     {/* oxlint-disable-next-line next/no-html-link-for-pages -- 로그인→랜딩은 다른 레이아웃 트리라 전체 로드가 맞습니다 */}
-    <a className="login-brand" href="/landing"><span className="brand-mark"><OrbitMark size={26} /></span><b>Orbit</b></a>
+    <a className="login-brand" href="/landing"><span className="brand-mark"><OrbitMark size={26} /></span><b>Orbitcrew</b></a>
 
     <section className="login-card">
       <span className="section-kicker">Sign in</span>
-      <h1>Orbit 에 들어가기</h1>
+      <h1>Orbitcrew 에 들어가기</h1>
       <p className="login-lead">프로젝트 매니저 에이전트가 팀을 꾸리고, 일을 나누고, 결과를 검토해 보고합니다.</p>
 
       {error ? <p className="login-error" role="alert">{error}</p> : null}
