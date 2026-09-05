@@ -1,0 +1,12 @@
+{
+  "name": "orbit",
+  "d1": {
+    "database_name": "orbit",
+    "database_id": "98f60761-d4d5-4d17-bd72-070486385b56"
+  },
+  "vars": {
+    "AUTH_MODE": "oauth",
+    "GOOGLE_CLIENT_ID": "715945586418-4hoaqsn4gmdbiuv65hvr3fbvj0krdtle.apps.googleusercontent.com",
+    "APP_URL": "https://orbit.nanijun.workers.dev"
+  }
+}

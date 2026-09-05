@@ -83,7 +83,10 @@ function run(sql, { json = false } = {}) {
   return wrangler(['--file', tmp], { json });
 }
 function query(sql) {
-  const out = run(sql, { json: true });
+  // 원격 D1은 --file 이 import API(업로드)로 처리돼 SELECT 결과 행이 오지 않으므로 --command 로 조회한다.
+  const out = remote
+    ? wrangler(['--command', process.platform === 'win32' ? JSON.stringify(sql) : sql], { json: true })
+    : run(sql, { json: true });
   const start = out.indexOf('[');
   if (start < 0) throw new Error(`wrangler --json 출력을 해석할 수 없습니다:\n${out}`);
   const parsed = JSON.parse(out.slice(start));

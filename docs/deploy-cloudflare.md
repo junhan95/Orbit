@@ -49,6 +49,8 @@ node scripts/deploy.mjs migrate
 ```
 확인: `적용됨 N개, 미적용 0개` 로 끝납니다. (내부적으로 `wrangler d1 execute DB --remote` 를 저널 순서대로 돌립니다.)
 
+원격 상태 확인은 `node scripts/migrate.mjs --status --remote --config=dist/server/wrangler.deploy.json` 으로 합니다(`--check`는 로컬 임시 DB 전용이라 `--remote`와 같이 쓰지 않습니다).
+
 ### 5단계 — 첫 배포
 ```
 node scripts/deploy.mjs deploy
