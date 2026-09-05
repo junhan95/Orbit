@@ -153,5 +153,8 @@ GITHUB_CLIENT_ID=…  GITHUB_CLIENT_SECRET=…
 - [x] `npm run db:migrate:check` — 0019 포함 빈 DB 전체 적용
 - [x] `tsc --noEmit` — async 전환 후 타입 오류 없음
 - [x] 로컬 모드 회귀 — `AUTH_MODE` 없이 예전과 동일하게 동작
-- [ ] OAuth 모드 실검증 — 제공자 클라이언트 ID/시크릿 발급 후 로그인→앱→로그아웃 한 바퀴
+- [x] OAuth 모드 실검증 — Google 클라이언트(테스트 상태) 발급, GitHub Pages 랜딩 → localhost 로그인 → 앱 → 로그아웃 한 바퀴 (2026-09-05). users/sessions/user_profiles 행 생성 확인
+- [ ] GitHub 제공자 실검증
+- [ ] 구글 앱 게시(프로덕션) — 테스트 상태에서는 등록한 테스트 사용자만 로그인 가능
+- [ ] 앱 배포(Cloudflare Workers) 후 리디렉션 URI·LANDING_APP_URL 을 실제 주소로
 - [ ] BYOK 온보딩 (§6)
