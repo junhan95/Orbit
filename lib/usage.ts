@@ -1,6 +1,6 @@
 import type { ClaudeResult } from './claude';
 
-export type UsageKind = 'agent_run' | 'chat' | 'memory_review' | 'plan' | 'compaction';
+export type UsageKind = 'agent_run' | 'chat' | 'memory_review' | 'plan' | 'compaction' | 'review';
 
 /**
  * Claude 호출 1건의 사용량을 usage_events 에 남기는 prepared statement 를 만듭니다.

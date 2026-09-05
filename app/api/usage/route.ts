@@ -83,7 +83,7 @@ export async function GET(request: Request) {
     return { date: key, ...(byDay.get(key) ?? emptyBucket()) };
   });
 
-  const kindLabels: Record<string, string> = { agent_run: '에이전트 실행', chat: '에이전트 대화', memory_review: '기억 리뷰', plan: '계획 수립', compaction: '대화 압축' };
+  const kindLabels: Record<string, string> = { agent_run: '에이전트 실행', chat: '에이전트 대화', memory_review: '기억 리뷰', plan: '계획 수립', compaction: '대화 압축', review: '결과 검토' };
   const toList = <T extends string>(map: Map<string, Bucket>, field: T) =>
     [...map.entries()]
       .map(([key, bucket]) => ({ [field]: key, ...bucket }))

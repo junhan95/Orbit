@@ -5,12 +5,12 @@ import { recallDocUpsert } from '@/lib/recall';
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 type TaskRow = {
-  id: string; title: string; label: string; owner: string; status: string; due: number | null;
-  accent: string; result: string | null; summary: string | null; description: string; blockedReason: string | null; projectId: string | null;
+  id: string; title: string; label: string; owner: string; status: string; priority: string;
+  accent: string; result: string | null; summary: string | null; description: string; blockedReason: string | null; reviewVerdict: string | null; projectId: string | null;
 };
 type FieldRow = { id: string; projectId: string; name: string; type: string; options: string; showOnCard: number; position: number; createdBy: string };
 
-const SELECT_TASK = `SELECT id, title, label, owner, status, due, accent, result, summary, description, blocked_reason AS blockedReason, project_id AS projectId
+const SELECT_TASK = `SELECT id, title, label, owner, status, priority, accent, result, summary, description, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId
   FROM tasks WHERE id = ? AND user_id = ?`;
 
 /** GET /api/tasks/:id/detail — 상세 패널이 필요한 모든 것을 한 번에 돌려줍니다. */
@@ -52,7 +52,7 @@ export async function GET(_request: Request, context: RouteContext) {
 /**
  * PATCH /api/tasks/:id/detail — 상세 패널에서 바뀌는 것들을 한 번에 저장합니다.
  *   { description?, values?: { [fieldId]: string | number | boolean | null } }
- * 태스크의 title/status/owner/due/label 은 기존 /api/tasks/:id 를 그대로 씁니다.
+ * 태스크의 title/status/owner/priority/label 은 기존 /api/tasks/:id 를 그대로 씁니다.
  */
 export async function PATCH(request: Request, context: RouteContext) {
   const user = getCurrentUser();

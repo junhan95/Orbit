@@ -1,16 +1,17 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
-import { isTaskStatus } from '@/lib/due';
+import { isPriority } from '@/lib/priority';
+import { isTaskStatus } from '@/lib/task-status';
 import { recallDocDelete, recallDocUpsert } from '@/lib/recall';
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string;
-  due: number | null; accent: string; result: string | null; summary: string | null; blockedReason: string | null; projectId: string | null;
+  priority: string; accent: string; result: string | null; summary: string | null; blockedReason: string | null; reviewVerdict: string | null; projectId: string | null;
 };
 
-const SELECT_TASK = 'SELECT id, title, label, owner, status, due, accent, result, summary, blocked_reason AS blockedReason, project_id AS projectId FROM tasks WHERE id = ? AND user_id = ?';
+const SELECT_TASK = 'SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId FROM tasks WHERE id = ? AND user_id = ?';
 
 export async function PATCH(request: Request, context: RouteContext) {
   const user = getCurrentUser();
@@ -36,16 +37,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     columns.push('status = ?'); values.push(body.status);
     // 사람이 상태를 직접 옮기면 '막힘' 표시는 해제합니다 (다음 실행 컨텍스트에는 댓글로 남은 사유가 여전히 보입니다).
     if (existing.blockedReason) { columns.push('blocked_reason = ?'); values.push(null); }
+    // 사람이 상태를 옮기면 이전 검토 판정도 지웁니다 (새 결과에 새 검토).
+    if (existing.reviewVerdict) { columns.push('review_verdict = ?'); values.push(null); }
   }
   if (body.label !== undefined) {
     if (typeof body.label !== 'string' || !body.label.trim()) return Response.json({ error: '분류를 입력해 주세요.' }, { status: 400 });
     columns.push('label = ?'); values.push(body.label.trim().slice(0, 20));
   }
-  if (body.due !== undefined) {
-    if (body.due !== null && (typeof body.due !== 'number' || !Number.isFinite(body.due))) {
-      return Response.json({ error: '마감일 형식이 올바르지 않습니다.' }, { status: 400 });
-    }
-    columns.push('due = ?'); values.push(body.due === null ? null : Math.trunc(body.due as number));
+  if (body.priority !== undefined) {
+    if (!isPriority(body.priority)) return Response.json({ error: '중요도는 높음·중간·낮음 중 하나여야 합니다.' }, { status: 400 });
+    columns.push('priority = ?'); values.push(body.priority);
   }
   if (body.owner !== undefined) {
     if (typeof body.owner !== 'string' || !body.owner.trim()) return Response.json({ error: '담당 에이전트를 지정해 주세요.' }, { status: 400 });

@@ -248,3 +248,22 @@ DELETE /api/skills/:id
 - 사이드 메뉴 **스킬** 탭(기억 탭 옆). 목록은 전역 / 프로젝트별 그룹, 각 행에 이름·설명·`createdBy`(사용자/에이전트 이름)·`uses` 횟수. 클릭하면 본문(마크다운) 편집.
 - 실행 결과 카드에 `skillsUsed` 가 있으면 "📘 스킬 사용: 릴리스 노트 작성", `skillsSaved` 가 있으면 "📘 스킬 저장" 배지.
 - 에이전트가 만든 스킬(`createdBy !== 'user'`)은 살짝 다른 색으로 — 사람이 훑어보고 다듬으라는 신호.
+
+## 11. 검토 에이전트와 검증 근거 (AI-Native SDLC 플레이북 적용 1·3번)
+
+### 서버가 새로 하는 일
+
+- **`complete_task.proof`**: 에이전트가 완료 보고 때 "무엇으로 검증했는지"(확인한 파일·실행한 명령·출처·검토한 댓글)를 1~5개 제출합니다. 실행 댓글에 `검증 근거:` 목록으로 붙고, 없으면 `⚠️ 검증 근거 없음`. 메타데이터에 `proof: string[]`, `unverified: boolean`.
+- **자동 검토**: 실행이 '검토' 열로 가면 백그라운드에서 **작성자가 아닌 다른 에이전트**(프로젝트 팀의 QA → 팀의 다른 에이전트 → 그 외)가 네 패스(버그·스펙·정책·근거)로 검토해 댓글 `🔍 검토 — 승인 가능 | 수정 요청 (Important n · Nit m)` 을 남기고 `tasks.review_verdict`('approve' | 'changes_requested')를 기록합니다(마이그레이션 `0015`). Important 가 하나라도 있으면 verdict 는 규칙상 changes_requested. Nit 은 카드당 5개까지.
+- **발견은 상태를 바꾸지 않습니다.** 카드는 '검토' 열에 그대로 있고 승인은 사람이 합니다. 다시 실행하면 검토 댓글의 Important 가 지시로 전달됩니다(run-loop 가 🔍 댓글을 "반드시 해소"로 안내).
+- 검토 정책은 스킬 이름 **`검토 정책`**(프로젝트 또는 전역)이 있으면 그 본문을 씁니다 — 플레이북의 `REVIEW.md`. 없으면 기본 정책(lib/reviewer.ts `DEFAULT_REVIEW_POLICY`).
+- 수동 재검토: `POST /api/tasks/:id/review` → `{ review: { reviewer, verdict, summary, findings[{severity, pass, message, location?}], hiddenNits } }`. 비용은 사용량 `결과 검토` 종류.
+- `/api/tasks`, `/api/tasks/:id`, `/api/tasks/:id/detail` 응답에 `reviewVerdict` 추가. 사람이 상태를 옮기면 NULL 로 초기화.
+
+### 제안 UI
+
+- 검토 열 카드에 verdict 배지: `approve` → 초록 "검토 통과", `changes_requested` → 주황 "수정 요청 n건", 없음 → 회색 "검토 중…"(백그라운드 검토가 보통 30~60초 걸립니다).
+- 상세 패널 댓글 중 `🔍 검토` 로 시작하는 에이전트 댓글은 접힘 카드로(Important 는 펼침, Nit 은 접힘). 하단 버튼 [승인(완료로 이동)] [수정 요청 반영해 다시 실행] [다시 검토].
+- 실행 결과 카드의 `⚠️ 검증 근거 없음` 은 눈에 띄게 — 플레이북에서 "완료 = 검증 포함"이 핵심 원칙입니다.
+
+검증(2026-09-05): Bolt 가 실제 파일을 못 본 채 일반 지식으로 절차를 쓰고 completed 로 보고하자, 검토자가 스펙 불일치·근거 없음·추측 명령을 Important 3건으로 잡아 `changes_requested` 를 냈습니다. proof 목록에는 "파일은 확인 못 함"이 그대로 드러났습니다.

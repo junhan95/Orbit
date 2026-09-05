@@ -78,7 +78,7 @@ export async function describeTaskCard(db: D1Database, userId: string, task: Tas
       const who = comment.authorKind === 'user' ? `👤 ${comment.author}` : `🤖 ${comment.author}`;
       return `- ${formatWhen(comment.createdAt)} ${who}: ${clip(comment.content.replace(/\s+/g, ' '), COMMENT_MAX)}`;
     });
-    parts.push(`\n### 댓글 (오래된 순)\n사람(👤)이 남긴 댓글은 지시입니다. 이전 시도의 결론과 다르면 댓글을 우선하세요.\n${lines.join('\n')}`);
+    parts.push(`\n### 댓글 (오래된 순)\n사람(👤)이 남긴 댓글은 지시입니다. 이전 시도의 결론과 다르면 댓글을 우선하세요.\n🔍 검토 댓글의 Important 항목은 이번 실행에서 반드시 해소하고, 무엇을 어떻게 고쳤는지 요약에 적으세요.\n${lines.join('\n')}`);
   }
 
   return parts.join('\n');
@@ -91,7 +91,11 @@ export function agentCommentInsert(db: D1Database, params: { userId: string; tas
 }
 
 /** 실행 결과 댓글 본문: 막힘이면 사유와 필요한 것, 아니면 요약 + 후속 제안 */
-export function formatRunComment(params: { blocked: boolean; summary: string; blockedReason: string | null; nextActions: string[]; createdTasks: { title: string; owner: string }[] }): string {
+export function formatRunComment(params: {
+  blocked: boolean; summary: string; blockedReason: string | null; nextActions: string[]; createdTasks: { title: string; owner: string }[];
+  /** complete_task 의 proof — 무엇으로 검증했는지. 완료인데 비어 있으면 근거 없음으로 표시 */
+  proof?: string[];
+}): string {
   const lines: string[] = [];
   if (params.blocked) {
     lines.push(`⛔ 진행 불가 — ${params.blockedReason || '사유 미기재'}`);
@@ -99,6 +103,8 @@ export function formatRunComment(params: { blocked: boolean; summary: string; bl
     lines.push('', '답을 이 카드의 댓글로 남기고 다시 실행해 주세요.');
   } else {
     lines.push(`✅ ${params.summary || '실행을 마쳤습니다.'}`);
+    const proof = params.proof ?? [];
+    lines.push('', proof.length ? '검증 근거:' : '⚠️ 검증 근거 없음 — 무엇으로 확인했는지 제출되지 않았습니다.', ...proof.map((item) => `- ${item}`));
   }
   if (params.createdTasks.length) {
     lines.push('', '만든 후속 카드:', ...params.createdTasks.map((task) => `- ${task.title} → ${task.owner}`));

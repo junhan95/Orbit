@@ -29,8 +29,8 @@ export const tasks = sqliteTable('tasks', {
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   label: text('label').notNull().default('신규'), owner: text('owner').notNull().default('Nori'),
   status: text('status').notNull().default('대기'),
-  // epoch milliseconds. NULL 이면 '일정 미정'.
-  due: integer('due'),
+  // 중요도 — '높음' | '중간' | '낮음'. 마감일 대신 이 값이 우선순위를 정합니다 (lib/priority.ts).
+  priority: text('priority').notNull().default('중간'),
   accent: text('accent').notNull().default('#aa2d00'), result: text('result'),
   // Asana 식 태스크 본문. 사용자가 적거나 에이전트가 채웁니다.
   description: text('description').notNull().default(''),
@@ -38,11 +38,13 @@ export const tasks = sqliteTable('tasks', {
   summary: text('summary'),
   // 마지막 실행이 blocked 로 끝났을 때의 사유. 다음 실행이 성공하거나 사람이 상태를 바꾸면 NULL.
   blockedReason: text('blocked_reason'),
+  // 검토 에이전트의 마지막 판정 'approve' | 'changes_requested' (lib/reviewer.ts). 발견은 상태를 바꾸지 않습니다.
+  reviewVerdict: text('review_verdict'), reviewedAt: integer('reviewed_at'),
   createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
 }, (table) => [
   index('idx_tasks_user_status').on(table.userId, table.status),
   index('idx_tasks_user_created').on(table.userId, table.createdAt),
-  index('idx_tasks_user_due').on(table.userId, table.due),
+  index('idx_tasks_user_priority').on(table.userId, table.priority),
 ]);
 
 export const projectAgents = sqliteTable('project_agents', {

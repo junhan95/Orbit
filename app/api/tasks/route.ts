@@ -1,15 +1,17 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
-import { isTaskStatus } from '@/lib/due';
+import { PRIORITY_ORDER_SQL, isPriority } from '@/lib/priority';
+import { isTaskStatus } from '@/lib/task-status';
 import { recallDocUpsert } from '@/lib/recall';
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string;
-  due: number | null; accent: string; result: string | null; summary: string | null; blockedReason: string | null; projectId: string | null;
+  priority: string; accent: string; result: string | null; summary: string | null; blockedReason: string | null; reviewVerdict: string | null; projectId: string | null;
 };
 
-const SELECT_TASKS = 'SELECT id, title, label, owner, status, due, accent, result, summary, blocked_reason AS blockedReason, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY created_at ASC';
-const SELECT_PROJECT_TASKS = 'SELECT id, title, label, owner, status, due, accent, result, summary, blocked_reason AS blockedReason, project_id AS projectId FROM tasks WHERE user_id = ? AND project_id = ? ORDER BY created_at ASC';
+// 중요도 높은 카드가 위에 오고, 같은 중요도면 만든 순서를 지킵니다.
+const SELECT_TASKS = `SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC`;
+const SELECT_PROJECT_TASKS = `SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId FROM tasks WHERE user_id = ? AND project_id = ? ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC`;
 
 /**
  * 업무 목록.
@@ -29,14 +31,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = getCurrentUser();
   const body = await request.json().catch(() => null) as {
-    title?: unknown; owner?: unknown; label?: unknown; due?: unknown; status?: unknown; projectId?: unknown; description?: unknown;
+    title?: unknown; owner?: unknown; label?: unknown; priority?: unknown; status?: unknown; projectId?: unknown; description?: unknown;
   } | null;
 
   if (typeof body?.title !== 'string' || !body.title.trim() || body.title.trim().length > 100) {
     return Response.json({ error: '업무 이름은 1~100자로 입력해 주세요.' }, { status: 400 });
   }
-  if (body.due !== undefined && body.due !== null && (typeof body.due !== 'number' || !Number.isFinite(body.due))) {
-    return Response.json({ error: '마감일 형식이 올바르지 않습니다.' }, { status: 400 });
+  if (body.priority !== undefined && !isPriority(body.priority)) {
+    return Response.json({ error: '중요도는 높음·중간·낮음 중 하나여야 합니다.' }, { status: 400 });
   }
   if (body.status !== undefined && !isTaskStatus(body.status)) {
     return Response.json({ error: '업무 상태가 올바르지 않습니다.' }, { status: 400 });
@@ -71,19 +73,20 @@ export async function POST(request: Request) {
     label: typeof body.label === 'string' && body.label.trim() ? body.label.trim().slice(0, 20) : '신규',
     owner: agent.name,
     status: isTaskStatus(body.status) ? body.status : '대기',
-    due: typeof body.due === 'number' ? Math.trunc(body.due) : null,
+    priority: isPriority(body.priority) ? body.priority : '중간',
     accent: agent.color,
     result: null,
     summary: null,
     blockedReason: null,
+    reviewVerdict: null,
     projectId,
   };
 
   const description = typeof body.description === 'string' ? body.description.slice(0, 8000) : '';
   const now = Date.now();
   await db.batch([
-    db.prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(task.id, user.userId, task.title, task.label, task.owner, task.status, task.due, task.accent, task.projectId, description, now, now),
+    db.prepare('INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(task.id, user.userId, task.title, task.label, task.owner, task.status, task.priority, task.accent, task.projectId, description, now, now),
     recallDocUpsert(db, { userId: user.userId, kind: 'task', refId: task.id, projectId: task.projectId, agentName: task.owner, title: task.title, content: `[${task.label}] ${task.title} — 담당 ${task.owner}`, createdAt: now }),
   ]);
   await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ? AND user_id = ?').bind(now, task.projectId, user.userId).run();

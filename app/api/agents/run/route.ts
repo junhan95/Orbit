@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { runClaudeAgent, type ToolDefinition } from '@/lib/claude';
-import { formatDue } from '@/lib/due';
+import { PRIORITY_HINT, toPriority } from '@/lib/priority';
 import {
   MANAGER_TOOLS, MANAGER_TOOL_NAMES, createManagerLog, executeManagerTool, loadMembers, renderTeam,
   type ManagerContext,
@@ -10,12 +10,14 @@ import { MEMORY_GUIDANCE, MEMORY_TOOL, executeMemoryTool, loadMemoryScopes, rend
 import { runInBackground, runMemoryReview } from '@/lib/memory-review';
 import { resolveAgentModel } from '@/lib/models';
 import { RECALL_TOOL, executeRecallTool, recallDocUpsert } from '@/lib/recall';
+import { runTaskReview } from '@/lib/reviewer';
 import { agentCommentInsert, checkCircuitBreaker, describeTaskCard, formatRunComment } from '@/lib/run-loop';
+import { SAVE_SKILL_TOOL, SKILL_GUIDANCE, USE_SKILL_TOOL, executeSkillTool, listSkills, renderSkillIndex, type SkillToolContext } from '@/lib/skills';
 import { TASK_TOOLS, TASK_TOOL_NAMES, createTaskToolLog, describeFields, executeTaskTool, type TaskToolContext } from '@/lib/task-tools';
 import { usageInsert } from '@/lib/usage';
 
 type TaskRow = {
-  id: string; title: string; label: string; owner: string; status: string; due: number | null; projectId: string | null;
+  id: string; title: string; label: string; owner: string; status: string; priority: string; projectId: string | null;
   description: string | null; blockedReason: string | null; updatedAt: number;
 };
 type ProjectRow = { id: string; name: string; description: string; status: string };
@@ -39,6 +41,7 @@ const COMPLETE_TOOL: ToolDefinition = {
     '업무를 마치면서 결과를 구조화해 보고합니다. 실행의 마지막에 반드시 한 번 호출하세요.',
     "정보가 부족해 제대로 진행할 수 없으면 추측으로 채우지 말고 status='blocked' 로 무엇이 필요한지 밝히세요.",
     '작업 중 발견한 후속 업무 중 카드로 만든 것은 create_task 로 이미 처리했을 테니, 여기 next_actions 에는 사람이 판단해야 하는 것만 적으세요.',
+    'proof 에는 결과를 무엇으로 검증했는지 적으세요. 검증 없이 완료라고 보고하지 마세요.',
   ].join(' '),
   input_schema: {
     type: 'object',
@@ -47,6 +50,7 @@ const COMPLETE_TOOL: ToolDefinition = {
       summary: { type: 'string', description: '핵심 결론 2~4문장. 다음 담당자가 이것만 읽고도 상황을 알 수 있게.' },
       blocked_reason: { type: 'string', description: "status='blocked' 일 때 무엇이 필요한지" },
       next_actions: { type: 'array', items: { type: 'string' }, description: '후속으로 필요한 업무 (0~5개)' },
+      proof: { type: 'array', items: { type: 'string' }, description: "무엇으로 결과를 확인했는지 (1~5개). 예: '확인한 파일 경로', '실행한 명령과 결과', '참조한 출처', '검토한 카드/댓글'. completed 면 반드시 채우세요 — 없으면 검토에서 '근거 없음'으로 잡힙니다." },
     },
     required: ['status', 'summary'],
   },
@@ -69,7 +73,7 @@ export async function POST(request: Request) {
   const folderContext = typeof body.folderContext === 'string' ? body.folderContext.trim().slice(0, MAX_FOLDER_CONTEXT) : '';
 
   const db = getDatabase();
-  const task = await db.prepare(`SELECT id, title, label, owner, status, due, project_id AS projectId, description, blocked_reason AS blockedReason, updated_at AS updatedAt
+  const task = await db.prepare(`SELECT id, title, label, owner, status, priority, project_id AS projectId, description, blocked_reason AS blockedReason, updated_at AS updatedAt
       FROM tasks WHERE id = ? AND user_id = ?`)
     .bind(body.taskId, user.userId).first<TaskRow>();
   if (!task) return Response.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 });
@@ -118,12 +122,13 @@ export async function POST(request: Request) {
 
   const toolContext: TaskToolContext = { db, userId: user.userId, agentName: task.owner, projectId: task.projectId, taskId: task.id };
   // 기억 스냅샷 (이 실행 동안 동결) — user / project / agent 세 스코프
-  const [cardSection, fieldGuide, memory] = await Promise.all([
+  const [cardSection, fieldGuide, memory, skills] = await Promise.all([
     describeTaskCard(db, user.userId, task),
     describeFields(toolContext),
     loadMemoryScopes(db, user.userId, {
       projectId: task.projectId, projectName: project?.name ?? null, agentId: agent?.id ?? null, agentName: task.owner,
     }),
+    listSkills(db, user.userId, task.projectId),
   ]);
   contextSections.push(cardSection);
   if (fieldGuide) contextSections.push(fieldGuide);
@@ -179,16 +184,21 @@ export async function POST(request: Request) {
     '',
     MEMORY_GUIDANCE,
     '',
+    SKILL_GUIDANCE,
+    '',
     ...contextSections,
     '',
     renderMemorySection(memory),
+    '',
+    renderSkillIndex(skills),
   ].filter((line, index, all) => line !== '' || all[index - 1] !== '').join('\n');
 
+  const priority = toPriority(task.priority);
   const prompt = [
     `업무: ${task.title}`,
     `분류: ${task.label}`,
     `담당 에이전트: ${task.owner}`,
-    `마감: ${formatDue(task.due)}`,
+    `중요도: ${priority} — ${PRIORITY_HINT[priority]}`,
     '',
     '이 업무를 실제로 수행해 주세요.',
   ].join('\n');
@@ -205,12 +215,13 @@ export async function POST(request: Request) {
       .bind('진행 중', startedAt, task.id, user.userId),
   ]);
 
-  type Completion = { status: 'completed' | 'blocked'; summary: string; blockedReason: string | null; nextActions: string[] };
+  type Completion = { status: 'completed' | 'blocked'; summary: string; blockedReason: string | null; nextActions: string[]; proof: string[] };
   // 클로저 안에서 채워지므로 객체로 감쌉니다 (TS 흐름 분석이 let 재할당을 못 봅니다)
   const report: { value: Completion | null } = { value: null };
   // 실행 중 에이전트가 만든 카드/필드 기록 (UI 가 보드를 다시 읽을지 판단하는 데 씁니다)
   const toolLog = createTaskToolLog();
   const managerLog = createManagerLog();
+  const skillContext: SkillToolContext = { db, userId: user.userId, projectId: task.projectId, actor: task.owner, saves: { count: 0, names: [] } };
   const memoryFailures = { count: 0 };
   const counters = { recall: 0 };
 
@@ -228,13 +239,16 @@ export async function POST(request: Request) {
       maxIterations: managerContext ? MANAGER_MAX_ITERATIONS : MAX_ITERATIONS,
       webSearchMaxUses: 3,
       tools: [
-        RECALL_TOOL as unknown as ToolDefinition, MEMORY_TOOL, ...TASK_TOOLS,
+        RECALL_TOOL as unknown as ToolDefinition, MEMORY_TOOL, USE_SKILL_TOOL, SAVE_SKILL_TOOL, ...TASK_TOOLS,
         ...(managerContext ? MANAGER_TOOLS : []),
         COMPLETE_TOOL,
       ],
       async executeTool(name, input) {
         if (managerContext && MANAGER_TOOL_NAMES.has(name)) {
           return executeManagerTool(name, input, managerContext, managerLog);
+        }
+        if (name === 'use_skill' || name === 'save_skill') {
+          return executeSkillTool(name, input, skillContext);
         }
         if (name === 'recall_history') {
           counters.recall += 1;
@@ -256,6 +270,7 @@ export async function POST(request: Request) {
             summary: summary.slice(0, 1200),
             blockedReason: typeof input.blocked_reason === 'string' ? input.blocked_reason.trim().slice(0, 600) : null,
             nextActions: Array.isArray(input.next_actions) ? input.next_actions.filter((item): item is string => typeof item === 'string').slice(0, 5) : [],
+            proof: Array.isArray(input.proof) ? input.proof.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim().slice(0, 300)).slice(0, 5) : [],
           };
           return { ok: true, note: '보고가 저장되었습니다. 이 호출은 완료되었으니 반복하지 말고 짧게 마무리하세요.' };
         }
@@ -296,6 +311,10 @@ export async function POST(request: Request) {
       recruited: managerLog.recruited,
       delegated: managerLog.delegated,
       memoryWrites: result.toolCalls.filter((call) => call.name === 'memory' && call.ok).length,
+      proof: done?.proof ?? [],
+      unverified: Boolean(done) && !blocked && !(done?.proof.length),
+      skillsUsed: result.toolCalls.filter((call) => call.name === 'use_skill' && call.ok).map((call) => (typeof call.input.name === 'string' ? call.input.name : '')),
+      skillsSaved: skillContext.saves.names,
       usagePerIteration: result.usagePerIteration.map((u) => ({ in: u.inputTokens, out: u.outputTokens, cacheWrite: u.cacheCreationTokens, cacheRead: u.cacheReadTokens })),
     });
     const nextStatus = blocked ? '대기' : '검토';
@@ -310,7 +329,7 @@ export async function POST(request: Request) {
       agentCommentInsert(db, {
         userId: user.userId, taskId: task.id, author: task.owner, createdAt: completedAt,
         content: formatRunComment({
-          blocked, summary, blockedReason, nextActions: done?.nextActions ?? [],
+          blocked, summary, blockedReason, nextActions: done?.nextActions ?? [], proof: done?.proof ?? [],
           // 매니저가 위임해 만든 카드도 '만든 카드'로 함께 남깁니다.
           createdTasks: [...toolLog.createdTasks, ...managerLog.delegated.map((item) => ({ title: item.title, owner: item.agent }))],
         }),
@@ -322,6 +341,10 @@ export async function POST(request: Request) {
       }),
     ]);
 
+    // 결과 검토 — 작성자가 아닌 다른 에이전트가 세 패스(버그·스펙·정책·근거)로 검토해 댓글과 판정을 남깁니다 (백그라운드).
+    if (!blocked) {
+      runInBackground(() => runTaskReview({ db, userId: user.userId, apiKey, model: fallbackModel, taskId: task.id, runId }));
+    }
     // 기억 리뷰 패스 — 응답을 막지 않고 백그라운드에서 저가 모델로 "남길 것이 있나"만 묻습니다.
     const { reviewModel } = getRuntimeConfig();
     runInBackground(() => runMemoryReview({

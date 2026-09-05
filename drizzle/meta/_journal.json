@@ -99,6 +99,20 @@
       "when": 1788576000000,
       "tag": "0013_project_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1788577000000,
+      "tag": "0014_task_priority",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1788578000000,
+      "tag": "0015_review",
+      "breakpoints": true
     }
   ]
 }
