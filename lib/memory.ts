@@ -12,6 +12,7 @@
  */
 import type { ToolDefinition, ToolInput } from './claude';
 import { logGate } from './gates';
+import { atomicBatch, isPreconditionError } from './atomic';
 
 export type MemoryScope = 'user' | 'project' | 'agent';
 export type MemoryStatus = 'active' | 'pending';
@@ -263,7 +264,14 @@ export async function executeMemoryTool(db: D1Database, input: ToolInput, ctx: M
       .bind(crypto.randomUUID(), ctx.userId, scope, scopeId, content, status, ctx.actor, now, now)),
   ];
   if (!statements.length) return { ok: true, note: '변경할 것이 없었습니다 (이미 같은 내용이 있습니다). 이 호출은 완료되었으니 반복하지 마세요.' };
-  await db.batch(statements);
+  try {
+    await atomicBatch(db, `(? IS NULL OR EXISTS (SELECT 1 FROM projects WHERE id = ? AND user_id = ?))
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM agents WHERE id = ? AND user_id = ?))`,
+    [ctx.projectId ?? null, ctx.projectId ?? null, ctx.userId, ctx.agentId ?? null, ctx.agentId ?? null, ctx.userId], statements);
+  } catch (error) {
+    if (!isPreconditionError(error)) throw error;
+    return fail({ error: '기억을 저장할 프로젝트 또는 에이전트가 삭제되었습니다.', code: 'memory_target_deleted' });
+  }
 
   return {
     ok: true,

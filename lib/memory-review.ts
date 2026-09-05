@@ -8,6 +8,7 @@ import { waitUntil } from 'cloudflare:workers';
 import { runClaudeAgent, type ClaudeCredential, type ClaudeMessage, messageText } from './claude';
 import { MEMORY_REVIEW_PROMPT, MEMORY_TOOL, executeMemoryTool } from './memory';
 import { usageInsert } from './usage';
+import { traceEvent, traceError, traceContext, withTrace } from './telemetry';
 
 const REVIEW_MAX_ITERATIONS = 3;
 const REVIEW_MAX_TOKENS = 800;
@@ -15,8 +16,15 @@ const REVIEW_MAX_TOKENS = 800;
 const TRANSCRIPT_MAX_CHARS = 24_000;
 
 /** 응답을 보낸 뒤에도 계속 도는 작업. 요청 컨텍스트가 없으면(테스트 등) 그냥 진행합니다. */
-export function runInBackground(task: () => Promise<unknown>): void {
-  const promise = task().catch((error) => { console.error('[background]', error instanceof Error ? error.message : error); });
+export function runInBackground(task: () => Promise<unknown>, operation = 'background'): void {
+  const parent = traceContext();
+  const promise = withTrace({ ...parent, jobId: crypto.randomUUID(), operation }, async () => {
+    const started = Date.now(); traceEvent('background.started');
+    try {
+      const result = await task();
+      traceEvent('background.finished', { durationMs: Date.now() - started, skipped: Boolean(result && typeof result === 'object' && 'skipped' in result) });
+    } catch (error) { traceError('background.failed', error); }
+  });
   try { waitUntil(promise); } catch { /* waitUntil 을 쓸 수 없는 컨텍스트 — promise 는 이미 시작됨 */ }
 }
 
@@ -39,6 +47,9 @@ export type MemoryReviewParams = {
 const MIN_ASSISTANT_CHARS = 200;
 
 export async function runMemoryReview(params: MemoryReviewParams): Promise<{ saved: boolean; toolCalls: number; skipped?: string }> {
+  return withTrace({ projectId: params.projectId, operation: 'memory.review' }, () => runMemoryReviewInternal(params));
+}
+async function runMemoryReviewInternal(params: MemoryReviewParams): Promise<{ saved: boolean; toolCalls: number; skipped?: string }> {
   const assistantChars = params.transcript.filter((message) => message.role === 'assistant').reduce((sum, message) => sum + messageText(message.content).trim().length, 0);
   if (assistantChars < MIN_ASSISTANT_CHARS) return { saved: false, toolCalls: 0, skipped: '리뷰할 내용이 너무 적음' };
   const trimmed = trimTranscript(params.transcript);
@@ -63,6 +74,7 @@ export async function runMemoryReview(params: MemoryReviewParams): Promise<{ sav
     refId: params.refId, projectId: params.projectId, agentName: params.agentName,
   }).run();
   const saved = result.toolCalls.some((call) => call.name === 'memory' && call.ok);
+  if (result.stopReason === 'max_tokens') traceEvent('memory_review.truncated', { outputTokens: result.usage.outputTokens, maxTokens: REVIEW_MAX_TOKENS }, 'warn');
   return { saved, toolCalls: result.toolCalls.length };
 }
 

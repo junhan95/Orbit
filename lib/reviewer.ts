@@ -13,10 +13,12 @@ import { runClaudeAgent, type ClaudeCredential, type ToolDefinition, type ToolIn
 import { loadMemoryScopes, renderMemorySection } from './memory';
 import { agentCommentInsert } from './run-loop';
 import { usageInsert } from './usage';
+import { atomicBatch, isPreconditionError } from './atomic';
+import { traceEvent, withTrace } from './telemetry';
 
 export const REVIEW_POLICY_SKILL_NAME = '검토 정책';
 export const MAX_NITS = 5;
-const REVIEW_MAX_TOKENS = 3_000;
+const REVIEW_MAX_TOKENS = 4_000;
 const OUTPUT_MAX_CHARS = 24_000;
 
 export type ReviewPass = 'bug' | 'spec' | 'policy' | 'proof';
@@ -71,7 +73,7 @@ const SUBMIT_REVIEW_TOOL: ToolDefinition = {
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string; description: string | null;
-  summary: string | null; result: string | null; blockedReason: string | null; projectId: string | null;
+  summary: string | null; result: string | null; blockedReason: string | null; projectId: string | null; updatedAt: number;
 };
 type RunRow = { id: string; outcome: string | null; summary: string | null; output: string | null; metadata: string | null };
 type AgentRow = { id: string; name: string; role: string; roleKey: string | null };
@@ -101,8 +103,11 @@ export type ReviewParams = {
 };
 
 export async function runTaskReview(params: ReviewParams): Promise<ReviewResult | { skipped: string }> {
+  return withTrace({ taskId: params.taskId, runId: params.runId ?? undefined, operation: 'task.review' }, () => runTaskReviewInternal(params));
+}
+async function runTaskReviewInternal(params: ReviewParams): Promise<ReviewResult | { skipped: string }> {
   const { db, userId, taskId } = params;
-  const task = await db.prepare(`SELECT id, title, label, owner, status, description, summary, result, blocked_reason AS blockedReason, project_id AS projectId
+  const task = await db.prepare(`SELECT id, title, label, owner, status, description, summary, result, blocked_reason AS blockedReason, project_id AS projectId, updated_at AS updatedAt
       FROM tasks WHERE id = ? AND user_id = ?`).bind(taskId, userId).first<TaskRow>();
   if (!task) return { skipped: '업무 없음' };
   if (!task.result && !task.summary) return { skipped: '검토할 결과가 없음' };
@@ -148,7 +153,7 @@ export async function runTaskReview(params: ReviewParams): Promise<ReviewResult 
     `## 검증 근거 (proof)\n${proof.length ? proof.map((item) => `- ${item}`).join('\n') : '(제출된 근거 없음)'}`,
     `## 본문\n${clip(run?.output ?? task.result ?? '', OUTPUT_MAX_CHARS)}`,
     '',
-    '위 결과를 검토 정책의 패스대로 검토하고 submit_review 로 제출하세요.',
+    '별도 설명 없이 submit_review로만 제출하세요. summary는 400자 이내, 발견은 중요한 순서로 최대 10개, 각 message는 200자 이내로 간결하게 작성하세요.',
   ].filter(Boolean).join('\n\n');
 
   const captured: { value: ReviewResult | null } = { value: null };
@@ -158,7 +163,8 @@ export async function runTaskReview(params: ReviewParams): Promise<ReviewResult 
     system,
     messages: [{ role: 'user', content: card }],
     maxTokens: REVIEW_MAX_TOKENS,
-    maxIterations: 2,
+    maxIterations: 1,
+    toolChoice: 'submit_review',
     tools: [SUBMIT_REVIEW_TOOL],
     executeTool(name, input) {
       if (name !== 'submit_review') throw new Error(`알 수 없는 툴: ${name}`);
@@ -166,15 +172,27 @@ export async function runTaskReview(params: ReviewParams): Promise<ReviewResult 
       return Promise.resolve({ ok: true, note: '검토가 접수되었습니다. 더 이상 아무것도 하지 마세요.' });
     },
   });
-  if (!captured.value) throw new Error(`검토 결과를 받지 못했습니다 (${result.stopReason ?? '이유 미상'}).`);
+  // Retain metering even when the report is truncated or its task disappears meanwhile.
+  await usageInsert(db, { userId, kind: 'review', result, refId: run?.id ?? taskId, projectId: task.projectId, agentName: reviewerName }).run();
+  if (!captured.value) {
+    traceEvent('review.incomplete', { stopReason: result.stopReason, outputTokens: result.usage.outputTokens, maxTokens: REVIEW_MAX_TOKENS }, 'warn');
+    throw Object.assign(new Error(`검토 결과를 받지 못했습니다 (${result.stopReason ?? '이유 미상'}). 다시 검토해 주세요.`), { code: 'review_incomplete' });
+  }
   const review = captured.value;
 
   const now = Date.now();
-  await db.batch([
+  try {
+  await atomicBatch(db, `EXISTS (SELECT 1 FROM tasks WHERE id = ? AND user_id = ? AND updated_at = ?)
+    AND (? IS NULL OR EXISTS (SELECT 1 FROM agent_runs WHERE id = ? AND task_id = ? AND user_id = ?))`,
+  [taskId, userId, task.updatedAt, run?.id ?? null, run?.id ?? null, taskId, userId], [
     agentCommentInsert(db, { userId, taskId, author: reviewerName, createdAt: now, content: formatReviewComment(review) }),
     db.prepare('UPDATE tasks SET review_verdict = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND user_id = ?').bind(review.verdict, now, now, taskId, userId),
-    usageInsert(db, { userId, kind: 'review', result, refId: run?.id ?? taskId, projectId: task.projectId, agentName: reviewerName }),
   ]);
+  } catch (error) {
+    if (!isPreconditionError(error)) throw error;
+    traceEvent('review.skipped', { reason: 'target_changed_or_deleted' });
+    return { skipped: '검토 대상이 변경되었거나 삭제됨' };
+  }
   return review;
 }
 

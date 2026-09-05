@@ -1,3 +1,4 @@
+import { traceRequest, traceError } from '@/lib/telemetry';
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
@@ -16,7 +17,7 @@ const MAX_ITERATIONS = 4;
 const MANAGER_MAX_ITERATIONS = 14;
 const MAX_FOLDER_CONTEXT = 60_000;
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const user = await getCurrentUser();
   const url = new URL(request.url);
   const projectId = url.searchParams.get('projectId');
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
     // 요약 이후 메시지가 상한을 넘으면 앞부분을 압축 (백그라운드, 저가 모델)
     if (shouldCompact(chat.messagesSinceSummary + 1)) {
       const { reviewModel } = getRuntimeConfig();
-      runInBackground(() => compactConversation({ db, userId: user.userId, projectId, agentId, agentName: context.agentName, apiKey, model: reviewModel }));
+      runInBackground(() => compactConversation({ db, userId: user.userId, projectId, agentId, agentName: context.agentName, apiKey, model: reviewModel }), 'chat.compaction');
     }
     return Response.json({
       userMessage, assistantMessage,
@@ -113,6 +114,9 @@ export async function POST(request: Request) {
       createdTasks: chat.taskLog.createdTasks,
     });
   } catch (error) {
+      traceError('chat.failed', error);
     return Response.json({ error: error instanceof Error ? error.message : '답변 생성에 실패했습니다.', userMessage }, { status: 502 });
   }
 }
+
+export const GET = traceRequest('/api/chat', handleGET);

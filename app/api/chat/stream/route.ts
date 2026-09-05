@@ -1,3 +1,4 @@
+import { traceRequest, traceError } from '@/lib/telemetry';
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_TEXT_CHARS, type AttachmentPayload } from '@/lib/attachments';
@@ -72,7 +73,7 @@ function sanitizeAttachments(raw: unknown): AttachmentPayload[] {
  *   {"type":"done","message":{...}}      – 저장된 최종 답변
  *   {"type":"error","error":"..."}       – 오류
  */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as { projectId?: unknown; agentId?: unknown; message?: unknown; folderContext?: unknown; attachments?: unknown; autonomy?: unknown } | null;
   if (typeof body?.projectId !== 'string' || typeof body.agentId !== 'string' || typeof body.message !== 'string' || !body.message.trim()) {
@@ -176,9 +177,10 @@ export async function POST(request: Request) {
           }));
         }
         if (shouldCompact(chat.messagesSinceSummary + 1)) {
-          runInBackground(() => compactConversation({ db, userId: user.userId, projectId, agentId, agentName: context.agentName, apiKey, model: reviewModel }));
+          runInBackground(() => compactConversation({ db, userId: user.userId, projectId, agentId, agentName: context.agentName, apiKey, model: reviewModel }), 'chat.compaction');
         }
       } catch (error) {
+      traceError('chat.failed', error);
         send({ type: 'error', error: error instanceof Error ? error.message : '답변 생성에 실패했습니다.' });
       } finally {
         bridge.emit = undefined;
@@ -195,3 +197,5 @@ export async function POST(request: Request) {
     },
   });
 }
+
+export const POST = traceRequest('/api/chat/stream', handlePOST);

@@ -1,3 +1,4 @@
+import { traceRequest, traceError } from '@/lib/telemetry';
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 import { appOrigin } from '@/lib/auth';
@@ -9,7 +10,7 @@ import { mcToCredits } from '@/lib/credits-pricing';
  * 서버에서 승인(confirm)까지 마친 뒤 앱으로 돌려보냅니다 — 앱은 ?credits=done 을 보고 안내합니다.
  * 승인은 멱등이라 새로고침해도 두 번 지급되지 않습니다.
  */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const user = await getCurrentUser();
   const url = new URL(request.url);
   const origin = appOrigin(request);
@@ -24,7 +25,9 @@ export async function GET(request: Request) {
     return back({ credits: 'done', amount: String(mcToCredits(payment.creditsMc + payment.bonusMc)) });
   } catch (error) {
     const message = error instanceof PaymentError ? error.message : '결제 승인에 실패했습니다.';
-    if (!(error instanceof PaymentError)) console.error('[payments] confirm failed', error);
+    if (!(error instanceof PaymentError)) traceError('payment.callback_failed', error);
     return back({ credits: 'error', message });
   }
 }
+
+export const GET = traceRequest('/api/credits/confirm', handleGET);

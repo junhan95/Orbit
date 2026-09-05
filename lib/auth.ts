@@ -1,3 +1,4 @@
+import { providerFetch } from './provider-fetch';
 import { env } from 'cloudflare:workers';
 
 /**
@@ -185,7 +186,7 @@ async function exchangeCode(provider: Provider, code: string, origin: string): P
   const body = new URLSearchParams(provider === 'google'
     ? { code, client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, redirect_uri: cb, grant_type: 'authorization_code' }
     : { code, client_id: env.GITHUB_CLIENT_ID!, client_secret: env.GITHUB_CLIENT_SECRET!, redirect_uri: cb });
-  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
+  const response = await providerFetch(provider, 'oauth.exchange', url, { signal: AbortSignal.timeout(30_000), method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body });
   const data = await response.json() as { access_token?: string; error?: string; error_description?: string };
   if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || `${PROVIDER_LABEL[provider]} 토큰 교환에 실패했습니다.`);
   return data.access_token;
@@ -194,7 +195,7 @@ async function exchangeCode(provider: Provider, code: string, origin: string): P
 async function fetchIdentity(provider: Provider, token: string): Promise<Identity> {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'User-Agent': 'orbit-app' };
   if (provider === 'google') {
-    const r = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers });
+    const r = await providerFetch('google', 'oauth.identity', 'https://openidconnect.googleapis.com/v1/userinfo', { headers, signal: AbortSignal.timeout(30_000) });
     if (!r.ok) throw new Error('Google 프로필을 읽지 못했습니다.');
     const p = await r.json() as { sub: string; email?: string; email_verified?: boolean; name?: string; picture?: string };
     return { providerId: p.sub, email: p.email_verified === false ? null : p.email ?? null, name: p.name ?? null, avatarUrl: p.picture ?? null };

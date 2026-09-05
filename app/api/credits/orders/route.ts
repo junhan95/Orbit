@@ -1,3 +1,4 @@
+import { traceRequest } from '@/lib/telemetry';
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 import { appOrigin } from '@/lib/auth';
@@ -8,7 +9,7 @@ import { PaymentError, createOrder, paymentsEnabled, tossClientKey } from '@/lib
  * POST { krw } → { orderId, amount, orderName, clientKey, customerKey, customerEmail, customerName, successUrl, failUrl }
  * customerKey 는 사용자 id 그대로 — 토스 규칙(영문·숫자·-_=.@, 2~50자)에 맞습니다.
  */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const user = await getCurrentUser();
   if (!paymentsEnabled()) return Response.json({ error: '결제가 아직 준비되지 않았습니다.', code: 'payments_unavailable' }, { status: 503 });
   const body = await request.json().catch(() => null) as { krw?: unknown } | null;
@@ -29,3 +30,5 @@ export async function POST(request: Request) {
     throw error;
   }
 }
+
+export const POST = traceRequest('/api/credits/orders', handlePOST);
