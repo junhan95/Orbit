@@ -119,7 +119,8 @@ export async function proposePlan(params: PlanParams) {
     model: params.model,
     system,
     messages: [{ role: 'user', content: `목표: ${params.goal}\n\n이 목표를 업무 카드로 분해해 propose_plan 으로 제출해 주세요.` }],
-    maxTokens: 4000,
+    // 카드 5개 × 설명·하위작업이면 4,000 토큰을 넘깁니다 (eval 07 에서 max_tokens 로 실패) — 넉넉히.
+    maxTokens: 8000,
     maxIterations: 2,
     tools: [PLAN_TOOL],
     executeTool(name, input) {

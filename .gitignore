@@ -41,3 +41,7 @@ next-env.d.ts
 tsconfig.tsbuildinfo
 /Claude outputs/
 
+
+# eval 결과 (로컬)
+/evals/results/
+

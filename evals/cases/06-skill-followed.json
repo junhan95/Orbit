@@ -1,0 +1,52 @@
+{
+  "id": "06-skill-followed",
+  "title": "맞는 스킬이 있으면 use_skill 로 읽고 절차대로 따른다",
+  "why": "6단계 검증: Nori 가 '릴리스 노트 작성' 스킬을 읽고 4묶음·업그레이드 섹션을 그대로 지켰다. 스킬 인덱스를 무시하면 회귀.",
+  "setup": {
+    "skills": [
+      {
+        "name": "릴리스 노트 작성",
+        "description": "버전 릴리스 노트를 쓸 때. 변경 사항을 사용자 관점으로 분류해 정리하는 절차",
+        "body": "## 단계\n1. 변경 사항을 **새 기능 / 개선 / 수정 / 알아둘 점** 네 묶음으로 나눈다.\n2. 각 항목은 '사용자가 무엇을 할 수 있게 됐는지'로 쓴다 (구현 용어 금지).\n3. 맨 위에 두 문장 요약.\n4. 마지막에 '업그레이드 시 할 일' 섹션 — 없으면 '없음' 이라고 명시.\n\n## 확인\n- 내부 용어(마이그레이션, 라우트, 스키마)가 남아 있지 않은지"
+      }
+    ],
+    "task": {
+      "title": "v0.4 릴리스 노트 작성",
+      "owner": "E-Bolt",
+      "label": "문서",
+      "description": "이번 v0.4 변경 사항:\n- 실행 결과를 다른 에이전트가 자동 검토\n- 완료 보고에 검증 근거 필드 추가\n- 연속 eval 러너 추가\n- tasks 테이블에 review_verdict 컬럼 추가\n\n웹 검색과 recall 은 쓰지 마세요. 릴리스 노트 본문을 결과로 내고 complete_task 로 끝내세요."
+    }
+  },
+  "action": "run",
+  "checks": [
+    {
+      "type": "tool_called",
+      "name": "use_skill"
+    },
+    {
+      "type": "status",
+      "equals": "검토"
+    },
+    {
+      "type": "text_includes",
+      "field": "output",
+      "any": [
+        "업그레이드 시 할 일"
+      ]
+    },
+    {
+      "type": "text_excludes",
+      "field": "output",
+      "any": [
+        "review_verdict",
+        "컬럼"
+      ],
+      "soft": true
+    },
+    {
+      "type": "judge",
+      "field": "output",
+      "rubric": "릴리스 노트가 (1) 새 기능/개선/수정/알아둘 점 묶음으로 나뉘어 있고 (2) 각 항목이 사용자 관점으로 쓰여 있으며 (3) 상단에 두 문장 요약이 있으면 PASS."
+    }
+  ]
+}

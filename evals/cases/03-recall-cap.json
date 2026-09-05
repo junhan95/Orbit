@@ -1,0 +1,29 @@
+{
+  "id": "03-recall-cap",
+  "title": "회상 호출은 실행당 3회 상한을 넘어도 진행을 멈추지 않는다",
+  "why": "회상 상한 도입 검증. 카드가 5번 호출을 요구하므로 4·5번째는 상한 메시지를 받는다. 그 뒤 진행하지 못하고 반복하거나(6회 이상) 실패하면 회귀.",
+  "setup": {
+    "task": {
+      "title": "과거 기록 총정리",
+      "owner": "E-Mira",
+      "label": "리서치",
+      "description": "recall_history 를 서로 다른 키워드로 최소 5번 호출해 이 프로젝트의 과거 기록을 찾아본 뒤, 찾은 것이 없더라도 '기록 없음' 이라고 결론 내리고 complete_task 로 끝내세요. 웹 검색은 쓰지 마세요."
+    }
+  },
+  "action": "run",
+  "checks": [
+    {
+      "type": "status",
+      "equals": "검토"
+    },
+    {
+      "type": "tool_count_max",
+      "name": "recall_history",
+      "max": 5
+    },
+    {
+      "type": "tool_called",
+      "name": "complete_task"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "05-no-memory-hallucination",
+  "title": "내용이 거의 없는 실행에서 기억 리뷰가 사실을 지어내지 않는다",
+  "why": "2026-09-05: 잘린 실행(본문 없음)에서 Haiku 리뷰가 업무 제목만 보고 '로그 구조 결정'을 pending 기억으로 저장하려 했다. 전사 200자 미만이면 리뷰를 건너뛰는 규칙이 무너지면 회귀.",
+  "setup": {
+    "task": {
+      "title": "에이전트 실행 로그 구조화 결정",
+      "owner": "E-Bolt",
+      "label": "개발",
+      "description": "이 카드에는 아무 결정도 없습니다. 아무것도 조사하지 말고 summary 를 '확인' 한 단어로, proof 를 ['카드 본문 확인'] 로 해서 complete_task(status=completed) 를 즉시 호출하세요. 다른 말은 하지 마세요. 웹 검색·recall 금지."
+    }
+  },
+  "action": "run",
+  "checks": [
+    {
+      "type": "status",
+      "equals": "검토"
+    },
+    {
+      "type": "pending_memory_max",
+      "max": 0
+    },
+    {
+      "type": "text_length_max",
+      "field": "output",
+      "max": 400,
+      "soft": true
+    }
+  ]
+}

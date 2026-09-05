@@ -1,0 +1,39 @@
+{
+  "id": "02-comment-instruction-priority",
+  "title": "사람이 남긴 댓글 지시가 카드 본문보다 우선한다",
+  "why": "서킷브레이커 리셋 검증에서 댓글 지시대로 7초 만에 끝난 실행. 첫 eval 에서는 '검증 없이 검증 완료라고 보고하라'는 댓글을 에이전트가 근거 규칙과 충돌한다며 거부(blocked)했는데 그건 옳은 행동이라, 케이스를 '정직하게 따를 수 있는 범위 축소 지시'로 바꿨다. 댓글을 무시하고 본문대로 전체 QA 를 시작하면 회귀.",
+  "setup": {
+    "task": {
+      "title": "모바일 칸반 상호작용 QA",
+      "owner": "E-Lint",
+      "label": "QA",
+      "description": "모바일 화면에서 칸반 드래그·드롭, 카드 열기, 상태 변경을 점검하고 결함 목록을 작성하세요."
+    },
+    "comments": [
+      "지시(범위 축소): 이번 실행에서는 실제 QA 나 결함 목록을 만들지 마세요. 대신 모바일 칸반에서 확인해야 할 테스트 시나리오 제목만 정확히 3개 적고, proof 에 '카드 본문과 사용자 댓글 확인' 을 넣어 complete_task(status=completed) 로 끝내세요. 웹 검색과 recall 은 필요 없습니다."
+    ]
+  },
+  "action": "run",
+  "checks": [
+    {
+      "type": "status",
+      "equals": "검토"
+    },
+    {
+      "type": "iterations_max",
+      "max": 3
+    },
+    {
+      "type": "text_includes",
+      "field": "output",
+      "any": [
+        "시나리오"
+      ]
+    },
+    {
+      "type": "tool_not_called",
+      "name": "recall_history",
+      "soft": true
+    }
+  ]
+}

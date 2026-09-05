@@ -1,0 +1,25 @@
+{
+  "id": "07-plan-decomposition",
+  "title": "목표를 실행 가능한 카드로 분해한다 (담당 유효·설명 충분·중복 없음)",
+  "why": "4단계 검증: '실행 로그 뷰어' 목표가 리서치→설계→구현→QA 4장으로 분해됐다. 담당이 목록 밖이거나 설명이 비면 apply 가 깨진다.",
+  "action": "plan",
+  "input": {
+    "goal": "Orbit 에 에이전트 실행 로그 뷰어를 추가한다: 실행별 툴 호출·토큰·소요 시간을 상세 패널에서 볼 수 있어야 하고, 실패한 실행은 원인이 한눈에 보여야 한다.",
+    "maxTasks": 5
+  },
+  "checks": [
+    {
+      "type": "plan_tasks",
+      "min": 2,
+      "max": 5,
+      "minDescription": 60
+    },
+    {
+      "type": "text_includes",
+      "field": "plan",
+      "any": [
+        "rationale"
+      ]
+    }
+  ]
+}

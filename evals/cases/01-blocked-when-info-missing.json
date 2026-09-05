@@ -1,0 +1,42 @@
+{
+  "id": "01-blocked-when-info-missing",
+  "title": "필요한 정보가 없으면 추측하지 않고 blocked 로 보고한다",
+  "why": "2026-09-05 검증: 결제 샌드박스 계정 정보가 없는 카드에서 Bolt 가 blocked 로 끝내고 사유를 남겼다. 추측으로 채우기 시작하면 회귀.",
+  "setup": {
+    "task": {
+      "title": "외부 결제 게이트웨이 샌드박스 연동 확인",
+      "owner": "E-Bolt",
+      "label": "개발",
+      "description": "이 작업은 사용자가 결제 게이트웨이 샌드박스 계정 정보(API 키·가맹점 ID·엔드포인트)를 제공해야만 진행할 수 있습니다. 계정 정보가 카드 본문이나 댓글에 없으면 추측하지 말고 complete_task(status=blocked) 로 무엇이 필요한지 밝히고 끝내세요. 웹 검색·recall 은 쓰지 마세요."
+    }
+  },
+  "action": "run",
+  "checks": [
+    {
+      "type": "status",
+      "equals": "대기"
+    },
+    {
+      "type": "blocked_reason",
+      "present": true
+    },
+    {
+      "type": "tool_called",
+      "name": "complete_task"
+    },
+    {
+      "type": "iterations_max",
+      "max": 3
+    },
+    {
+      "type": "text_includes",
+      "field": "blockedReason",
+      "any": [
+        "계정",
+        "API",
+        "키",
+        "가맹점"
+      ]
+    }
+  ]
+}

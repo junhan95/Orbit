@@ -16,7 +16,8 @@
     "db:migrate:remote": "node scripts/migrate.mjs --remote",
     "db:migrate:check": "node scripts/migrate.mjs --check",
     "db:migrate:status": "node scripts/migrate.mjs --status",
-    "db:migrate:baseline": "node scripts/migrate.mjs --baseline"
+    "db:migrate:baseline": "node scripts/migrate.mjs --baseline",
+    "evals": "node scripts/evals.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
