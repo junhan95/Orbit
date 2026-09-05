@@ -102,6 +102,7 @@ const CHECKS = {
   review_or_blocked: (ctx) => { const blocked = ctx.run?.status === '대기' && Boolean(ctx.run?.blockedReason); const caught = ctx.detail?.task?.reviewVerdict === 'changes_requested'; return ok(blocked || caught, blocked ? '막힘으로 보고' : caught ? '검토에서 수정 요청' : `잡히지 않음 (status=${ctx.run?.status}, verdict=${ctx.detail?.task?.reviewVerdict ?? '없음'})`); },
   pending_memory_max: async (ctx, c) => { const { data } = await api('GET', `/api/memory?scope=project&scopeId=${ctx.projectId}`); const pending = (data?.groups ?? []).reduce((sum, group) => sum + (group.pendingCount ?? 0), 0); return ok(pending <= c.max, `pending 기억 ${pending}건 (최대 ${c.max})`); },
   plan_tasks: (ctx, c) => { const tasks = ctx.plan?.proposal?.tasks ?? []; const names = new Set(ctx.agentNames); const problems = []; if (tasks.length < (c.min ?? 1) || tasks.length > (c.max ?? 99)) problems.push(`개수 ${tasks.length}`); if (new Set(tasks.map((t) => t.title)).size !== tasks.length) problems.push('제목 중복'); for (const t of tasks) { if (!names.has(t.owner)) problems.push(`담당 미상 ${t.owner}`); if ((t.description ?? '').length < (c.minDescription ?? 40)) problems.push(`설명 짧음: ${t.title}`); } return ok(!problems.length, problems.length ? problems.join(', ') : `카드 ${tasks.length}개, 담당·설명 모두 유효`); },
+  health_metrics: (ctx, c) => { const metrics = ctx.health?.metrics ?? []; const tiers = new Set(['ok', 'watch', 'diagnose', 'act', 'insufficient']); const bad = metrics.filter((m) => !tiers.has(m.tier) || typeof m.note !== 'string'); const missing = (c.keys ?? []).filter((key) => !metrics.some((m) => m.key === key)); return ok(!bad.length && !missing.length, missing.length ? `지표 누락: ${missing.join(',')}` : bad.length ? `형식 오류 ${bad.length}건` : `지표 ${metrics.length}개: ${metrics.map((m) => `${m.key}=${m.tier}`).join(', ')}`); },
   judge: async (ctx, c) => { if (!JUDGE) return { pass: true, skipped: true, note: '--judge 없음 (건너뜀)' }; const result = await judge(c.rubric, textOf(ctx, c.field ?? 'output')); return ok(result.pass, result.note); },
 };
 const ok = (pass, note) => ({ pass: Boolean(pass), note });
@@ -154,6 +155,10 @@ async function runCase(kase, env) {
     const { data, status } = await api('POST', '/api/chat', { projectId: env.projectId, agentId: env.managerId, ...kase.input });
     if (status >= 300) throw new Error(`대화 실패 (${status}): ${data?.error}`);
     ctx.chat = data;
+  } else if (kase.action === 'health') {
+    const { data, status } = await api('GET', '/api/health');
+    if (status >= 300) throw new Error(`health 실패 (${status}): ${data?.error}`);
+    ctx.health = data;
   } else if (kase.action === 'review') {
     const { data, status } = await api('POST', `/api/tasks/${ctx.taskId}/review`);
     if (status >= 300) throw new Error(`검토 실패 (${status}): ${data?.error}`);

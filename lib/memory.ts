@@ -11,6 +11,7 @@
  *   여러 에이전트가 같은 스코프에 쓰면 서로의 엔트리를 증폭하므로 project 는 사람이 승인해야 반영된다.
  */
 import type { ToolDefinition, ToolInput } from './claude';
+import { logGate } from './gates';
 
 export type MemoryScope = 'user' | 'project' | 'agent';
 export type MemoryStatus = 'active' | 'pending';
@@ -201,7 +202,10 @@ export async function executeMemoryTool(db: D1Database, input: ToolInput, ctx: M
   for (const op of operations) {
     if ((op.action === 'add' || op.action === 'replace') && typeof op.content === 'string') {
       const reason = scanMemoryThreat(op.content);
-      if (reason) return fail({ error: `저장이 거부되었습니다: ${reason}. 기억에는 사실만 담고 지시문·비밀값은 넣지 마세요.` });
+      if (reason) {
+        logGate(db, ctx.userId, { gate: 'memory_threat', decision: 'block', projectId: ctx.projectId ?? null, detail: `${ctx.actor}: ${reason}` });
+        return fail({ error: `저장이 거부되었습니다: ${reason}. 기억에는 사실만 담고 지시문·비밀값은 넣지 마세요.` });
+      }
     }
   }
 

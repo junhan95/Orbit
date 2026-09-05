@@ -1,0 +1,18 @@
+{
+  "id": "09-health-bands",
+  "title": "관제 밴드 API 가 다섯 지표를 유효한 판정으로 돌려준다",
+  "why": "관제 밴드 도입 검증. 지표 계산은 모델 없이 결정적이어야 하며, 지표가 빠지거나 판정 값이 깨지면 진단 카드 생성이 멈춘다.",
+  "action": "health",
+  "checks": [
+    {
+      "type": "health_metrics",
+      "keys": [
+        "run_failure_rate",
+        "unverified_rate",
+        "review_changes_rate",
+        "gate_block_rate",
+        "cost_per_run"
+      ]
+    }
+  ]
+}

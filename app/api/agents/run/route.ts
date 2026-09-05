@@ -7,6 +7,8 @@ import {
   type ManagerContext,
 } from '@/lib/manager-tools';
 import { MEMORY_GUIDANCE, MEMORY_TOOL, executeMemoryTool, loadMemoryScopes, renderMemorySection } from '@/lib/memory';
+import { logGate } from '@/lib/gates';
+import { maybeRunHealthCheck } from '@/lib/health';
 import { runInBackground, runMemoryReview } from '@/lib/memory-review';
 import { resolveAgentModel } from '@/lib/models';
 import { RECALL_TOOL, executeRecallTool, recallDocUpsert } from '@/lib/recall';
@@ -81,6 +83,7 @@ export async function POST(request: Request) {
   // 서킷브레이커: 사람 개입 없이 연속 실패/막힘이 상한에 닿으면 자동 실행을 멈춥니다. force=true 면 무시.
   const breaker = await checkCircuitBreaker(db, user.userId, task.id);
   if (breaker.tripped && body.force !== true) {
+    logGate(db, user.userId, { gate: 'circuit_breaker', decision: 'block', projectId: task.projectId, taskId: task.id, detail: `연속 ${breaker.consecutive}회` });
     return Response.json({
       error: `이 업무는 연속 ${breaker.consecutive}회 실패하거나 막혀 자동 실행을 멈췄습니다. 카드 댓글로 지시를 남기거나 본문을 보완한 뒤 다시 실행해 주세요.`,
       circuitBreaker: breaker,
@@ -252,7 +255,10 @@ export async function POST(request: Request) {
         }
         if (name === 'recall_history') {
           counters.recall += 1;
-          if (counters.recall > RECALL_CALL_LIMIT) return { error: `회상 호출 상한(${RECALL_CALL_LIMIT}회)에 도달했습니다. 지금까지의 결과로 진행하세요.` };
+          if (counters.recall > RECALL_CALL_LIMIT) {
+            if (counters.recall === RECALL_CALL_LIMIT + 1) logGate(db, user.userId, { gate: 'recall_cap', decision: 'block', projectId: task.projectId, taskId: task.id });
+            return { error: `회상 호출 상한(${RECALL_CALL_LIMIT}회)에 도달했습니다. 지금까지의 결과로 진행하세요.` };
+          }
           return executeRecallTool(db, user.userId, input, { projectId: task.projectId });
         }
         if (name === 'memory') {
@@ -341,6 +347,8 @@ export async function POST(request: Request) {
       }),
     ]);
 
+    // 관제 밴드 — 실패율·근거 없음·검토 수정 요청·게이트 차단·비용을 기준선과 비교, 이탈하면 매니저에게 진단 카드 (시간당 1회).
+    runInBackground(() => maybeRunHealthCheck(db, user.userId));
     // 결과 검토 — 작성자가 아닌 다른 에이전트가 세 패스(버그·스펙·정책·근거)로 검토해 댓글과 판정을 남깁니다 (백그라운드).
     if (!blocked) {
       runInBackground(() => runTaskReview({ db, userId: user.userId, apiKey, model: fallbackModel, taskId: task.id, runId }));

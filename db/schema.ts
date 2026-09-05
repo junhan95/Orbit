@@ -106,6 +106,17 @@ export const skills = sqliteTable('skills', {
   createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
 }, (table) => [index('idx_skills_user_scope').on(table.userId, table.scope, table.projectId)]);
 
+/**
+ * 게이트 결정 로그 (플레이북 Hook 로그). 서킷브레이커·회상 상한·위협 스캔이 막은 것과 관제 밴드 검사 결과를 남깁니다.
+ * decision: 'block' | 'allow' | 'ask' | 'raise'(진단 카드 생성) | 'noop'
+ */
+export const gateEvents = sqliteTable('gate_events', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  gate: text('gate').notNull(), decision: text('decision').notNull(),
+  projectId: text('project_id'), taskId: text('task_id'), detail: text('detail'),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [index('idx_gate_events_user_gate').on(table.userId, table.gate, table.createdAt)]);
+
 export const agentRuns = sqliteTable('agent_runs', {
   id: text('id').primaryKey(), taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(), agentName: text('agent_name').notNull(), status: text('status').notNull(),

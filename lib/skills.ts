@@ -9,6 +9,7 @@
  * scope: 'global'(이 사용자의 모든 프로젝트) | 'project'(한 프로젝트)
  */
 import type { ToolDefinition, ToolInput } from './claude';
+import { logGate } from './gates';
 import { scanMemoryThreat } from './memory';
 
 export type SkillScope = 'global' | 'project';
@@ -111,7 +112,10 @@ export async function executeSkillTool(name: string, input: ToolInput, ctx: Skil
     if (body.length > SKILL_LIMITS.body) return { error: `body 가 너무 깁니다 (${body.length}/${SKILL_LIMITS.body}자). 핵심 단계만 남기세요.` };
     if (scope === 'project' && !ctx.projectId) return { error: '이 실행은 프로젝트에 속해 있지 않습니다. scope=global 로 저장하거나 생략하세요.' };
     const threat = scanMemoryThreat(`${skillName}\n${description}\n${body}`);
-    if (threat) return { error: `저장이 거부되었습니다: ${threat}. 스킬에는 절차만 담고 지시문·비밀값은 넣지 마세요.` };
+    if (threat) {
+      logGate(db, userId, { gate: 'skill_threat', decision: 'block', projectId: ctx.projectId, detail: `${ctx.actor}: ${threat}` });
+      return { error: `저장이 거부되었습니다: ${threat}. 스킬에는 절차만 담고 지시문·비밀값은 넣지 마세요.` };
+    }
     // 같은 실행에서 같은 스킬을 다시 고치는 것은 허용, 새 이름은 상한 적용
     if (!ctx.saves.names.includes(skillName) && ctx.saves.count >= MAX_SKILL_SAVES_PER_RUN) {
       return { error: `이번 실행에서는 스킬을 ${MAX_SKILL_SAVES_PER_RUN}개만 저장할 수 있습니다.` };
