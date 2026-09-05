@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { OrbitMark } from '@/components/orbit-mark';
 
 /**
  * Orbit 랜딩페이지.
@@ -75,9 +76,7 @@ export function LandingView() {
 
         <nav className="lp-nav">
           <a className="lp-logo" href="#top">
-            <span className="lp-logo-mark">
-              <span className="lp-logo-dot" />
-            </span>
+            <span className="lp-logo-mark"><OrbitMark size={38} /></span>
             <span className="lp-logo-word">orbit</span>
           </a>
 
@@ -370,8 +369,7 @@ const LP_CSS = `
 .lp-nav{ position:relative; z-index:3; display:flex; flex-wrap:wrap; align-items:center; gap:clamp(20px,5vw,56px);
   padding:clamp(20px,3vw,38px) clamp(20px,4vw,48px) 0; }
 .lp-logo{ display:flex; align-items:center; gap:12px; }
-.lp-logo-mark{ width:38px; height:38px; border-radius:50%; background:var(--lp-inverse); display:grid; place-items:center; }
-.lp-logo-dot{ width:20px; height:8px; border-radius:99px; background:#fff; transform:rotate(-25deg); display:block; }
+.lp-logo-mark{ width:38px; height:38px; display:grid; place-items:center; color:var(--lp-ink); }
 .lp-logo-word{ font-size:clamp(22px,5vw,30px); font-weight:500; color:var(--lp-ink); letter-spacing:-.5px; }
 .lp-nav-links{ display:flex; gap:34px; }
 .lp-nav-links a{ font-weight:700; font-size:clamp(12px,2.4vw,15px); letter-spacing:.06em; color:var(--lp-text); white-space:nowrap; }

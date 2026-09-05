@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BookOpen, Bot, Brain, ChartColumn, Check, ChevronDown, ChevronRight, Command, Flag, Inbox, LayoutDashboard, ListChecks, LogOut, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Sparkles, Trash2, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Bot, Brain, ChartColumn, Check, ChevronDown, ChevronRight, Flag, Inbox, LayoutDashboard, ListChecks, LogOut, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Sparkles, Trash2, UserRound, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -11,6 +11,7 @@ import { ApprovalsView, fetchInboxCount } from '@/components/approvals-view';
 import { HealthCard } from '@/components/health-card';
 import { MemoryView } from '@/components/memory-view';
 import { SkillsView } from '@/components/skills-view';
+import { OrbitMark } from '@/components/orbit-mark';
 import { WorkspaceView, type ChatTarget, type WorkspaceSection } from '@/components/workspace-views';
 import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
 import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
@@ -379,7 +380,7 @@ export default function Home() {
         <div className="sidebar-head">
           {/* 로고·워드마크는 홈(대쉬보드) 버튼입니다 — 접힌 상태에서는 로고만 남습니다 */}
           <button className="brand-home" onClick={() => goTo('대쉬보드')} aria-label={t("대쉬보드로 이동")} title={t("대쉬보드")}>
-            <span className="brand-mark"><Command size={20} strokeWidth={2.5} /></span>
+            <span className="brand-mark"><OrbitMark satellite="#ffffff" size={28} /></span>
             {navOpen && <b className="brand-word">Orbit</b>}
           </button>
           <button className="nav-toggle" onClick={toggleNav} aria-expanded={navOpen}

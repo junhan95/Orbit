@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowRight, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { OrbitMark } from '@/components/orbit-mark';
 
 /**
  * 로그인 화면.
@@ -56,7 +57,7 @@ export function LoginView() {
 
   return <main className="login-page">
     {/* oxlint-disable-next-line next/no-html-link-for-pages -- 로그인→랜딩은 다른 레이아웃 트리라 전체 로드가 맞습니다 */}
-    <a className="login-brand" href="/landing"><span className="brand-mark">⌘</span><b>Orbit</b></a>
+    <a className="login-brand" href="/landing"><span className="brand-mark"><OrbitMark satellite="#ffffff" size={26} /></span><b>Orbit</b></a>
 
     <section className="login-card">
       <span className="section-kicker">Sign in</span>

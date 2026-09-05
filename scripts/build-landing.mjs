@@ -8,7 +8,8 @@
  * react-dom/server 로 렌더합니다. 컴포넌트를 복제하지 않으므로 앱과 랜딩이 갈라지지 않습니다.
  * 색 토큰은 app/globals.css 의 :root / .dark 블록을 그대로 잘라 넣습니다.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import react from '@vitejs/plugin-react';
@@ -31,6 +32,7 @@ const server = await createServer({
   configFile: false,
   root: process.cwd(),
   plugins: [react()],
+  resolve: { alias: { '@': resolve(process.cwd()) } },
   appType: 'custom',
   logLevel: 'error',
   server: { middlewareMode: true, hmr: false, watch: null },
@@ -55,6 +57,9 @@ const html = `<!doctype html>
 <meta name="description" content="프로젝트 매니저 에이전트가 필요한 팀원을 채용하고, 업무를 나누고, 결과를 검토해 보고합니다. 기억·회상·검증이 붙은 AI 에이전트 워크스페이스.">
 <meta property="og:title" content="Orbit — AI Agent Command Center">
 <meta property="og:description" content="매니저 한 명이 팀 전체를 굴립니다.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
@@ -84,4 +89,5 @@ mkdirSync(OUT, { recursive: true });
 writeFileSync(`${OUT}/index.html`, html);
 writeFileSync(`${OUT}/404.html`, html);
 writeFileSync(`${OUT}/.nojekyll`, '');
+for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png']) copyFileSync(`public/${f}`, `${OUT}/${f}`);
 console.log(`랜딩 정적 빌드 완료 → ${OUT}/index.html (${(html.length / 1024).toFixed(1)} KB)${APP_URL ? `, 앱 주소 ${APP_URL}` : ', 앱 링크는 상대 경로(/login) 그대로'}`);
