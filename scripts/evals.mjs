@@ -17,7 +17,9 @@
  *     checks: [ { type, ...args, soft?: true } ] }
  * 검사 종류는 아래 CHECKS 를 보세요. soft:true 는 실패해도 경고로만 집계합니다.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -104,6 +106,7 @@ const CHECKS = {
   plan_tasks: (ctx, c) => { const tasks = ctx.plan?.proposal?.tasks ?? []; const names = new Set(ctx.agentNames); const problems = []; if (tasks.length < (c.min ?? 1) || tasks.length > (c.max ?? 99)) problems.push(`개수 ${tasks.length}`); if (new Set(tasks.map((t) => t.title)).size !== tasks.length) problems.push('제목 중복'); for (const t of tasks) { if (!names.has(t.owner)) problems.push(`담당 미상 ${t.owner}`); if ((t.description ?? '').length < (c.minDescription ?? 40)) problems.push(`설명 짧음: ${t.title}`); } return ok(!problems.length, problems.length ? problems.join(', ') : `카드 ${tasks.length}개, 담당·설명 모두 유효`); },
   created_tasks_eq: (ctx, c) => { const n = (ctx.run?.createdTasks ?? []).length; return ok(n === c.equals, `생성된 카드 ${n}개 (기대 ${c.equals})`); },
   approvals_pending_min: async (ctx, c) => { const { data } = await api('GET', '/api/approvals'); const mine = (data?.approvals ?? []).filter((row) => row.taskId === ctx.taskId); ctx.approvals = mine; return ok(mine.length >= c.min, `승인 대기 ${mine.length}건 (최소 ${c.min}): ${mine.map((row) => row.action).join(',')}`); },
+  approvals_include: async (ctx, c) => { const rows = ctx.approvals ?? (await api('GET', '/api/approvals')).data?.approvals?.filter((row) => row.taskId === ctx.taskId) ?? []; const hit = rows.some((row) => row.action === c.action); return ok(hit, hit ? `${c.action} 대기 있음` : `${c.action} 대기 없음 (모델이 scope 를 다르게 골랐을 수 있음)`); },
   health_metrics: (ctx, c) => { const metrics = ctx.health?.metrics ?? []; const tiers = new Set(['ok', 'watch', 'diagnose', 'act', 'insufficient']); const bad = metrics.filter((m) => !tiers.has(m.tier) || typeof m.note !== 'string'); const missing = (c.keys ?? []).filter((key) => !metrics.some((m) => m.key === key)); return ok(!bad.length && !missing.length, missing.length ? `지표 누락: ${missing.join(',')}` : bad.length ? `형식 오류 ${bad.length}건` : `지표 ${metrics.length}개: ${metrics.map((m) => `${m.key}=${m.tier}`).join(', ')}`); },
   judge: async (ctx, c) => { if (!JUDGE) return { pass: true, skipped: true, note: '--judge 없음 (건너뜀)' }; const result = await judge(c.rubric, textOf(ctx, c.field ?? 'output')); return ok(result.pass, result.note); },
 };
@@ -124,6 +127,28 @@ const textOf = (ctx, field = 'output') => {
   if (field === 'review') return (ctx.detail?.comments ?? []).filter((item) => item.content.startsWith('🔍')).map((item) => item.content).join('\n');
   return String(ctx.run?.[field] ?? '');
 };
+
+// ── eval 팀원 시드 (로컬 D1 전용) ───────────────────────────────────────────
+function seedAgents(projectId) {
+  const config = 'dist/server/wrangler.json';
+  if (!existsSync(join(ROOT, config))) { console.error(`wrangler 설정(${config})이 없어 eval 팀원을 만들 수 없습니다. npm run build 를 먼저 실행하세요.`); process.exit(2); }
+  const now = Date.now();
+  const colors = ['#1a3866', '#4a2b6b', '#aa2d00'];
+  const sql = AGENTS.map((agent, index) => {
+    const id = crypto.randomUUID();
+    const esc = (value) => String(value).replace(/'/g, "''");
+    return `INSERT INTO agents (id, user_id, name, role, description, instructions, color, is_default, created_at, project_id, is_manager, role_key)
+      SELECT '${id}', user_id, '${esc(agent.name)}', '${esc(agent.role)}', '${esc(agent.description)}', '${esc(agent.instructions)}', '${colors[index]}', 0, ${now + index}, '${projectId}', 0, NULL
+      FROM projects WHERE id = '${projectId}';
+INSERT OR IGNORE INTO project_agents (project_id, agent_id, user_id, assigned_at) SELECT '${projectId}', '${id}', user_id, ${now} FROM projects WHERE id = '${projectId}';`;
+  }).join('\n');
+  const file = join(tmpdir(), `orbit-eval-agents-${process.pid}.sql`);
+  writeFileSync(file, sql, 'utf8');
+  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const result = spawnSync(npx, ['wrangler', 'd1', 'execute', 'DB', '--local', '--config', config, '--persist-to', '.wrangler/state', '--file', file], { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32' });
+  rmSync(file, { force: true });
+  if (result.status !== 0) { console.error(`eval 팀원 시드 실패:\n${result.stdout}\n${result.stderr}`); process.exit(2); }
+}
 
 // ── 케이스 실행 ──────────────────────────────────────────────────────────────
 async function runCase(kase, env) {
@@ -198,7 +223,9 @@ async function main() {
   const project = await api('POST', '/api/projects', { name: `eval ${stamp}`, description: '연속 eval 자동 생성. 지워도 됩니다.' });
   if (project.status >= 300) { console.error(`프로젝트 생성 실패: ${JSON.stringify(project.data)}`); process.exit(2); }
   const env = { projectId: project.data.project.id, managerId: project.data.manager?.id, agentNames: [project.data.manager?.name, ...AGENTS.map((agent) => agent.name)].filter(Boolean) };
-  for (const agent of AGENTS) await api('POST', '/api/agents', agent);
+  // 에이전트는 매니저의 recruit_agent 로만 생기므로(POST /api/agents 없음) eval 용 팀원은 로컬 D1 에 직접 넣습니다.
+  // 프로젝트에 귀속시켜 두면 프로젝트를 지울 때 함께 사라집니다.
+  seedAgents(env.projectId);
   console.log(`대상 ${BASE} · 프로젝트 ${env.projectId} · 케이스 ${cases.length}개${JUDGE ? ' · judge 켜짐' : ''}\n`);
 
   const report = { startedAt: new Date().toISOString(), base: BASE, projectId: env.projectId, cases: [] };

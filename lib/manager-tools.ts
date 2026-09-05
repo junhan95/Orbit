@@ -9,18 +9,13 @@
  * 폭주를 막으려고 실행당 합류 4명 · 위임 4건으로 상한을 둡니다.
  */
 import { AGENT_CATALOG, findCatalogRole, renderCatalog, uniqueAgentName } from '@/lib/agent-catalog';
-import { runClaudeAgent, type ToolDefinition } from '@/lib/claude';
-import { resolveAgentModel } from '@/lib/models';
-import { PRIORITY_HINT, type Priority, toPriority } from '@/lib/priority';
-import { RECALL_TOOL, executeRecallTool, recallDocUpsert } from '@/lib/recall';
-import { agentCommentInsert, formatRunComment } from '@/lib/run-loop';
-import { usageInsert } from '@/lib/usage';
+import type { ToolDefinition } from '@/lib/claude';
+import { runTask } from '@/lib/run-task';
+import { type Priority, toPriority } from '@/lib/priority';
+import { recallDocUpsert } from '@/lib/recall';
 
 export const MAX_RECRUITS = 4;
 export const MAX_DELEGATIONS = 4;
-const WORKER_MAX_ITERATIONS = 6;
-const WORKER_MAX_TOKENS = 6_000;
-const WORKER_RECALL_LIMIT = 2;
 /** 매니저에게 돌려주는 하위 결과 본문 길이 상한 */
 const REPORT_CLIP = 4_000;
 
@@ -126,22 +121,6 @@ function clip(text: string | null | undefined, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-const WORKER_COMPLETE_TOOL: ToolDefinition = {
-  name: 'complete_task',
-  description: [
-    '맡은 업무를 마치면서 결과를 구조화해 보고합니다. 마지막에 반드시 한 번 호출하세요.',
-    "지시가 불충분해 제대로 할 수 없으면 추측으로 채우지 말고 status='blocked' 로 무엇이 필요한지 밝히세요.",
-  ].join(' '),
-  input_schema: {
-    type: 'object',
-    properties: {
-      status: { type: 'string', enum: ['completed', 'blocked'], description: 'completed = 마침, blocked = 진행 불가' },
-      summary: { type: 'string', description: '핵심 결론 2~4문장. 매니저가 이것만 읽고도 상황을 알 수 있게.' },
-      blocked_reason: { type: 'string', description: "status='blocked' 일 때 무엇이 필요한지" },
-    },
-    required: ['status', 'summary'],
-  },
-};
 
 /**
  * 하위 에이전트 한 명을 실제로 실행합니다.
@@ -152,108 +131,27 @@ async function runWorker(context: ManagerContext, member: MemberRow, params: { t
   const now = Date.now();
   const taskId = crypto.randomUUID();
 
-  await db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(taskId, userId, params.title, params.label, member.name, '진행 중', params.priority, member.color, context.projectId, params.brief, now, now).run();
+  // 카드를 만들고, 실행은 /api/agents/run 과 같은 코어(lib/run-task.ts)에 맡깁니다.
+  // 그래야 위임 실행에도 기억·회상·스킬·검증 근거·검토·관제·승인 게이트가 똑같이 적용됩니다.
+  await db.batch([
+    db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(taskId, userId, params.title, params.label, member.name, '진행 중', params.priority, member.color, context.projectId, params.brief, now, now),
+    recallDocUpsert(db, {
+      userId, kind: 'task', refId: taskId, projectId: context.projectId, agentName: member.name, title: params.title,
+      content: `[${params.label}] ${params.title} — 담당 ${member.name} (${context.managerName} 위임)\n${params.brief}`, createdAt: now,
+    }),
+  ]);
 
-  const runId = crypto.randomUUID();
-  await db.prepare('INSERT INTO agent_runs (id, task_id, user_id, agent_name, status, prompt, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(runId, taskId, userId, member.name, 'running', params.brief, now).run();
-
-  const system = [
-    `당신은 ${member.name}, ${member.role}입니다.`,
-    member.instructions,
-    '',
-    '## 작업 규칙',
-    `- '${context.managerName}'(프로젝트 매니저)가 맡긴 업무입니다. 지시 범위 안에서 끝까지 수행하고 결과를 보고하세요.`,
-    `- 이 업무의 중요도는 '${params.priority}' 입니다. ${PRIORITY_HINT[params.priority]}`,
-    '- 과거 논의가 있었을 법하면 recall_history 로 먼저 확인하세요.',
-    '- 최신 정보가 필요하면 웹 검색을 쓰고, 사실과 추측을 구분해 표시하세요.',
-    "- 지시가 불충분하면 추측으로 채우지 말고 complete_task(status='blocked') 로 필요한 것을 구체적으로 적으세요.",
-    '- 결과는 한국어로, 핵심 결론 → 수행 내용 → 남은 과제 순으로 정리합니다.',
-    '- 마지막에는 반드시 complete_task 를 호출하세요.',
-    '',
-    `## 프로젝트\n이름: ${context.projectName}\n설명: ${context.projectDescription || '(설명 없음)'}`,
-    context.folderContext
-      ? `\n## 연결된 작업 폴더 (사용자 컴퓨터)\n실제 파일 스냅샷입니다. 추측보다 우선하는 1차 근거이며, 목록에만 있는 파일의 내용은 지어내지 마세요.\n\n${context.folderContext}`
-      : '',
-  ].filter(Boolean).join('\n');
-
-  const prompt = [`업무: ${params.title}`, `분류: ${params.label}`, '', '## 매니저의 지시', params.brief].join('\n');
-  const model = resolveAgentModel(member.model, context.fallbackModel);
-  const report: { value: { status: 'completed' | 'blocked'; summary: string; blockedReason: string | null } | null } = { value: null };
-  const counters = { recall: 0 };
-
-  try {
-    const result = await runClaudeAgent({
-      apiKey: context.apiKey, model, system,
-      messages: [{ role: 'user', content: prompt }],
-      maxTokens: WORKER_MAX_TOKENS,
-      maxIterations: WORKER_MAX_ITERATIONS,
-      webSearchMaxUses: 3,
-      tools: [RECALL_TOOL as unknown as ToolDefinition, WORKER_COMPLETE_TOOL],
-      async executeTool(name, input) {
-        if (name === 'recall_history') {
-          counters.recall += 1;
-          if (counters.recall > WORKER_RECALL_LIMIT) return { error: `회상 호출 상한(${WORKER_RECALL_LIMIT}회)에 도달했습니다. 지금까지의 결과로 진행하세요.` };
-          return executeRecallTool(db, userId, input, { projectId: context.projectId });
-        }
-        if (name === 'complete_task') {
-          const summary = typeof input.summary === 'string' ? input.summary.trim() : '';
-          if (!summary) throw new Error('summary 는 비울 수 없습니다.');
-          report.value = {
-            status: input.status === 'blocked' ? 'blocked' : 'completed',
-            summary: summary.slice(0, 1200),
-            blockedReason: typeof input.blocked_reason === 'string' ? input.blocked_reason.trim().slice(0, 600) : null,
-          };
-          return { ok: true, note: '보고가 저장되었습니다. 반복하지 말고 짧게 마무리하세요.' };
-        }
-        throw new Error(`알 수 없는 툴: ${name}`);
-      },
-    });
-
-    const completedAt = Date.now();
-    const done = report.value;
-    const blocked = done?.status === 'blocked';
-    const reportTurn = result.turns.find((turn) => turn.toolNames.includes('complete_task'));
-    const longest = result.turns.reduce<string>((best, turn) => turn.text.length > best.length ? turn.text : best, '');
-    const outputBody = (reportTurn?.text || longest || done?.summary || '').trim();
-    const output = [blocked ? `⛔ 진행 불가: ${done?.blockedReason || '사유 미기재'}\n` : '', outputBody].join('').trim();
-    const summary = done?.summary ?? clip(outputBody.replace(/\s+/g, ' '), 300);
-    const blockedReason = blocked ? (done?.blockedReason || '사유 미기재') : null;
-    const status = blocked ? '대기' : '검토';
-
-    await db.batch([
-      db.prepare('UPDATE agent_runs SET status = ?, outcome = ?, output = ?, summary = ?, metadata = ?, response_id = ?, completed_at = ? WHERE id = ? AND user_id = ?')
-        .bind('completed', blocked ? 'blocked' : 'completed', output, summary,
-          JSON.stringify({ delegatedBy: context.managerName, parentTaskId: context.managerTaskId, iterations: result.iterations, stopReason: result.stopReason }),
-          result.id, completedAt, runId, userId),
-      db.prepare('UPDATE tasks SET status = ?, result = ?, summary = ?, blocked_reason = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-        .bind(status, output, summary, blockedReason, completedAt, taskId, userId),
-      agentCommentInsert(db, {
-        userId, taskId, author: member.name, createdAt: completedAt,
-        content: formatRunComment({ blocked, summary, blockedReason, nextActions: [], createdTasks: [] }),
-      }),
-      usageInsert(db, { userId, kind: 'agent_run', result, refId: runId, projectId: context.projectId, agentName: member.name }),
-      recallDocUpsert(db, {
-        userId, kind: 'run', refId: runId, projectId: context.projectId, agentName: member.name, role: 'assistant',
-        title: params.title, content: `[${member.name} · ${params.label}] ${params.title}\n\n${summary}\n\n${output}`, createdAt: completedAt,
-      }),
-    ]);
-
-    return { taskId, status, blocked, summary, output, blockedReason };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '하위 에이전트 실행에 실패했습니다.';
-    const failedAt = Date.now();
-    await db.batch([
-      db.prepare('UPDATE agent_runs SET status = ?, outcome = ?, output = ?, completed_at = ? WHERE id = ? AND user_id = ?')
-        .bind('failed', 'failed', message, failedAt, runId, userId),
-      db.prepare('UPDATE tasks SET status = ?, blocked_reason = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-        .bind('대기', message, failedAt, taskId, userId),
-      agentCommentInsert(db, { userId, taskId, author: member.name, createdAt: failedAt, content: `⚠️ 실행 실패 — ${message}` }),
-    ]);
-    return { taskId, status: '대기', blocked: true, summary: '', output: '', blockedReason: message };
+  const outcome = await runTask({
+    db, userId, taskId, apiKey: context.apiKey, fallbackModel: context.fallbackModel,
+    folderContext: context.folderContext,
+    delegatedBy: { managerName: context.managerName, parentTaskId: context.managerTaskId },
+  });
+  if (!outcome.ok) {
+    return { taskId, status: '대기', blocked: true, summary: '', output: '', blockedReason: outcome.error };
   }
+  return { taskId, status: outcome.status, blocked: outcome.blocked, summary: outcome.summary, output: outcome.output, blockedReason: outcome.blockedReason };
 }
 
 export async function executeManagerTool(
