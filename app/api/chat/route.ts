@@ -1,9 +1,18 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
-import { callClaude, type ClaudeMessage } from '@/lib/claude';
+import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
+import { compactConversation, shouldCompact } from '@/lib/compaction';
+import { runInBackground, runMemoryReview } from '@/lib/memory-review';
+import { runClaudeAgent } from '@/lib/claude';
+import { resolveAgentModel } from '@/lib/models';
 import { usageInsert } from '@/lib/usage';
 
 type ChatRow = { id: string; role: 'user' | 'assistant'; content: string; createdAt: number };
+
+const MAX_ITERATIONS = 4;
+/** 매니저는 대화 중에도 채용·위임·검토를 하므로 반복 여유를 더 줍니다 */
+const MANAGER_MAX_ITERATIONS = 14;
+const MAX_FOLDER_CONTEXT = 60_000;
 
 export async function GET(request: Request) {
   const user = getCurrentUser();
@@ -17,60 +26,86 @@ export async function GET(request: Request) {
   return Response.json({ messages: messages.results });
 }
 
+/** 비스트리밍 대화. 스트리밍은 /api/chat/stream 이 같은 lib/chat-agent 헬퍼로 처리합니다. */
 export async function POST(request: Request) {
   const user = getCurrentUser();
-  const body = await request.json().catch(() => null) as { projectId?: unknown; agentId?: unknown; message?: unknown } | null;
+  const body = await request.json().catch(() => null) as { projectId?: unknown; agentId?: unknown; message?: unknown; folderContext?: unknown } | null;
   if (typeof body?.projectId !== 'string' || typeof body.agentId !== 'string' || typeof body.message !== 'string' || !body.message.trim()) {
     return Response.json({ error: '프로젝트, 에이전트, 메시지가 필요합니다.' }, { status: 400 });
   }
+  const projectId = body.projectId;
+  const agentId = body.agentId;
   const message = body.message.trim().slice(0, 4000);
+  const folderContext = typeof body.folderContext === 'string' ? body.folderContext.trim().slice(0, MAX_FOLDER_CONTEXT) : '';
   const db = getDatabase();
 
   const context = await db.prepare(`SELECT p.name AS projectName, p.description AS projectDescription,
-      a.name AS agentName, a.role AS agentRole, a.instructions AS instructions
+      a.name AS agentName, a.role AS agentRole, a.instructions AS instructions, a.model AS agentModel, a.is_manager AS isManager
     FROM projects p
     JOIN project_agents pa ON pa.project_id = p.id AND pa.user_id = p.user_id
     JOIN agents a ON a.id = pa.agent_id AND a.user_id = p.user_id
     WHERE p.id = ? AND a.id = ? AND p.user_id = ?`)
-    .bind(body.projectId, body.agentId, user.userId).first<Record<string, string>>();
+    .bind(projectId, agentId, user.userId).first<ChatContext & { agentModel: string | null; isManager: number }>();
   if (!context) return Response.json({ error: '이 프로젝트에 배정된 에이전트가 아닙니다.' }, { status: 403 });
 
   const userMessage: ChatRow = { id: crypto.randomUUID(), role: 'user', content: message, createdAt: Date.now() };
-  await db.prepare('INSERT INTO chat_messages (id, user_id, project_id, agent_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(userMessage.id, user.userId, body.projectId, body.agentId, 'user', message, userMessage.createdAt).run();
+  await db.batch([
+    db.prepare('INSERT INTO chat_messages (id, user_id, project_id, agent_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(userMessage.id, user.userId, projectId, agentId, 'user', message, userMessage.createdAt),
+    chatMessageIndex(db, { userId: user.userId, messageId: userMessage.id, projectId, agentName: context.agentName, role: 'user', content: message, createdAt: userMessage.createdAt }),
+  ]);
 
-  const { apiKey, model } = getRuntimeConfig();
+  const { apiKey, model: fallbackModel } = getRuntimeConfig();
+  const model = resolveAgentModel(context.agentModel, fallbackModel);
   if (!apiKey) {
     return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.', userMessage }, { status: 503 });
   }
 
-  const history = await db.prepare('SELECT role, content FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? ORDER BY created_at DESC LIMIT 12')
-    .bind(user.userId, body.projectId, body.agentId).all<{ role: string; content: string }>();
-  const messages: ClaudeMessage[] = history.results
-    .slice()
-    .reverse()
-    .map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: item.content }));
-
-  const system = [
-    `당신은 ${context.agentName}, ${context.agentRole}입니다.`,
-    context.instructions,
-    `현재 프로젝트: ${context.projectName}`,
-    `프로젝트 설명: ${context.projectDescription || '(설명 없음)'}`,
-    '답변은 한국어로, 프로젝트 맥락에 맞춰 구체적으로 작성하세요.',
-  ].filter(Boolean).join('\n');
+  const chat = await prepareChatTurn(db, user.userId, {
+    projectId, agentId, context,
+    // 매니저와의 대화면 채용·위임·카드 생성 도구를 붙입니다.
+    manager: context.isManager ? { apiKey, fallbackModel, folderContext } : null,
+  });
 
   try {
-    const result = await callClaude({ apiKey, model, system, messages, maxTokens: 2500 });
+    const result = await runClaudeAgent({
+      apiKey, model,
+      maxTokens: chat.isManager ? 4000 : 2500,
+      maxIterations: chat.isManager ? MANAGER_MAX_ITERATIONS : MAX_ITERATIONS,
+      system: chat.system, messages: chat.messages, tools: chat.tools, executeTool: chat.executeTool,
+    });
+    if (!result.text) throw new Error('답변을 생성하지 못했습니다.');
+
     const assistantMessage: ChatRow = { id: crypto.randomUUID(), role: 'assistant', content: result.text, createdAt: Date.now() };
     await db.batch([
       db.prepare('INSERT INTO chat_messages (id, user_id, project_id, agent_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(assistantMessage.id, user.userId, body.projectId, body.agentId, 'assistant', assistantMessage.content, assistantMessage.createdAt),
-      usageInsert(db, {
-        userId: user.userId, kind: 'chat', result,
-        refId: assistantMessage.id, projectId: body.projectId, agentName: context.agentName,
-      }),
+        .bind(assistantMessage.id, user.userId, projectId, agentId, 'assistant', assistantMessage.content, assistantMessage.createdAt),
+      chatMessageIndex(db, { userId: user.userId, messageId: assistantMessage.id, projectId, agentName: context.agentName, role: 'assistant', content: assistantMessage.content, createdAt: assistantMessage.createdAt }),
+      usageInsert(db, { userId: user.userId, kind: 'chat', result, refId: assistantMessage.id, projectId, agentName: context.agentName }),
     ]);
-    return Response.json({ userMessage, assistantMessage });
+    // 사용자 메시지 N개마다 기억 리뷰 (Hermes: 10턴마다 백그라운드 포크)
+    if (chat.userTurnCount > 0 && chat.userTurnCount % MEMORY_REVIEW_EVERY === 0) {
+      const { reviewModel } = getRuntimeConfig();
+      runInBackground(() => runMemoryReview({
+        db, userId: user.userId, apiKey, model: reviewModel, system: chat.system,
+        transcript: [...chat.messages, { role: 'assistant', content: result.text }],
+        projectId, agentId, agentName: context.agentName, refId: assistantMessage.id,
+      }));
+    }
+    // 요약 이후 메시지가 상한을 넘으면 앞부분을 압축 (백그라운드, 저가 모델)
+    if (shouldCompact(chat.messagesSinceSummary + 1)) {
+      const { reviewModel } = getRuntimeConfig();
+      runInBackground(() => compactConversation({ db, userId: user.userId, projectId, agentId, agentName: context.agentName, apiKey, model: reviewModel }));
+    }
+    return Response.json({
+      userMessage, assistantMessage,
+      recalled: result.toolCalls.filter((call) => call.name === 'recall_history').length,
+      compacted: Boolean(chat.summary),
+      // 매니저가 대화 중에 팀을 꾸리거나 카드를 만들었으면 UI 가 보드를 다시 읽습니다.
+      recruited: chat.managerLog.recruited,
+      delegated: chat.managerLog.delegated,
+      createdTasks: chat.taskLog.createdTasks,
+    });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : '답변 생성에 실패했습니다.', userMessage }, { status: 502 });
   }
