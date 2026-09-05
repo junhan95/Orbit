@@ -11,8 +11,8 @@ export const COMPANY = {
   ceoEn: 'Junhan Park',
   /** 사업자등록번호 */
   registration: '299-21-00736',
-  /** 통신판매업 신고번호 — 신고 후 채우면 약관·푸터에 표시됩니다 (비어 있으면 표시 안 함) */
-  mailOrderRegistration: '' as string,
+  /** 통신판매업 신고번호 (공정위 통신판매사업자 조회 기준, 2018-05-24 신고). 비어 있으면 약관·푸터에 표시 안 함 */
+  mailOrderRegistration: '2026-경기의왕-0174' as string,
   /** 사업장 소재지 — 도로명까지만 표기 */
   address: '경기도 의왕시 원골로 43',
   addressEn: '43 Wongol-ro, Uiwang-si, Gyeonggi-do, Republic of Korea',
