@@ -15,7 +15,7 @@ export const COMPANY = {
   address: '경기도 의왕시 원골로 43',
   addressEn: '43 Wongol-ro, Uiwang-si, Gyeonggi-do, Republic of Korea',
   /** 개인정보 보호책임자 및 문의 */
-  email: 'junhanpark95@gmail.com',
+  email: 'hello@orbitcrew.ai',
   /** 서비스 */
   service: 'Orbit',
   site: 'https://orbitcrew.ai',
