@@ -9,6 +9,7 @@
  * scope: 'global'(이 사용자의 모든 프로젝트) | 'project'(한 프로젝트)
  */
 import type { ToolDefinition, ToolInput } from './claude';
+import { requestApproval } from './approvals';
 import { logGate } from './gates';
 import { scanMemoryThreat } from './memory';
 
@@ -85,6 +86,8 @@ export type SkillToolContext = {
   db: D1Database; userId: string; projectId: string | null; actor: string;
   /** 실행 한 번 동안의 저장 횟수 (호출자가 실행마다 새 객체) */
   saves: { count: number; names: string[] };
+  /** 승인 대기 항목에 남길 출처 (실행에서 호출할 때) */
+  taskId?: string | null; runId?: string | null;
 };
 
 export async function executeSkillTool(name: string, input: ToolInput, ctx: SkillToolContext): Promise<Record<string, unknown>> {
@@ -119,6 +122,15 @@ export async function executeSkillTool(name: string, input: ToolInput, ctx: Skil
     // 같은 실행에서 같은 스킬을 다시 고치는 것은 허용, 새 이름은 상한 적용
     if (!ctx.saves.names.includes(skillName) && ctx.saves.count >= MAX_SKILL_SAVES_PER_RUN) {
       return { error: `이번 실행에서는 스킬을 ${MAX_SKILL_SAVES_PER_RUN}개만 저장할 수 있습니다.` };
+    }
+    // 전역 스킬은 모든 프로젝트에 영향을 주므로 바로 쓰지 않고 사람의 승인을 기다립니다 (물어보기형 게이트).
+    if (scope === 'global' && ctx.actor !== 'user') {
+      const { id } = await requestApproval(db, userId, {
+        action: 'save_global_skill', actor: ctx.actor, projectId: ctx.projectId, taskId: ctx.taskId ?? null, runId: ctx.runId ?? null,
+        summary: `${ctx.actor} 가 전역 스킬 저장 요청: ${skillName}`, payload: { name: skillName, description, body },
+      });
+      if (!ctx.saves.names.includes(skillName)) { ctx.saves.count += 1; ctx.saves.names.push(skillName); }
+      return { ok: true, pending_approval: id, note: '전역 스킬은 사람이 승인해야 저장됩니다. 승인 대기에 넣었으니 이 호출은 완료되었고 반복하지 마세요.' };
     }
     const outcome = await upsertSkill(db, { userId, scope, projectId: scope === 'project' ? ctx.projectId : null, name: skillName, description, body, actor: ctx.actor });
     if ('error' in outcome) return outcome;

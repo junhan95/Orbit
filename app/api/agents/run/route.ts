@@ -7,6 +7,7 @@ import {
   type ManagerContext,
 } from '@/lib/manager-tools';
 import { MEMORY_GUIDANCE, MEMORY_TOOL, executeMemoryTool, loadMemoryScopes, renderMemorySection } from '@/lib/memory';
+import { gateCreateTask } from '@/lib/approvals';
 import { logGate } from '@/lib/gates';
 import { maybeRunHealthCheck } from '@/lib/health';
 import { runInBackground, runMemoryReview } from '@/lib/memory-review';
@@ -224,7 +225,8 @@ export async function POST(request: Request) {
   // 실행 중 에이전트가 만든 카드/필드 기록 (UI 가 보드를 다시 읽을지 판단하는 데 씁니다)
   const toolLog = createTaskToolLog();
   const managerLog = createManagerLog();
-  const skillContext: SkillToolContext = { db, userId: user.userId, projectId: task.projectId, actor: task.owner, saves: { count: 0, names: [] } };
+  const skillContext: SkillToolContext = { db, userId: user.userId, projectId: task.projectId, actor: task.owner, saves: { count: 0, names: [] }, taskId: task.id, runId };
+  const createCounter = { created: 0 };
   const memoryFailures = { count: 0 };
   const counters = { recall: 0 };
 
@@ -265,6 +267,11 @@ export async function POST(request: Request) {
           return executeMemoryTool(db, input, { userId: user.userId, projectId: task.projectId, agentId: agent?.id ?? null, actor: task.owner, failures: memoryFailures });
         }
         if (TASK_TOOL_NAMES.has(name)) {
+          // 실행당 카드 생성이 상한을 넘으면 만들지 않고 승인 대기에 넣습니다 (물어보기형 게이트)
+          if (name === 'create_task') {
+            const asked = await gateCreateTask(db, user.userId, { input, counter: createCounter, actor: task.owner, projectId: task.projectId, taskId: task.id, runId });
+            if (asked) return asked;
+          }
           return executeTaskTool(name, input, toolContext, toolLog);
         }
         if (name === 'complete_task') {

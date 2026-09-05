@@ -120,6 +120,13 @@
       "when": 1788579000000,
       "tag": "0016_gate_events",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788580000000,
+      "tag": "0017_approvals",
+      "breakpoints": true
     }
   ]
 }

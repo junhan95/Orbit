@@ -288,3 +288,27 @@ DELETE /api/skills/:id
 - 수동 검사 버튼 → `POST /api/health`.
 
 검증(2026-09-05): 5일간 성공만 있던 기준선에 오늘 막힘 5건을 넣자 실패율 83%·+3σ 로 판정되어 매니저에게 "진단: 실행 실패·막힘 비율 +3.0σ"(중요도 높음) 카드가 증거와 함께 만들어졌고, 두 번째 호출은 24시간 중복으로 건너뛰었습니다.
+
+## 14. 승인 대기 큐 — 물어보기형 게이트 (플레이북 5번)
+
+지금까지의 게이트(서킷브레이커·회상 상한·위협 스캔)는 전부 "차단"이었고, 이제 "물어보기"가 생겼습니다. 위험하지만 정당할 수 있는 행동은 막지 않고 **사람 승인 큐**에 넣습니다 (`approvals` 테이블, 마이그레이션 `0017`).
+
+- 걸리는 행동: 한 실행에서 `create_task` **4번째부터**(3장까지는 바로 생성), `save_skill(scope=global)`(모든 프로젝트에 영향). 에이전트는 "승인 대기에 넣었다"는 응답을 받고 실행을 계속합니다.
+- 승인하면 그 자리에서 카드가 생기거나 스킬이 저장되고, 거절하면 사유와 함께 기록만 남습니다. 결정은 `gate_events`(`approval` ask/allow/block)에도 남아 `/api/health` 의 `gates` 에 집계됩니다.
+- 기억의 project 스코프 승인(§7)은 같은 원리지만 별도 큐(`/api/memory` pending)입니다 — UI 에서는 한 화면에 합쳐 보여 주는 것을 권합니다.
+
+### API
+
+```
+GET  /api/approvals?status=pending|approved|rejected|all
+     → { approvals: [{ id, action: 'create_task'|'save_global_skill', actor, projectId, taskId, runId, summary, payload, status, reason, createdAt, resolvedAt }], pendingCount }
+POST /api/approvals/:id  { decision: 'approve'|'reject', reason? }
+     → { approval, result }   // approve 시 result = { taskId, owner } 또는 { skillId, action }; 이미 처리됐으면 409
+```
+
+### 제안 UI
+
+- 상단 알림 종 아이콘에 `pendingCount` + 기억 pending 합계. 클릭하면 승인함: 행마다 `summary`, `actor`, 출처 카드 링크(`taskId`), payload 미리보기(카드면 제목·설명, 스킬이면 이름·설명·본문), [승인] [거절(사유)].
+- 실행 결과 카드에 "승인 대기 n건" 배지 — 실행 응답의 `toolCalls` 에 `create_task` 가 3회 넘거나 `save_skill` 이 있으면 승인함 링크.
+
+검증(2026-09-05): 카드 5장 + 전역 스킬을 지시한 실행에서 3장만 생성되고 2장·스킬은 큐로 갔으며, 승인한 카드는 보드에, 거절한 카드는 사유와 함께 기록, 스킬은 승인 후 전역으로 저장됐습니다. 진단 카드(§13)를 매니저가 실행한 검증에서는 recall 로 원문을 대조해 "실패 5건은 결제 계정 미확보라는 하나의 원인(인테이크 문제), 1건은 검증 누락"으로 정확히 갈랐고 후속 카드 4장·필드·스킬·기억을 남겼습니다 — 다만 complete_task 없이 텍스트로 끝나 요약이 본문 앞부분으로 대체됐습니다(매니저 실행의 반복 상한 16 안에서 끝내도록 매니저 규칙에 "마지막엔 complete_task"를 강조할 필요).

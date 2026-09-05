@@ -117,6 +117,19 @@ export const gateEvents = sqliteTable('gate_events', {
   createdAt: integer('created_at').notNull(),
 }, (table) => [index('idx_gate_events_user_gate').on(table.userId, table.gate, table.createdAt)]);
 
+/**
+ * 승인 대기 큐 (물어보기형 게이트, lib/approvals.ts). 에이전트가 요청한 위험 행동을 사람이 승인해야 실행됩니다.
+ * action: 'create_task'(실행당 상한 초과분) | 'save_global_skill'. payload 는 승인 시 그대로 실행할 JSON.
+ */
+export const approvals = sqliteTable('approvals', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  action: text('action').notNull(), actor: text('actor').notNull(),
+  projectId: text('project_id'), taskId: text('task_id'), runId: text('run_id'),
+  summary: text('summary').notNull(), payload: text('payload').notNull(),
+  status: text('status').notNull().default('pending'), reason: text('reason'),
+  createdAt: integer('created_at').notNull(), resolvedAt: integer('resolved_at'),
+}, (table) => [index('idx_approvals_user_status').on(table.userId, table.status, table.createdAt)]);
+
 export const agentRuns = sqliteTable('agent_runs', {
   id: text('id').primaryKey(), taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull(), agentName: text('agent_name').notNull(), status: text('status').notNull(),
