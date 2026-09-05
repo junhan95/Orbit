@@ -36,3 +36,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# generated / local scratch
+tsconfig.tsbuildinfo
+/Claude outputs/
+

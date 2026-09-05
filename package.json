@@ -11,7 +11,12 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",
     "format": "oxfmt",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:migrate:remote": "node scripts/migrate.mjs --remote",
+    "db:migrate:check": "node scripts/migrate.mjs --check",
+    "db:migrate:status": "node scripts/migrate.mjs --status",
+    "db:migrate:baseline": "node scripts/migrate.mjs --baseline"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
