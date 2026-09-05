@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_TEXT_CHARS, type AttachmentPayload } from '@/lib/attachments';
+import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
 import { toAutonomy } from '@/lib/autonomy';
 import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
 import type { ManagerEvent } from '@/lib/manager-tools';
@@ -93,11 +94,11 @@ export async function POST(request: Request) {
     .bind(projectId, agentId, user.userId).first<ChatContext & { agentModel: string | null; isManager: number }>();
   if (!context) return Response.json({ error: '이 프로젝트에 배정된 에이전트가 아닙니다.' }, { status: 403 });
 
-  const { apiKey, model: fallbackModel, reviewModel } = getRuntimeConfig();
+  const { model: fallbackModel, reviewModel } = getRuntimeConfig();
   const model = resolveAgentModel(context.agentModel, fallbackModel);
-  if (!apiKey) {
-    return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.' }, { status: 503 });
-  }
+  let apiKey: string;
+  try { apiKey = await resolveApiKey(db, user.userId); }
+  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
 
   // 파일 자체는 보관하지 않습니다 — 기록에는 이름만 남깁니다.
   const storedContent = attachments.length

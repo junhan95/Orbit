@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronDown, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronDown, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -10,6 +10,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch';
 import { Markdown } from '@/components/markdown';
 import { ReviewActions, ReviewBadge, ReviewComment, isReviewComment } from '@/components/review-panel';
+import { type ApiKeyState, ApiKeyDialog, fetchApiKeyState } from '@/components/api-key-dialog';
 import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
 import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
 import { FIELD_TYPES, FIELD_TYPE_LABELS, type FieldType, type ProjectField } from '@/lib/fields';
@@ -1829,6 +1830,8 @@ function AccountView({ displayName, email, onNotice, onProfileSaved }: {
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE);
   const [account, setAccount] = useState({ displayName, email });
   const [authMode, setAuthMode] = useState<'local' | 'oauth'>('local');
+  const [apiKey, setApiKey] = useState<ApiKeyState | null>(null);
+  const [keyOpen, setKeyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<UserProfile>(EMPTY_PROFILE);
@@ -1849,6 +1852,7 @@ function AccountView({ displayName, email, onNotice, onProfileSaved }: {
         if (data.profile) setProfile({ ...EMPTY_PROFILE, ...data.profile });
         if (data.account) setAccount(data.account);
         if (data.authMode) setAuthMode(data.authMode);
+        fetchApiKeyState().then((state) => { if (alive) setApiKey(state); }).catch(() => {});
       } catch (error) {
         if (alive) onNotice(error instanceof Error ? error.message : t('프로필을 불러오지 못했습니다.'));
       } finally { if (alive) setLoading(false); }
@@ -1928,6 +1932,25 @@ function AccountView({ displayName, email, onNotice, onProfileSaved }: {
         <dd className={item.value ? '' : 'empty'}>{item.value || t('아직 없음')}</dd>
       </div>)}
     </dl>
+
+    <section className="settings-card api-key-card">
+      <div className="settings-title"><KeyRound size={16} /><div><strong>{t('Claude API 키')}</strong><p>{t('에이전트 실행·대화가 이 키로 나가고, 비용은 본인 Anthropic Console 에 청구됩니다.')}</p></div></div>
+      <div className="api-key-row">
+        {apiKey?.configured
+          ? <><span className="api-key-status ok"><ShieldCheck size={13} /> {t('연결됨')}</span><code>{apiKey.hint}</code></>
+          : apiKey?.mode === 'local'
+            ? <span className="api-key-status"><ShieldCheck size={13} /> {t('로컬 모드 — .env 의 ANTHROPIC_API_KEY 사용')}</span>
+            : <span className="api-key-status warn">{t('연결된 키 없음 — 에이전트를 돌릴 수 없습니다')}</span>}
+        <span className="api-key-actions">
+          <Button onClick={() => setKeyOpen(true)} size="sm" variant="outline">{apiKey?.configured ? t('바꾸기') : t('연결')}</Button>
+          {apiKey?.configured ? <Button onClick={async () => {
+            const response = await fetch('/api/keys', { method: 'DELETE' });
+            if (response.ok) { setApiKey(await response.json() as ApiKeyState); onNotice(t('API 키를 삭제했습니다.')); }
+          }} size="sm" variant="ghost">{t('삭제')}</Button> : null}
+        </span>
+      </div>
+      <ApiKeyDialog onNotice={onNotice} onOpenChange={setKeyOpen} onSaved={setApiKey} open={keyOpen} state={apiKey} />
+    </section>
 
     {authMode === 'oauth' ? <form action="/api/auth/logout" className="account-logout" method="post">
       <Button type="submit" variant="outline">{t('로그아웃')}</Button>

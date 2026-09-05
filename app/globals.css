@@ -930,3 +930,19 @@ p { color:var(--c-text); }
 .brand-home:hover .brand-mark{background:var(--c-brand-deep)}
 .brand-home:focus-visible{outline:2px solid var(--c-focus);outline-offset:3px}
 .sidebar:not(.open) .brand-home{flex:0 0 auto}
+
+/* Claude API 키 (BYOK) — 계정 카드 + 연결 모달 */
+.api-key-card{margin-top:16px;padding:18px 22px}
+.api-key-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:14px}
+.api-key-row code{font-family:var(--font-geist-mono),monospace;font-size:12px;background:var(--c-surface-soft);border-radius:var(--r-sm);padding:3px 8px;color:var(--c-ink)}
+.api-key-status{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--c-text-muted)}
+.api-key-status.ok{color:var(--c-success)}
+.api-key-status.warn{color:var(--c-coral-ink)}
+.api-key-actions{margin-left:auto;display:flex;gap:6px}
+.api-key-dialog [data-slot='dialog-title']{display:flex;align-items:center;gap:8px}
+.api-key-steps{margin:0;padding-left:20px;font-size:13px;line-height:1.8;color:var(--c-text)}
+.api-key-steps a{display:inline-flex;align-items:center;gap:4px;color:var(--c-link);font-weight:500}
+.api-key-dialog .entity-hint{display:flex;align-items:center;gap:5px}
+.api-key-current{margin:0;font-size:12px;color:var(--c-text-muted)}
+.api-key-current code{font-family:var(--font-geist-mono),monospace;color:var(--c-ink)}
+@media(max-width:640px){.api-key-actions{margin-left:0;width:100%}}

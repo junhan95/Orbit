@@ -1,6 +1,6 @@
 # Orbit 접속 흐름 — 로그인·세션·Claude 연결
 
-작성일 2026-09-05 · 구현 범위: 로그인·로그아웃까지 (BYOK 온보딩은 다음 단계)
+작성일 2026-09-05 · 구현 범위: 로그인·로그아웃 + BYOK 온보딩
 
 ---
 
@@ -53,7 +53,7 @@ Orbit 은 제3자 앱이므로 세 가지가 모두 막힙니다.
 | 로그인 | `/login` | 공개 | 설정된 제공자 버튼만 표시. 이미 로그인돼 있으면 middleware 가 `/` 로 보냄 |
 | 제공자 인증 | Google / GitHub | 외부 | 계정 선택·동의 |
 | 콜백 | `/api/auth/callback/{provider}` | 서버 | code→토큰→프로필, 사용자 upsert, 세션 발급, `/` 로 302 |
-| 첫 로그인 | `/?welcome=1` | 앱 | (다음 단계) BYOK 온보딩 모달 |
+| 첫 로그인 | `/?welcome=1` | 앱 | Anthropic API 키 연결 모달 (§6) |
 | 앱 | `/` | 로그인 필요 | 세션 없으면 `/login?next=…` |
 | 로그아웃 | 계정 화면 → `POST /api/auth/logout` | 앱 | 세션 삭제 → `/landing` |
 
@@ -115,20 +115,21 @@ sessions (id PK = sha256(token), user_id → users ON DELETE CASCADE, created_at
 
 ---
 
-## 6. 다음 단계 — Anthropic API 키 온보딩 (BYOK)
+## 6. Anthropic API 키 온보딩 (BYOK) — 구현됨
 
 정책이 허용하는 유일한 방식이자, 이 앱의 "Claude 연동" 입니다.
 
-1. **첫 로그인(`?welcome=1`)** 에 모달: "Anthropic API 키를 연결하세요" — Console 링크, 키 입력, `POST /api/keys` 로 저장.
-2. **저장**: `user_keys(user_id PK, ciphertext, iv, key_hint, created_at)`. AES-GCM, 마스터 키는 Workers Secret(`KEY_ENCRYPTION_SECRET`). 화면에는 `sk-ant-…` 끝 4자만.
-3. **사용**: `lib/claude.ts` 가 요청마다 사용자 키를 복호화해 씀. 키가 없으면 실행·대화 API 가 `409 { code: 'no_api_key' }` 를 돌려주고 화면이 온보딩 모달을 다시 띄움.
-4. **사용량**: 이미 있는 `usage_events` 가 `user_id` 로 나뉘어 있으므로 사용량 화면이 그대로 "내 Claude 사용량" 이 됨. 청구는 사용자 본인 Console 에서.
-5. **검증**: 키 저장 시 `GET /v1/models` 한 번 호출해 유효성 확인.
+| 조각 | 구현 |
+|---|---|
+| 저장 | `user_keys(user_id PK, ciphertext, iv, key_hint, created_at, updated_at)` (0020). AES-GCM 256, 마스터 키 = SHA-256(`KEY_ENCRYPTION_SECRET`). 순수 함수는 `lib/user-keys-crypto.ts`(단위 테스트 5개), env·DB 를 아는 쪽은 `lib/user-keys.ts` |
+| API | `GET/PUT/DELETE /api/keys`. PUT 은 `sk-ant-` 형식 확인 → Anthropic `GET /v1/models` 로 실검증 → 저장. 키 자체는 어떤 응답에도 담기지 않고 `hint`(`sk-ant-…xxxx`)만 |
+| 사용 | 실행·대화(일반/스트림)·계획·검토 다섯 입구가 `resolveApiKey(db, userId)` 로 키를 고릅니다. **OAuth 모드 = 사용자 키만**(운영자 키로 대신 보내지 않음), 로컬 모드 = `.env` 키 → 저장된 키 순 |
+| 키 없음 | `409 { code: 'no_api_key' }`. 앱 셸이 `window.fetch` 를 한 겹 감싸 이 코드를 보면 연결 모달을 띄웁니다 (`components/api-key-dialog.tsx`) |
+| 온보딩 | 첫 로그인(`?welcome=1`)과 OAuth 모드에서 키가 없을 때 자동으로 모달. 계정 화면의 "Claude API 키" 카드와 사용자 메뉴에서 연결·바꾸기·삭제 |
+| 사용량 | 이미 있는 `usage_events` 가 `user_id` 로 나뉘어 있으므로 사용량 화면이 그대로 "내 Claude 사용량". 청구는 본인 Console |
 
 운영자 키(`ANTHROPIC_API_KEY`)를 공용으로 두는 옵션은 채택하지 않았습니다(사용자별 BYOK 결정).
 개발 중 로컬 모드에서는 기존처럼 `.env` 의 키를 씁니다.
-
----
 
 ## 7. 환경변수
 
@@ -138,6 +139,7 @@ AUTH_SECRET=<32자 이상 난수>     # openssl rand -base64 32
 APP_URL=https://orbit.example   # 없으면 요청 origin (dev: http://localhost:3000)
 GOOGLE_CLIENT_ID=…  GOOGLE_CLIENT_SECRET=…
 GITHUB_CLIENT_ID=…  GITHUB_CLIENT_SECRET=…
+KEY_ENCRYPTION_SECRET=<32자 이상 난수>   # 사용자 API 키 암호화 (OAuth 모드 필수)
 ```
 
 제공자 콘솔의 리디렉션 URI:
@@ -157,4 +159,4 @@ GITHUB_CLIENT_ID=…  GITHUB_CLIENT_SECRET=…
 - [ ] GitHub 제공자 실검증
 - [ ] 구글 앱 게시(프로덕션) — 테스트 상태에서는 등록한 테스트 사용자만 로그인 가능
 - [ ] 앱 배포(Cloudflare Workers) 후 리디렉션 URI·LANDING_APP_URL 을 실제 주소로
-- [ ] BYOK 온보딩 (§6)
+- [x] BYOK 온보딩 (§6) — 키 연결 모달·계정 카드·409 게이트·암호화 저장

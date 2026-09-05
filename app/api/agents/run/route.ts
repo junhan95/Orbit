@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { runTask } from '@/lib/run-task';
+import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
 
 /**
  * POST /api/agents/run { taskId, force?, folderContext? }
@@ -11,8 +12,10 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { taskId?: unknown; force?: unknown; folderContext?: unknown } | null;
   if (typeof body?.taskId !== 'string') return Response.json({ error: '실행할 업무가 필요합니다.' }, { status: 400 });
 
-  const { apiKey, model: fallbackModel } = getRuntimeConfig();
-  if (!apiKey) return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.' }, { status: 503 });
+  const { model: fallbackModel } = getRuntimeConfig();
+  let apiKey: string;
+  try { apiKey = await resolveApiKey(getDatabase(), user.userId); }
+  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
 
   const outcome = await runTask({
     db: getDatabase(), userId: user.userId, taskId: body.taskId, apiKey, fallbackModel,

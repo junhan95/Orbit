@@ -51,12 +51,13 @@ AUTH_SECRET=                  # openssl rand -base64 32
 APP_URL=                      # 없으면 요청 origin
 GOOGLE_CLIENT_ID= / GOOGLE_CLIENT_SECRET=
 GITHUB_CLIENT_ID= / GITHUB_CLIENT_SECRET=
+KEY_ENCRYPTION_SECRET=        # 사용자 API 키 암호화 마스터 시크릿 (OAuth 모드 필수)
 
 # 로컬 모드 표시 이름
 LOCAL_USER_ID= / LOCAL_USER_NAME= / LOCAL_USER_EMAIL=
 ```
 
-로그인은 Google/GitHub OAuth 입니다. **Claude 계정 로그인은 Anthropic 정책상 제3자 앱에서 허용되지 않아** 신원은 별도 제공자로 받고 Claude 는 사용자 본인의 API 키로 연결합니다 — 근거와 흐름은 [`docs/auth-flow.md`](docs/auth-flow.md).
+로그인은 Google/GitHub OAuth 입니다. **Claude 계정 로그인은 Anthropic 정책상 제3자 앱에서 허용되지 않아** 신원은 별도 제공자로 받고, Claude 는 로그인 뒤 각 사용자가 **본인 Anthropic API 키**를 연결(BYOK)해 씁니다. 키는 AES-GCM 으로 암호화 저장되고 실행·대화 비용은 키 주인의 Console 에 청구됩니다 — 근거와 흐름은 [`docs/auth-flow.md`](docs/auth-flow.md).
 
 ### 스크립트
 
@@ -84,6 +85,7 @@ lib/                 도메인 로직
   reviewer.ts        교차 검토              approvals.ts       승인 큐
   health.ts          관제 밴드              skills.ts          스킬
   auth.ts            OAuth·세션             profile.ts         사용자 프로필
+  user-keys.ts       사용자 API 키(BYOK)     user-keys-crypto.ts AES-GCM (순수)
 db/  drizzle/        스키마, 마이그레이션(0000~)
 docs/                설계 문서
 evals/  tests/       회귀 eval 케이스, 단위 테스트

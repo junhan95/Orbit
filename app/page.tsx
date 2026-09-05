@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BookOpen, Bot, Brain, ChartColumn, Check, ChevronDown, ChevronRight, Flag, Inbox, LayoutDashboard, ListChecks, LogOut, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Sparkles, Trash2, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Bot, Brain, ChartColumn, Check, ChevronDown, ChevronRight, Flag, Inbox, LayoutDashboard, KeyRound, ListChecks, LogOut, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Sparkles, Trash2, UserRound, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -11,6 +11,7 @@ import { ApprovalsView, fetchInboxCount } from '@/components/approvals-view';
 import { HealthCard } from '@/components/health-card';
 import { MemoryView } from '@/components/memory-view';
 import { SkillsView } from '@/components/skills-view';
+import { type ApiKeyState, ApiKeyDialog, NO_API_KEY_EVENT, fetchApiKeyState, installNoApiKeyWatcher } from '@/components/api-key-dialog';
 import { OrbitMark } from '@/components/orbit-mark';
 import { WorkspaceView, type ChatTarget, type WorkspaceSection } from '@/components/workspace-views';
 import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
@@ -111,6 +112,9 @@ export default function Home() {
   const [avatar, setAvatar] = useState('');
   // 'oauth' 일 때만 사용자 메뉴에 로그아웃이 보입니다 (로컬 모드는 세션이 없습니다).
   const [authMode, setAuthMode] = useState<'local' | 'oauth'>('local');
+  // BYOK — 사용자 Anthropic API 키 상태와 연결 모달. OAuth 모드에서 키가 없으면 열립니다.
+  const [apiKeyState, setApiKeyState] = useState<ApiKeyState | null>(null);
+  const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
   const [selectedResult, setSelectedResult] = useState<Task | null>(null);
@@ -153,6 +157,27 @@ export default function Home() {
     setMountedAt(new Date());
     hydratePrefs();
     return watchSystemTheme();
+  }, []);
+
+  // 키가 없어 409 가 돌아오면(실행·대화·계획·검토 어디서든) 연결 모달을 띄웁니다.
+  useEffect(() => {
+    installNoApiKeyWatcher();
+    const open = () => setApiKeyOpen(true);
+    window.addEventListener(NO_API_KEY_EVENT, open);
+    return () => window.removeEventListener(NO_API_KEY_EVENT, open);
+  }, []);
+
+  // 첫 로그인(?welcome=1)이거나 OAuth 모드인데 키가 없으면 온보딩으로 바로 안내합니다.
+  useEffect(() => {
+    let alive = true;
+    fetchApiKeyState().then((state) => {
+      if (!alive) return;
+      setApiKeyState(state);
+      const welcome = new URLSearchParams(window.location.search).get('welcome') === '1';
+      if (welcome) window.history.replaceState(null, '', window.location.pathname);
+      if (state.required && !state.configured) setApiKeyOpen(true);
+    }).catch(() => { /* 로그인 전(401)이면 위의 /api/me 처리가 /login 으로 보냅니다 */ });
+    return () => { alive = false; };
   }, []);
 
   const clock = {
@@ -427,6 +452,7 @@ export default function Home() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => goTo('계정')}><UserRound size={15} /> {t("계정")}</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => goTo('설정')}><Settings size={15} /> {t("설정")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setApiKeyOpen(true)}><KeyRound size={15} /> {apiKeyState?.configured ? t("API 키 바꾸기") : t("API 키 연결")}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {authMode === 'oauth'
                   ? <DropdownMenuItem variant="destructive" onClick={logout}><LogOut size={15} /> {t("로그아웃")}</DropdownMenuItem>
@@ -759,6 +785,8 @@ export default function Home() {
       </section>
 
       {notice && <output className="toast"><Check size={16} /> {notice}</output>}
+
+      <ApiKeyDialog onNotice={flash} onOpenChange={setApiKeyOpen} onSaved={setApiKeyState} open={apiKeyOpen} state={apiKeyState} />
 
       <Dialog open={Boolean(selectedResult)} onOpenChange={(open) => !open && setSelectedResult(null)}>
         <DialogContent className="result-dialog">

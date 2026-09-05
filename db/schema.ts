@@ -284,3 +284,14 @@ export const sessions = sqliteTable('sessions', {
   createdAt: integer('created_at').notNull(), expiresAt: integer('expires_at').notNull(),
   userAgent: text('user_agent'),
 }, (table) => [index('idx_sessions_user').on(table.userId, table.expiresAt)]);
+
+/**
+ * 사용자별 Anthropic API 키 (BYOK). AES-GCM 으로 암호화되어 있고 마스터 키는 KEY_ENCRYPTION_SECRET.
+ * key_hint 는 화면 표시용 "sk-ant-…xxxx". 자세한 것은 lib/user-keys.ts.
+ */
+export const userKeys = sqliteTable('user_keys', {
+  userId: text('user_id').primaryKey(),
+  ciphertext: text('ciphertext').notNull(), iv: text('iv').notNull(),
+  keyHint: text('key_hint').notNull(),
+  createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
+});

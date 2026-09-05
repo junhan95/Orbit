@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
+import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
 import { compactConversation, loadChatSummary, shouldCompact } from '@/lib/compaction';
 import { runInBackground, runMemoryReview } from '@/lib/memory-review';
 import { runClaudeAgent } from '@/lib/claude';
@@ -58,11 +59,11 @@ export async function POST(request: Request) {
     chatMessageIndex(db, { userId: user.userId, messageId: userMessage.id, projectId, agentName: context.agentName, role: 'user', content: message, createdAt: userMessage.createdAt }),
   ]);
 
-  const { apiKey, model: fallbackModel } = getRuntimeConfig();
+  const { model: fallbackModel } = getRuntimeConfig();
   const model = resolveAgentModel(context.agentModel, fallbackModel);
-  if (!apiKey) {
-    return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.', userMessage }, { status: 503 });
-  }
+  let apiKey: string;
+  try { apiKey = await resolveApiKey(db, user.userId); }
+  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse({ userMessage }); throw error; }
 
   const chat = await prepareChatTurn(db, user.userId, {
     projectId, agentId, context,

@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { PLAN_DEFAULT_TASKS, PLAN_MAX_TASKS, proposePlan, type PlannedTask } from '@/lib/planner';
+import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
 import { toPriority } from '@/lib/priority';
 import { recallDocUpsert } from '@/lib/recall';
 import { usageInsert } from '@/lib/usage';
@@ -32,8 +33,10 @@ export async function POST(request: Request, context: RouteContext) {
     ? Math.min(PLAN_MAX_TASKS, Math.max(1, Math.trunc(body.maxTasks)))
     : PLAN_DEFAULT_TASKS;
 
-  const { apiKey, model } = getRuntimeConfig();
-  if (!apiKey) return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.' }, { status: 503 });
+  const { model } = getRuntimeConfig();
+  let apiKey: string;
+  try { apiKey = await resolveApiKey(db, user.userId); }
+  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
 
   try {
     const { proposal, result } = await proposePlan({ db, userId: user.userId, apiKey, model, project, goal, maxTasks });

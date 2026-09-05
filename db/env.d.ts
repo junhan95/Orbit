@@ -15,5 +15,7 @@ declare namespace Cloudflare {
     APP_URL?: string;
     GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string;
     GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string;
+    /** 사용자 API 키 암호화 마스터 시크릿 (32자 이상). lib/user-keys.ts */
+    KEY_ENCRYPTION_SECRET?: string;
   }
 }

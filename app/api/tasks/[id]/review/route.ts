@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { runTaskReview } from '@/lib/reviewer';
+import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 
@@ -12,8 +13,10 @@ type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 export async function POST(_request: Request, context: RouteContext) {
   const user = await getCurrentUser();
   const { id } = await context.params;
-  const { apiKey, model } = getRuntimeConfig();
-  if (!apiKey) return Response.json({ error: 'Claude API 연결이 아직 설정되지 않았습니다. .env 에 ANTHROPIC_API_KEY 를 설정해 주세요.' }, { status: 503 });
+  const { model } = getRuntimeConfig();
+  let apiKey: string;
+  try { apiKey = await resolveApiKey(getDatabase(), user.userId); }
+  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
 
   try {
     const outcome = await runTaskReview({ db: getDatabase(), userId: user.userId, apiKey, model, taskId: id });
