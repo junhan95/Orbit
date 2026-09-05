@@ -3,8 +3,8 @@ import { Clause, LegalPage } from '@/components/legal-page';
 import { COMPANY } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Orbitcrew.ai — 개인정보처리방침',
-  description: 'Orbitcrew 가 어떤 개인정보를 어떤 목적으로 처리하고 어떻게 보호하는지 안내합니다.',
+  title: 'orbitcrew.ai — 개인정보처리방침',
+  description: 'orbitcrew 가 어떤 개인정보를 어떤 목적으로 처리하고 어떻게 보호하는지 안내합니다.',
 };
 
 /**

@@ -17,9 +17,9 @@ export const COMPANY = {
   /** 개인정보 보호책임자 및 문의 */
   email: 'hello@orbitcrew.ai',
   /** 서비스 */
-  service: 'Orbitcrew',
+  service: 'orbitcrew',
   /** 공식 표기 (제목·OG) */
-  serviceFull: 'Orbitcrew.ai',
+  serviceFull: 'orbitcrew.ai',
   site: 'https://orbitcrew.ai',
   app: 'https://app.orbitcrew.ai',
 } as const;

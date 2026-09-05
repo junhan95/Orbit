@@ -5,7 +5,7 @@ import { OrbitMark } from '@/components/orbit-mark';
 import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
 
 /**
- * Orbitcrew 랜딩페이지.
+ * orbitcrew 랜딩페이지.
  *
  * 레이아웃 문법은 Targo 히어로 스펙(계단식 헤드라인, 챔퍼 코너 버튼, 왼쪽 스크림 +
  * 오른쪽 비주얼, 오른쪽 여백 없는 어바웃 2단)을 그대로 따르고,
@@ -150,7 +150,7 @@ export function LandingView() {
             <span className="lp-in2 lp-accent">ORBITCREW</span>
           </h2>
           <p className="lp-p">
-            Orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을
+            orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을
             되찾아 읽고, 근거를 붙여 보고하고, 서로의 결과를 검토합니다. 사람은 상태를 옮기지 않습니다.
             루프 위에서 승인하고, 거절하고, 방향만 잡습니다.
           </p>
@@ -211,7 +211,7 @@ export function LandingView() {
         </p>
         {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
         <a className="lp-btn" href="/login">
-          Orbitcrew 열기
+          orbitcrew 열기
           <i className="lp-btn-line" />
         </a>
       </section>

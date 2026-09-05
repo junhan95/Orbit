@@ -406,7 +406,7 @@ export default function Home() {
           {/* 로고·워드마크는 홈(대쉬보드) 버튼입니다 — 접힌 상태에서는 로고만 남습니다 */}
           <button className="brand-home" onClick={() => goTo('대쉬보드')} aria-label={t("대쉬보드로 이동")} title={t("대쉬보드")}>
             <span className="brand-mark"><OrbitMark size={28} /></span>
-            {navOpen && <b className="brand-word">Orbitcrew</b>}
+            {navOpen && <b className="brand-word">orbitcrew</b>}
           </button>
           <button className="nav-toggle" onClick={toggleNav} aria-expanded={navOpen}
             aria-label={navOpen ? t("메뉴 접기") : t("메뉴 펼치기")} title={navOpen ? t("메뉴 접기") : t("메뉴 펼치기")}>
@@ -431,7 +431,7 @@ export default function Home() {
             <span className="project-logo">O</span>
             <div>
               <span className="eyebrow">{t("워크스페이스")}</span>
-              <button onClick={() => goTo('프로젝트')} title={t("프로젝트 목록으로 이동")}>{stats?.focus?.name ?? t('Orbitcrew 워크스페이스')} <ChevronRight size={14} /></button>
+              <button onClick={() => goTo('프로젝트')} title={t("프로젝트 목록으로 이동")}>{stats?.focus?.name ?? t('orbitcrew 워크스페이스')} <ChevronRight size={14} /></button>
             </div>
           </div>
           <label className="search-box">

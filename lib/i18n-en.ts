@@ -23,7 +23,7 @@ export const EN: Record<string, string> = {
   '진행 중 업무 {0}건': '{0} tasks in progress',
 
   // ── 내비게이션·공통 ──
-  'Orbitcrew 홈': 'Orbitcrew home',
+  'orbitcrew 홈': 'orbitcrew home',
   '주 메뉴': 'Main menu',
   '대쉬보드': 'Dashboard',
   '프로젝트': 'Projects',
@@ -33,7 +33,7 @@ export const EN: Record<string, string> = {
   '설정': 'Settings',
   '계정': 'Account',
   '워크스페이스': 'Workspace',
-  'Orbitcrew 워크스페이스': 'Orbitcrew workspace',
+  'orbitcrew 워크스페이스': 'orbitcrew workspace',
   '팀': 'Team',
   '취소': 'Cancel',
   '저장': 'Save',
@@ -215,7 +215,7 @@ export const EN: Record<string, string> = {
 
   // ── 작업 폴더 ──
   '이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.':
-    'This browser cannot pick folders. Please open Orbitcrew in Chrome or Edge.',
+    'This browser cannot pick folders. Please open orbitcrew in Chrome or Edge.',
   '파일 {0}개 · 이 브라우저에서 읽을 수 있어요': '{0} files · readable in this browser',
   '읽기 권한이 꺼져 있어요 — 다시 연결하면 복구됩니다': 'Read permission is off — reconnect to restore it',
   '이 브라우저에는 연결이 없어요 — 폴더를 다시 골라 주세요': 'Not linked in this browser — pick the folder again',

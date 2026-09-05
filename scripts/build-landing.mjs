@@ -35,11 +35,11 @@ if (REDIRECT) {
 <meta name="robots" content="noindex">
 <meta http-equiv="refresh" content="0; url=${target}">
 <link rel="canonical" href="${target}">
-<title>Orbitcrew.ai — ${target}</title>
+<title>orbitcrew.ai — ${target}</title>
 <script>location.replace(${JSON.stringify(target)} + location.hash);</script>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.6 system-ui,sans-serif;color:#1c1c1e;background:#fff}a{color:#4262ff}</style>
 </head>
-<body><p>Orbitcrew 는 <a href="${target}">${target}</a> 로 이사했습니다.</p></body>
+<body><p>orbitcrew 는 <a href="${target}">${target}</a> 로 이사했습니다.</p></body>
 </html>
 `;
   mkdirSync(OUT, { recursive: true });
@@ -86,9 +86,9 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Orbitcrew.ai — 매니저 한 명이 팀 전체를 굴립니다</title>
+<title>orbitcrew.ai — 매니저 한 명이 팀 전체를 굴립니다</title>
 <meta name="description" content="프로젝트 매니저 에이전트가 필요한 팀원을 채용하고, 업무를 나누고, 결과를 검토해 보고합니다. 기억·회상·검증이 붙은 AI 에이전트 워크스페이스.">
-<meta property="og:title" content="Orbitcrew.ai — AI Agent Command Center">
+<meta property="og:title" content="orbitcrew.ai — AI Agent Command Center">
 <meta property="og:description" content="매니저 한 명이 팀 전체를 굴립니다.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="48x48">

@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Orbitcrew.ai — AI Agent Command Center',
+  title: 'orbitcrew.ai — AI Agent Command Center',
   description: 'Claude 에이전트가 협업하고 업무를 나누는 프로젝트 관제 워크스페이스',
   icons: {
     // SVG 가 우선(다크 탭에서 색이 바뀜), ICO 는 구형 브라우저 폴백
