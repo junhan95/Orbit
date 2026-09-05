@@ -13,6 +13,8 @@ declare namespace Cloudflare {
     AUTH_SECRET?: string;
     /** 공개 주소. 없으면 요청 origin 을 씁니다 (콜백 URL 계산용) */
     APP_URL?: string;
+    /** 랜딩(루트 도메인) 주소. 설정되면 middleware 가 랜딩 호스트와 앱 호스트를 분리합니다. */
+    LANDING_URL?: string;
     GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string;
     GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string;
     /** 사용자 API 키 암호화 마스터 시크릿 (32자 이상). lib/user-keys.ts */

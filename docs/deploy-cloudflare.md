@@ -101,5 +101,28 @@ gh workflow run pages.yml --repo junhan95/Orbit
 - `no_bundle: true` + `main: index.js` — vinext 가 이미 번들했으므로 wrangler 는 그대로 올립니다. 정적 자산은 `assets.directory: ../client` (dist/client).
 - 로컬 `.env` 는 배포에 올라가지 않습니다. vars 는 `wrangler.deploy.json`, 시크릿은 `wrangler secret`.
 - 원격 D1 은 `scripts/migrate.mjs` 가 `__drizzle_migrations` 로 적용 기록을 남기므로 재실행해도 안전합니다.
-- 커스텀 도메인을 붙이려면 `wrangler.deploy.json` 에 `"routes": [{ "pattern": "orbit.example.com", "custom_domain": true }]` 를 넣고 다시 `deploy`. 그때 `APP_URL`·구글 URI·`LANDING_APP_URL` 도 같이 바꿉니다.
 - 롤백: `npx wrangler rollback --config dist/server/wrangler.deploy.json`.
+
+## 커스텀 도메인 (orbitcrew.ai)
+
+운영 주소는 루트 = 랜딩, `app.` = 앱으로 나눕니다. 둘 다 같은 Worker 하나가 처리하고, `middleware.ts` 가 호스트를 보고 갈라 줍니다.
+
+| 호스트 | 역할 |
+|---|---|
+| `https://orbitcrew.ai` | 랜딩 (`/` 를 `/landing` 으로 내부 rewrite, `/login`·`/api/*` 는 app. 으로 리디렉션) |
+| `https://www.orbitcrew.ai` | 루트로 308 리디렉션 |
+| `https://app.orbitcrew.ai` | 앱 (`/landing` 은 루트로 리디렉션 — 로그아웃 후 이동 포함) |
+
+`wrangler.deploy.json`:
+```json
+"vars": { "APP_URL": "https://app.orbitcrew.ai", "LANDING_URL": "https://orbitcrew.ai" },
+"routes": [
+  { "pattern": "orbitcrew.ai", "custom_domain": true },
+  { "pattern": "www.orbitcrew.ai", "custom_domain": true },
+  { "pattern": "app.orbitcrew.ai", "custom_domain": true }
+]
+```
+`deploy` 하면 Cloudflare 가 DNS 레코드(Worker 타입)와 인증서를 자동으로 만듭니다. 도메인을 같은 계정의 Registrar 에서 샀다면 네임서버 설정은 필요 없고, 새 도메인은 위임 반영까지 몇 분~1시간 걸릴 수 있습니다.
+`LANDING_URL` 이 없으면(로컬·workers.dev) 예전처럼 한 호스트에서 `/landing` 과 앱을 같이 냅니다.
+
+도메인을 바꾸면 같이 바꿀 곳: 구글 OAuth 의 승인된 원본·리디렉션 URI(`https://app.<도메인>/api/auth/callback/google`), GitHub 저장소 변수 `LANDING_APP_URL`(`https://app.<도메인>`). 확인이 끝나면 `"workers_dev": false` 를 넣어 workers.dev 주소를 닫습니다.

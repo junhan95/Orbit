@@ -124,6 +124,10 @@ export function clearStateCookie(secure: boolean): string {
 export function appOrigin(request: Request): string {
   return (env.APP_URL || new URL(request.url).origin).replace(/\/$/, '');
 }
+/** 랜딩 주소. 운영에서는 LANDING_URL(루트 도메인), 없으면 같은 호스트의 /landing. */
+export function landingUrl(request: Request): string {
+  return (env.LANDING_URL || `${appOrigin(request)}/landing`).replace(/\/$/, '');
+}
 export function isSecureOrigin(origin: string): boolean {
   return origin.startsWith('https://');
 }

@@ -1,22 +1,62 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { env } from 'cloudflare:workers';
 import { getDatabase } from '@/db';
 import { SESSION_COOKIE, authMode, findSessionUser } from '@/lib/auth';
 
 /**
- * 로그인 게이트.
+ * 호스트 분리 + 로그인 게이트
  *
- * - 로컬 모드: 아무것도 하지 않습니다 (예전과 동일).
- * - OAuth 모드:
- *     /landing, /login, /api/auth/*  → 공개
- *     /login 에 이미 로그인한 채로 오면 → /
- *     그 외 페이지에 세션 없음 → /login,  API 에 세션 없음 → 401
- *     세션이 있으면 x-orbit-* 헤더로 사용자를 실어 보냅니다 (app/auth.ts 가 읽음).
+ * 1) 호스트 분리 (LANDING_URL 이 설정된 운영 환경에서만):
+ *     - 랜딩 호스트(orbitcrew.ai):  /  → /landing 으로 내부 rewrite (주소창은 / 유지)
+ *                                   /landing → / 로 정규화, 그 외 앱 경로(/login, /api/*) → APP_URL 로 리디렉션
+ *     - www.  → 랜딩 호스트로 리디렉션
+ *     - 앱 호스트(app.orbitcrew.ai): /landing → LANDING_URL 로 리디렉션 (로그아웃 후 이동 포함)
+ *    LANDING_URL 이 없으면(로컬·workers.dev) 예전처럼 한 호스트에서 /landing 과 앱을 같이 냅니다.
+ *
+ * 2) 로그인 게이트
+ *     - 로컬 모드: 아무것도 하지 않습니다 (예전과 동일).
+ *     - OAuth 모드:
+ *         /landing, /login, /api/auth/*  → 공개
+ *         /login 을 이미 로그인한 채로 열면 → /
+ *         그 외 페이지는 세션 없음 → /login,  API 는 세션 없음 → 401
+ *         세션이 있으면 x-orbit-* 헤더로 사용자를 실어 보냅니다 (app/auth.ts 가 읽음).
  *
  * 들어온 요청의 x-orbit-* 는 먼저 지웁니다 — 바깥에서 꽂아 넣은 값을 믿지 않기 위해서입니다.
  */
 const FORWARDED = ['x-orbit-uid', 'x-orbit-name', 'x-orbit-email', 'x-orbit-avatar'];
 
+function hostOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try { return new URL(url).hostname.toLowerCase(); } catch { return null; }
+}
+
+/** 랜딩/앱 호스트 분리. 해당 없으면 null 을 돌려주고 다음 단계로 넘어갑니다. */
+function splitHosts(request: NextRequest): NextResponse | null {
+  const landingHost = hostOf(env.LANDING_URL);
+  if (!landingHost) return null;
+  const landingOrigin = env.LANDING_URL!.replace(/\/$/, '');
+  const appOrigin = (env.APP_URL || '').replace(/\/$/, '');
+  const host = (request.headers.get('host') || request.nextUrl.hostname).toLowerCase().split(':')[0];
+  const { pathname, search } = request.nextUrl;
+
+  if (host === `www.${landingHost}`) {
+    return NextResponse.redirect(`${landingOrigin}${pathname === '/landing' ? '/' : pathname}${search}`, 308);
+  }
+  if (host === landingHost) {
+    if (pathname === '/') return NextResponse.rewrite(new URL('/landing', request.url));
+    if (pathname === '/landing') return NextResponse.redirect(`${landingOrigin}/${search}`, 308);
+    if (appOrigin) return NextResponse.redirect(`${appOrigin}${pathname}${search}`, pathname.startsWith('/api/') ? 308 : 302);
+    return null;
+  }
+  // 앱 호스트(또는 그 외): 랜딩은 랜딩 호스트로 보냅니다.
+  if (pathname === '/landing') return NextResponse.redirect(`${landingOrigin}/`, 302);
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
+  const split = splitHosts(request);
+  if (split) return split;
+
   if (authMode() === 'local') return NextResponse.next();
 
   const { pathname } = request.nextUrl;

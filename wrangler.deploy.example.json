@@ -1,9 +1,27 @@
 {
   "name": "orbit",
-  "d1": { "database_name": "orbit", "database_id": "<wrangler d1 create orbit 결과의 database_id>" },
+  "d1": {
+    "database_name": "orbit",
+    "database_id": "<wrangler d1 create orbit 결과의 database_id>"
+  },
   "vars": {
     "AUTH_MODE": "oauth",
-    "APP_URL": "https://orbit.<계정-서브도메인>.workers.dev",
+    "APP_URL": "https://app.<도메인>",
+    "LANDING_URL": "https://<도메인>",
     "GOOGLE_CLIENT_ID": "<구글 클라이언트 ID>"
-  }
+  },
+  "routes": [
+    {
+      "pattern": "<도메인>",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.<도메인>",
+      "custom_domain": true
+    },
+    {
+      "pattern": "app.<도메인>",
+      "custom_domain": true
+    }
+  ]
 }
