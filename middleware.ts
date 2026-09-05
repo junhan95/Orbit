@@ -39,6 +39,11 @@ function splitHosts(request: NextRequest): NextResponse | null {
   const host = (request.headers.get('host') || request.nextUrl.hostname).toLowerCase().split(':')[0];
   const { pathname, search } = request.nextUrl;
 
+  // 운영에서는 평문 HTTP 를 HTTPS 로 올립니다 (Cloudflare 'Always Use HTTPS' 와 무관하게 보장).
+  if (request.nextUrl.protocol === 'http:' && host !== 'localhost') {
+    return NextResponse.redirect(`https://${host}${pathname}${search}`, 308);
+  }
+
   if (host === `www.${landingHost}`) {
     return NextResponse.redirect(`${landingOrigin}${pathname === '/landing' ? '/' : pathname}${search}`, 308);
   }
