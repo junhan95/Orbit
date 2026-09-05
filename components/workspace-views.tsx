@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, Flag, FolderKanban, LayoutGrid, List, ListChecks, LoaderCircle, MessageSquare, Pencil, Play, Plus, Send, Settings2, ShieldCheck, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, Flag, FolderKanban, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
 import { Markdown } from '@/components/markdown';
+import { ReviewActions, ReviewBadge, ReviewComment, isReviewComment } from '@/components/review-panel';
 import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
 import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
 import { FIELD_TYPES, FIELD_TYPE_LABELS, type FieldType, type ProjectField } from '@/lib/fields';
@@ -18,8 +19,17 @@ import {
   inspectFolder, pickDirectory, saveHandle, scanDirectory, supportsFolderPicker,
 } from '@/lib/folder-access';
 import { AGENT_MODELS, agentModelLabel } from '@/lib/models';
+import { LANGUAGES, LANGUAGE_LABEL, type Lang, t, tf } from '@/lib/i18n';
+import { type Prefs, THEME_CHOICES, type ThemeChoice, updatePrefs, usePrefs } from '@/lib/prefs';
 
 export type WorkspaceSection = '프로젝트' | '에이전트' | '대화' | '설정' | '계정';
+
+/**
+ * '대화하기' 로 넘어올 때 실어 오는 문맥.
+ * 업무는 사람이 상태를 바꾸거나 직접 실행하지 않고, 담당 에이전트와의 대화로 지시·확인합니다.
+ * key 는 같은 업무를 다시 눌러도 대화 화면이 새로 반응하도록 매번 새로 만듭니다.
+ */
+export type ChatTarget = { projectId: string; agentName: string; draft: string; key: number };
 
 /** 중요도 배지 색. 높음만 눈에 띄게 하고 나머지는 조용하게 둡니다. */
 const PRIORITY_CLASS: Record<Priority, string> = { 높음: 'high', 중간: 'mid', 낮음: 'low' };
@@ -30,7 +40,7 @@ type Agent = {
   projectId?: string | null; isManager?: number; roleKey?: string | null;
 };
 type Assignment = { projectId: string; agentId: string };
-type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null };
+type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null };
 type FieldValueRow = { taskId: string; fieldId: string; value: string };
 type TaskCounts = { taskId: string; subtasks: number; doneSubtasks: number; comments: number };
 type Subtask = { id: string; title: string; done: number; owner: string | null; position: number };
@@ -46,7 +56,10 @@ type TaskDetail = {
 };
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: number };
 
-export function WorkspaceView({ section, displayName, email, onNotice }: { section: WorkspaceSection; displayName: string; email: string; onNotice: (message: string) => void }) {
+export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat }: {
+  section: WorkspaceSection; displayName: string; email: string; onNotice: (message: string) => void;
+  chatTarget?: ChatTarget | null; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void;
+}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -56,19 +69,19 @@ export function WorkspaceView({ section, displayName, email, onNotice }: { secti
     try {
       const response = await fetch('/api/workspace');
       const data = await response.json() as { projects?: Project[]; agents?: Agent[]; assignments?: Assignment[]; error?: string };
-      if (!response.ok) throw new Error(data.error || '워크스페이스를 불러오지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("워크스페이스를 불러오지 못했습니다."));
       setProjects(data.projects || []); setAgents(data.agents || []); setAssignments(data.assignments || []);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '워크스페이스를 불러오지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("워크스페이스를 불러오지 못했습니다.")); }
     finally { setLoading(false); }
   }, [onNotice]);
 
   // oxlint-disable-next-line react/react-compiler -- async server hydration is intentional here
   useEffect(() => { void refresh(); }, [refresh]);
 
-  if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>워크스페이스를 불러오는 중</span></div>;
-  if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} />;
-  if (section === '에이전트') return <AgentsView agents={agents} projects={projects} onCreated={refresh} onNotice={onNotice} />;
-  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} />;
+  if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t("워크스페이스를 불러오는 중")}</span></div>;
+  if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
+  if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
+  if (section === '대화') return <ChatView key={chatTarget?.key ?? 'chat'} projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
   return <AccountView displayName={displayName} email={email} />;
 }
@@ -78,6 +91,9 @@ function ViewHeading({ eyebrow, title, description, action }: { eyebrow: string;
 }
 
 const PROJECT_VIEW_KEY = 'cowork.projects.view';
+const AGENT_VIEW_KEY = 'cowork.agents.view';
+// 프로젝트 삭제는 되돌릴 수 없어서, 이름을 그대로 입력하고 삭제 버튼을 이만큼 누르고 있어야 실행됩니다.
+const DELETE_HOLD_MS = 3000;
 type ProjectLayout = 'card' | 'list';
 
 // ── 작업 폴더 ───────────────────────────────────────────────────────
@@ -95,13 +111,13 @@ function useFolderPicker() {
 }
 
 function FolderUnsupported() {
-  return <p className="folder-hint warn">이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.</p>;
+  return <p className="folder-hint warn">{t("이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.")}</p>;
 }
 
 function folderStateLabel(folder: LinkedFolder) {
-  if (folder.link === 'ready') return `파일 ${folder.fileCount}개 · 이 브라우저에서 읽을 수 있어요`;
-  if (folder.link === 'blocked') return '읽기 권한이 꺼져 있어요 — 다시 연결하면 복구됩니다';
-  return '이 브라우저에는 연결이 없어요 — 폴더를 다시 골라 주세요';
+  if (folder.link === 'ready') return tf("파일 {0}개 · 이 브라우저에서 읽을 수 있어요", folder.fileCount);
+  if (folder.link === 'blocked') return t("읽기 권한이 꺼져 있어요 — 다시 연결하면 복구됩니다");
+  return t("이 브라우저에는 연결이 없어요 — 폴더를 다시 골라 주세요");
 }
 
 /** 프로젝트 상세의 '작업 폴더' 섹션. 추가 / 다시 연결 / 해제를 담당합니다. */
@@ -132,11 +148,11 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
         body: JSON.stringify({ name: handle.name, fileCount: files.length }),
       });
       const data = await response.json() as { folder?: ProjectFolder; error?: string };
-      if (!response.ok || !data.folder) throw new Error(data.error || '폴더를 연결하지 못했습니다.');
+      if (!response.ok || !data.folder) throw new Error(data.error || t("폴더를 연결하지 못했습니다."));
       await saveHandle(data.folder.id, handle);
       await load();
-      onNotice(`'${handle.name}' 폴더를 연결했습니다 (파일 ${files.length}개).`);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '폴더를 연결하지 못했습니다.'); }
+      onNotice(tf("'{0}' 폴더를 연결했습니다 (파일 {1}개).", handle.name, files.length));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더를 연결하지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
@@ -158,8 +174,8 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
         body: JSON.stringify({ name: handle.name, fileCount: files.length }),
       });
       await load();
-      onNotice(`'${handle.name}' 폴더를 이 브라우저에 다시 연결했습니다.`);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '폴더를 다시 연결하지 못했습니다.'); }
+      onNotice(tf("'{0}' 폴더를 이 브라우저에 다시 연결했습니다.", handle.name));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더를 다시 연결하지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
@@ -170,38 +186,38 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
       const response = await fetch(`/api/projects/${projectId}/folders/${folder.id}`, { method: 'DELETE' });
       if (!response.ok) {
         const data = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(data?.error || '폴더 연결을 해제하지 못했습니다.');
+        throw new Error(data?.error || t("폴더 연결을 해제하지 못했습니다."));
       }
       await forgetHandle(folder.id);
       await load();
       onNotice('폴더 연결을 해제했습니다. 컴퓨터의 파일은 그대로입니다.');
-    } catch (error) { onNotice(error instanceof Error ? error.message : '폴더 연결을 해제하지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더 연결을 해제하지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
   return <section className="detail-section">
     <div className="folder-section-head">
-      <h2>작업 폴더</h2>
+      <h2>{t("작업 폴더")}</h2>
       <button className="folder-add" onClick={() => void addFolder()} disabled={!pickerReady || busy}>
-        {busy ? <LoaderCircle className="spin" size={14} /> : <CirclePlus size={14} />} 폴더 추가
+        {busy ? <LoaderCircle className="spin" size={14} /> : <CirclePlus size={14} />} {t("폴더 추가")}
       </button>
     </div>
     {!pickerReady
       ? <FolderUnsupported />
       : loading
-        ? <p className="detail-empty">폴더 연결 상태를 확인하는 중…</p>
+        ? <p className="detail-empty">{t("폴더 연결 상태를 확인하는 중…")}</p>
         : folders.length
           ? <div className="folder-cards">{folders.map((folder) => <article className={`folder-card ${folder.link}`} key={folder.id}>
               <span className="folder-symbol"><FolderKanban size={16} /></span>
               <div><b>{folder.name}</b><small>{folderStateLabel(folder)}</small></div>
-              {folder.link !== 'ready' && <button className="folder-relink" onClick={() => void relinkFolder(folder)} disabled={busy}>다시 연결</button>}
-              <button className="folder-remove" onClick={() => void removeFolder(folder)} disabled={busy} aria-label={`${folder.name} 연결 해제`} title="연결 해제"><Trash2 size={14} /></button>
+              {folder.link !== 'ready' && <button className="folder-relink" onClick={() => void relinkFolder(folder)} disabled={busy}>{t("다시 연결")}</button>}
+              <button className="folder-remove" onClick={() => void removeFolder(folder)} disabled={busy} aria-label={tf("{0} 연결 해제", folder.name)} title={t("연결 해제")}><Trash2 size={14} /></button>
             </article>)}</div>
-          : <p className="detail-empty">연결된 폴더가 없습니다. 폴더를 추가하면 에이전트가 업무를 실행할 때 그 안의 파일 목록과 내용을 함께 읽습니다.</p>}
+          : <p className="detail-empty">{t("연결된 폴더가 없습니다. 폴더를 추가하면 에이전트가 업무를 실행할 때 그 안의 파일 목록과 내용을 함께 읽습니다.")}</p>}
   </section>;
 }
 
-function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onCreated: () => Promise<void>; onNotice: (message: string) => void }) {
+function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOpenChat }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onCreated: () => Promise<void>; onNotice: (message: string) => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   const [name, setName] = useState(''); const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   // 새 프로젝트 다이얼로그에서 고른 폴더들. 프로젝트가 만들어진 뒤에 핸들을 저장합니다.
@@ -214,12 +230,28 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [removing, setRemoving] = useState<Project | null>(null);
-  const [removeTasks, setRemoveTasks] = useState(false);
+  // 삭제 확인: 프로젝트 이름 입력 + 삭제 버튼 3초 길게 누르기
+  const [confirmName, setConfirmName] = useState('');
+  const [holdRatio, setHoldRatio] = useState(0);
+  const holdTimer = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   const startRename = useCallback((project: Project) => {
     setEditing(project); setEditName(project.name); setEditDescription(project.description);
   }, []);
+
+  const askRemove = useCallback((project: Project) => {
+    setRemoving(project); setConfirmName(''); setHoldRatio(0);
+  }, []);
+
+  function stopHold() {
+    if (holdTimer.current !== null) { window.clearInterval(holdTimer.current); holdTimer.current = null; }
+    setHoldRatio(0);
+  }
+
+  function closeRemove() {
+    stopHold(); setConfirmName(''); setRemoving(null);
+  }
 
   async function renameProject() {
     if (!editing || !editName.trim()) return;
@@ -230,9 +262,9 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
         body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() }),
       });
       const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || '프로젝트를 수정하지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("프로젝트를 수정하지 못했습니다."));
       setEditing(null); await onCreated(); onNotice('프로젝트 정보를 수정했습니다.');
-    } catch (error) { onNotice(error instanceof Error ? error.message : '프로젝트를 수정하지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("프로젝트를 수정하지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
@@ -240,52 +272,80 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
     if (!removing) return;
     setBusy(true);
     try {
-      const response = await fetch(`/api/projects/${removing.id}${removeTasks ? '?withTasks=1' : ''}`, { method: 'DELETE' });
+      // 업무는 프로젝트 안에서만 살기 때문에 프로젝트와 함께 지웁니다 (남겨 두면 어느 화면에도 보이지 않습니다).
+      const response = await fetch(`/api/projects/${removing.id}?withTasks=1`, { method: 'DELETE' });
       if (!response.ok) {
         const data = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(data?.error || '프로젝트를 삭제하지 못했습니다.');
+        throw new Error(data?.error || t("프로젝트를 삭제하지 못했습니다."));
       }
       if (openedId === removing.id) setOpenedId(null);
-      setRemoving(null); setRemoveTasks(false); await onCreated();
-      onNotice(removeTasks ? '프로젝트와 업무를 삭제했습니다.' : '프로젝트를 삭제했습니다. 업무는 남아 있어요.');
-    } catch (error) { onNotice(error instanceof Error ? error.message : '프로젝트를 삭제하지 못했습니다.'); }
+      const removedTasks = removing.taskCount;
+      setConfirmName(''); setRemoving(null); await onCreated();
+      onNotice(removedTasks ? tf("프로젝트와 업무 {0}건을 삭제했습니다.", removedTasks) : t("프로젝트를 삭제했습니다."));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("프로젝트를 삭제하지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
+  /** 삭제 버튼을 누르고 있는 동안 게이지를 채우고, 3초를 채우면 그때 실제로 지웁니다. */
+  function startHold() {
+    if (holdTimer.current !== null || busy || !canDelete) return;
+    const startedAt = Date.now();
+    holdTimer.current = window.setInterval(() => {
+      const ratio = Math.min(1, (Date.now() - startedAt) / DELETE_HOLD_MS);
+      if (ratio >= 1) { stopHold(); void deleteProject(); return; }
+      setHoldRatio(ratio);
+    }, 40);
+  }
+
   const projectMenu = (project: Project) => <DropdownMenu>
-    <DropdownMenuTrigger render={<button className="project-menu" aria-label={`${project.name} 메뉴`} />}><EllipsisVertical size={16} /></DropdownMenuTrigger>
+    <DropdownMenuTrigger render={<button className="project-menu" aria-label={tf("{0} 메뉴", project.name)} />}><EllipsisVertical size={16} /></DropdownMenuTrigger>
     <DropdownMenuContent className="project-menu-content" align="end">
-      <DropdownMenuItem onClick={() => startRename(project)}><Pencil size={14} /> 이름 변경</DropdownMenuItem>
-      <DropdownMenuItem variant="destructive" onClick={() => { setRemoveTasks(false); setRemoving(project); }}><Trash2 size={14} /> 프로젝트 삭제</DropdownMenuItem>
+      <DropdownMenuItem onClick={() => startRename(project)}><Pencil size={14} /> {t("이름 변경")}</DropdownMenuItem>
+      <DropdownMenuItem variant="destructive" onClick={() => askRemove(project)}><Trash2 size={14} /> {t("프로젝트 삭제")}</DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>;
+
+  const canDelete = Boolean(removing) && confirmName.trim() === removing?.name;
+  const holdSecondsLeft = Math.max(1, Math.ceil((DELETE_HOLD_MS * (1 - holdRatio)) / 1000));
 
   const projectDialogs = <>
     <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
       <DialogContent className="create-entity-dialog">
-        <DialogHeader><DialogTitle>프로젝트 수정</DialogTitle><DialogDescription>이름과 설명을 바꿔도 업무와 대화 기록은 그대로 유지됩니다.</DialogDescription></DialogHeader>
-        <label className="entity-field"><span>프로젝트 이름</span><input value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
-        <label className="entity-field"><span>설명</span><textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
+        <DialogHeader><DialogTitle>{t("프로젝트 수정")}</DialogTitle><DialogDescription>{t("이름과 설명을 바꿔도 업무와 대화 기록은 그대로 유지됩니다.")}</DialogDescription></DialogHeader>
+        <label className="entity-field"><span>{t("프로젝트 이름")}</span><input value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
+        <label className="entity-field"><span>{t("설명")}</span><textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
-          <DialogClose render={<Button disabled={!editName.trim() || busy} onClick={renameProject} />}>{busy ? '저장 중' : '저장'}</DialogClose>
+          <DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose>
+          <DialogClose render={<Button disabled={!editName.trim() || busy} onClick={renameProject} />}>{busy ? t("저장 중") : t("저장")}</DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
-    <Dialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
+    <Dialog open={Boolean(removing)} onOpenChange={(open) => !open && closeRemove()}>
       <DialogContent className="create-entity-dialog">
         <DialogHeader>
-          <DialogTitle>{removing?.name} 삭제</DialogTitle>
-          <DialogDescription>이 작업은 되돌릴 수 없습니다. 프로젝트에 남은 대화 기록도 함께 삭제됩니다.</DialogDescription>
+          <DialogTitle>{removing?.name} {t("삭제")}</DialogTitle>
+          <DialogDescription>{t("이 작업은 되돌릴 수 없습니다. 프로젝트에 남은 대화 기록도 함께 삭제됩니다.")}</DialogDescription>
         </DialogHeader>
-        <label className="danger-option">
-          <Checkbox checked={removeTasks} onCheckedChange={(checked) => setRemoveTasks(Boolean(checked))} />
-          <span><b>업무 {removing?.taskCount ?? 0}건도 함께 삭제</b><small>체크하지 않으면 업무는 남고 프로젝트 연결만 해제됩니다.</small></span>
+        <div className="danger-option">
+          <Trash2 size={15} />
+          <span><b>{t("업무")} {removing?.taskCount ?? 0}{t("건이 함께 삭제됩니다")}</b><small>{t("업무는 프로젝트 안에서만 존재합니다. 하위 작업·댓글·실행 기록도 같이 지워집니다.")}</small></span>
+        </div>
+        <label className="entity-field delete-confirm">
+          <span>{t("확인을 위해 프로젝트 이름")} <b>{removing?.name}</b> {t("을(를) 그대로 입력하세요")}</span>
+          <input value={confirmName} onChange={(event) => { setConfirmName(event.target.value); stopHold(); }}
+            placeholder={removing?.name ?? ''} autoComplete="off" spellCheck={false} aria-label={t("삭제 확인용 프로젝트 이름")} />
         </label>
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
-          <DialogClose render={<Button className="danger-button" disabled={busy} onClick={deleteProject} />}>{busy ? '삭제 중' : '삭제'}</DialogClose>
+          <DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose>
+          <Button className="danger-button hold-delete" disabled={!canDelete || busy}
+            onPointerDown={startHold} onPointerUp={stopHold} onPointerLeave={stopHold} onPointerCancel={stopHold}
+            onKeyDown={(event) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); startHold(); } }}
+            onKeyUp={(event) => { if (event.key === 'Enter' || event.key === ' ') stopHold(); }}
+            aria-label={t("삭제하려면 3초간 누르세요")}>
+            <i className="hold-fill" style={{ width: `${Math.round(holdRatio * 100)}%` }} aria-hidden="true" />
+            <span className="hold-label">{busy ? t("삭제 중") : holdRatio > 0 ? tf("{0}초 더 누르세요", holdSecondsLeft) : t("3초간 누르기")}</span>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -309,7 +369,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
       setPendingFolders((current) => current.some((item) => item.name === handle.name)
         ? current
         : [...current, { key: crypto.randomUUID(), name: handle.name, fileCount: files.length, handle }]);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '폴더를 읽지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더를 읽지 못했습니다.")); }
     finally { setFolderBusy(false); }
   }
 
@@ -322,7 +382,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
         body: JSON.stringify({ name, description, folders: pendingFolders.map((folder) => ({ name: folder.name, fileCount: folder.fileCount })) }),
       });
       const data = await response.json() as { manager?: { name: string }; folders?: { id: string }[]; error?: string };
-      if (!response.ok) throw new Error(data.error || '프로젝트를 만들지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("프로젝트를 만들지 못했습니다."));
       // 서버가 보낸 순서 = 우리가 보낸 순서. 그 id 로 디렉터리 핸들을 이 브라우저에 저장합니다.
       await Promise.all((data.folders ?? []).map((folder, index) => {
         const pending = pendingFolders[index];
@@ -331,59 +391,59 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
       const folderCount = pendingFolders.length;
       setName(''); setDescription(''); setPendingFolders([]);
       await onCreated();
-      onNotice(`${data.manager?.name ?? '프로젝트 매니저'}가 배정되었습니다${folderCount ? ` · 폴더 ${folderCount}개 연결` : ''}.`);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '프로젝트를 만들지 못했습니다.'); }
+      onNotice(tf('{0}가 배정되었습니다{1}.', data.manager?.name ?? t('프로젝트 매니저'), folderCount ? tf(' · 폴더 {0}개 연결', folderCount) : ''));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("프로젝트를 만들지 못했습니다.")); }
     finally { setSaving(false); }
   }
-  const layoutToggle = <div className="layout-toggle" role="group" aria-label="프로젝트 보기 방식">
-    <button className={layout === 'card' ? 'active' : ''} aria-pressed={layout === 'card'} onClick={() => changeLayout('card')} title="카드 보기"><LayoutGrid size={15} /> 카드</button>
-    <button className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => changeLayout('list')} title="리스트 보기"><List size={15} /> 리스트</button>
+  const layoutToggle = <div className="layout-toggle" role="group" aria-label={t("프로젝트 보기 방식")}>
+    <button className={layout === 'card' ? 'active' : ''} aria-pressed={layout === 'card'} onClick={() => changeLayout('card')} title={t("카드 보기")}><LayoutGrid size={15} /> {t("카드")}</button>
+    <button className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => changeLayout('list')} title={t("리스트 보기")}><List size={15} /> {t("리스트")}</button>
   </div>;
-  const createDialog = <Dialog><DialogTrigger render={<Button className="view-primary" />}><Plus size={16} /> 프로젝트 만들기</DialogTrigger><DialogContent className="create-entity-dialog">
-    <DialogHeader><DialogTitle>새 프로젝트</DialogTitle><DialogDescription>목표와 작업 폴더만 정하면 됩니다. 전담 프로젝트 매니저가 배정되고, 필요한 에이전트는 매니저가 합류시킵니다.</DialogDescription></DialogHeader>
-    <label className="entity-field"><span>프로젝트 이름</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="예: 신규 서비스 출시" /></label>
-    <label className="entity-field"><span>설명</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="달성하려는 목표를 간단히 적어주세요." /></label>
+  const createDialog = <Dialog><DialogTrigger render={<Button className="view-primary" />}><Plus size={16} /> {t("프로젝트 만들기")}</DialogTrigger><DialogContent className="create-entity-dialog">
+    <DialogHeader><DialogTitle>{t("새 프로젝트")}</DialogTitle><DialogDescription>{t("목표와 작업 폴더만 정하면 됩니다. 전담 프로젝트 매니저가 배정되고, 필요한 에이전트는 매니저가 합류시킵니다.")}</DialogDescription></DialogHeader>
+    <label className="entity-field"><span>{t("프로젝트 이름")}</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("예: 신규 서비스 출시")} /></label>
+    <label className="entity-field"><span>{t("설명")}</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("달성하려는 목표를 간단히 적어주세요.")} /></label>
     <div className="folder-picker">
       <div className="folder-picker-head">
-        <span>작업 폴더 <em>선택</em></span>
+        <span>{t("작업 폴더")} <em>{t("선택")}</em></span>
         <button type="button" className="folder-add" onClick={() => void addPendingFolder()} disabled={!pickerReady || folderBusy}>
-          {folderBusy ? <LoaderCircle className="spin" size={13} /> : <CirclePlus size={13} />} 폴더 선택
+          {folderBusy ? <LoaderCircle className="spin" size={13} /> : <CirclePlus size={13} />} {t("폴더 선택")}
         </button>
       </div>
       {!pickerReady
         ? <FolderUnsupported />
         : pendingFolders.length
           ? <ul className="folder-chips">{pendingFolders.map((folder) => <li key={folder.key}>
-              <FolderKanban size={13} /><b>{folder.name}</b><small>파일 {folder.fileCount}</small>
-              <button type="button" onClick={() => setPendingFolders((current) => current.filter((item) => item.key !== folder.key))} aria-label={`${folder.name} 제외`} title="제외"><Trash2 size={12} /></button>
+              <FolderKanban size={13} /><b>{folder.name}</b><small>{t("파일")} {folder.fileCount}</small>
+              <button type="button" onClick={() => setPendingFolders((current) => current.filter((item) => item.key !== folder.key))} aria-label={tf("{0} 제외", folder.name)} title={t("제외")}><Trash2 size={12} /></button>
             </li>)}</ul>
-          : <p className="folder-hint">폴더를 연결하면 에이전트가 업무를 실행할 때 그 안의 파일을 함께 읽습니다. 파일은 이 브라우저에서만 읽히고 서버에는 폴더 이름만 저장됩니다.</p>}
+          : <p className="folder-hint">{t("폴더를 연결하면 에이전트가 업무를 실행할 때 그 안의 파일을 함께 읽습니다. 파일은 이 브라우저에서만 읽히고 서버에는 폴더 이름만 저장됩니다.")}</p>}
     </div>
-    {name.trim() && <p className="manager-preview"><UserRound size={13} /> 배정될 매니저: <b>{name.trim()} 프로젝트 매니저</b></p>}
-    <DialogFooter><DialogClose render={<Button variant="outline" />}>취소</DialogClose><DialogClose render={<Button disabled={!name.trim() || saving} onClick={createProject} />}>{saving ? '생성 중' : '프로젝트 생성'}</DialogClose></DialogFooter>
+    {name.trim() && <p className="manager-preview"><UserRound size={13} /> {t("배정될 매니저:")} <b>{name.trim()} {t("프로젝트 매니저")}</b></p>}
+    <DialogFooter><DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose><DialogClose render={<Button disabled={!name.trim() || saving} onClick={createProject} />}>{saving ? t("생성 중") : t("프로젝트 생성")}</DialogClose></DialogFooter>
   </DialogContent></Dialog>;
   const action = <div className="view-actions">{projects.length > 0 && layoutToggle}{createDialog}</div>;
   const opened = projects.find((project) => project.id === openedId) || null;
   if (opened) return <>
     <ProjectDetail project={opened} agents={agents} assignments={assignments} onBack={() => setOpenedId(null)} onNotice={onNotice}
-      onRename={() => startRename(opened)} onDelete={() => { setRemoveTasks(false); setRemoving(opened); }} />
+      onRename={() => startRename(opened)} onDelete={() => askRemove(opened)} onOpenChat={onOpenChat} />
     {projectDialogs}
   </>;
-  return <div className="workspace-view"><ViewHeading eyebrow="Projects" title="프로젝트" description="진행 중인 프로젝트와 참여 에이전트를 관리합니다." action={action} />
+  return <div className="workspace-view"><ViewHeading eyebrow="Projects" title={t("프로젝트")} description={t("진행 중인 프로젝트와 참여 에이전트를 관리합니다.")} action={action} />
     {projects.length > 0 && (layout === 'card'
-      ? <div className="project-grid">{projects.map((project) => <article className="project-card is-clickable" key={project.id}><button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} /><div className="project-card-top"><span className="project-symbol" style={{ background: project.color }}><FolderKanban size={20} /></span><span className="project-card-tools"><span className="project-status"><i />{project.status}</span>{projectMenu(project)}</span></div><h2>{project.name}</h2><p>{project.description || '프로젝트 설명이 없습니다.'}</p><div className="project-stats"><span><BriefcaseBusiness size={14} />업무 {project.taskCount}</span><span><Users size={14} />에이전트 {project.agentCount}</span>{Boolean(project.folderCount) && <span><FolderKanban size={14} />폴더 {project.folderCount}</span>}</div><button className="project-card-open" onClick={() => setOpenedId(project.id)} aria-label={`${project.name} 프로젝트 열기`}>프로젝트 열기 <ChevronRight size={15} /></button></article>)}</div>
-      : <div className="project-table" role="table" aria-label="프로젝트 목록">
-          <div className="project-row head" role="row"><span role="columnheader">프로젝트</span><span role="columnheader">상태</span><span role="columnheader">업무</span><span role="columnheader">에이전트</span><span role="columnheader" /></div>
+      ? <div className="project-grid">{projects.map((project) => <article className="project-card is-clickable" key={project.id}><button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} /><div className="project-card-top"><span className="project-symbol" style={{ background: project.color }}><FolderKanban size={20} /></span><span className="project-card-tools"><span className="project-status"><i />{t(project.status)}</span>{projectMenu(project)}</span></div><h2>{project.name}</h2><p>{project.description || t("프로젝트 설명이 없습니다.")}</p><div className="project-stats"><span><BriefcaseBusiness size={14} />{t("업무")} {project.taskCount}</span><span><Users size={14} />{t("에이전트")} {project.agentCount}</span>{Boolean(project.folderCount) && <span><FolderKanban size={14} />{t("폴더")} {project.folderCount}</span>}</div><button className="project-card-open" onClick={() => setOpenedId(project.id)} aria-label={tf("{0} 프로젝트 열기", project.name)}>{t("프로젝트 열기")} <ChevronRight size={15} /></button></article>)}</div>
+      : <div className="project-table" role="table" aria-label={t("프로젝트 목록")}>
+          <div className="project-row head" role="row"><span role="columnheader">{t("프로젝트")}</span><span role="columnheader">{t("상태")}</span><span role="columnheader">{t("업무")}</span><span role="columnheader">{t("에이전트")}</span><span role="columnheader" /></div>
           {projects.map((project) => <div className="project-row is-clickable" role="row" key={project.id}>
             <button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} />
-            <span className="project-row-main" role="cell"><i className="project-dot" style={{ background: project.color }}><FolderKanban size={15} /></i><b>{project.name}</b><small>{project.description || '프로젝트 설명이 없습니다.'}</small></span>
-            <span role="cell"><em className="project-status"><i />{project.status}</em></span>
+            <span className="project-row-main" role="cell"><i className="project-dot" style={{ background: project.color }}><FolderKanban size={15} /></i><b>{project.name}</b><small>{project.description || t("프로젝트 설명이 없습니다.")}</small></span>
+            <span role="cell"><em className="project-status"><i />{t(project.status)}</em></span>
             <span className="project-row-metric" role="cell"><BriefcaseBusiness size={14} />{project.taskCount}</span>
             <span className="project-row-metric" role="cell"><Users size={14} />{project.agentCount}</span>
-            <span className="project-row-tools" role="cell"><button className="project-row-open" onClick={() => setOpenedId(project.id)} aria-label={`${project.name} 프로젝트 열기`}>열기 <ChevronRight size={15} /></button>{projectMenu(project)}</span>
+            <span className="project-row-tools" role="cell"><button className="project-row-open" onClick={() => setOpenedId(project.id)} aria-label={tf("{0} 프로젝트 열기", project.name)}>{t("열기")} <ChevronRight size={15} /></button>{projectMenu(project)}</span>
           </div>)}
         </div>)}
-    {!projects.length && <div className="entity-empty"><CirclePlus size={30} /><h2>첫 프로젝트를 만들어 보세요</h2><p>목표와 에이전트를 한곳에서 관리할 수 있어요.</p></div>}
+    {!projects.length && <div className="entity-empty"><CirclePlus size={30} /><h2>{t("첫 프로젝트를 만들어 보세요")}</h2><p>{t("목표와 에이전트를 한곳에서 관리할 수 있어요.")}</p></div>}
     {projectDialogs}
   </div>;
 }
@@ -402,14 +462,12 @@ const UNASSIGNED = '__none__';
 
 type BoardColumn = { key: string; title: string; subtitle?: string; color?: string; owner?: string; status?: TaskStatus; label?: string; tasks: ProjectTask[] };
 
-function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRename, onDelete }: { project: Project; agents: Agent[]; assignments: Assignment[]; onBack: () => void; onNotice: (message: string) => void; onRename: () => void; onDelete: () => void }) {
+function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRename, onDelete, onOpenChat }: { project: Project; agents: Agent[]; assignments: Assignment[]; onBack: () => void; onNotice: (message: string) => void; onRename: () => void; onDelete: () => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [fields, setFields] = useState<ProjectField[]>([]);
   const [values, setValues] = useState<Record<string, Record<string, string>>>({});
   const [counts, setCounts] = useState<Record<string, TaskCounts>>({});
   const [loading, setLoading] = useState(true);
-  const [runningId, setRunningId] = useState<string | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [group, setGroup] = useState<BoardGroup>('담당자');
   // 보드를 다시 읽을 때마다 올라갑니다. 열려 있는 상세 패널도 이 값을 보고 자기 데이터를 새로 읽습니다.
@@ -442,14 +500,14 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
   const loadTasks = useCallback(async () => {
     const response = await fetch('/api/tasks');
     const data = await response.json() as { tasks?: ProjectTask[]; error?: string };
-    if (!response.ok) throw new Error(data.error || '프로젝트 업무를 불러오지 못했습니다.');
+    if (!response.ok) throw new Error(data.error || t("프로젝트 업무를 불러오지 못했습니다."));
     setTasks((data.tasks || []).filter((task) => task.projectId === project.id));
   }, [project.id]);
 
   const loadFields = useCallback(async () => {
     const response = await fetch(`/api/projects/${project.id}/fields?values=1`);
     const data = await response.json() as { fields?: ProjectField[]; values?: FieldValueRow[]; counts?: TaskCounts[]; error?: string };
-    if (!response.ok) throw new Error(data.error || '커스텀 필드를 불러오지 못했습니다.');
+    if (!response.ok) throw new Error(data.error || t("커스텀 필드를 불러오지 못했습니다."));
     setFields(data.fields || []);
     const next: Record<string, Record<string, string>> = {};
     for (const row of data.values || []) {
@@ -462,12 +520,26 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
 
   const reload = useCallback(async () => {
     try { await Promise.all([loadTasks(), loadFields()]); setRevision((value) => value + 1); }
-    catch (error) { onNotice(error instanceof Error ? error.message : '프로젝트를 불러오지 못했습니다.'); }
+    catch (error) { onNotice(error instanceof Error ? error.message : t("프로젝트를 불러오지 못했습니다.")); }
     finally { setLoading(false); }
   }, [loadTasks, loadFields, onNotice]);
 
   // oxlint-disable-next-line react/react-compiler -- 최초 진입 시 한 번만 불러옵니다.
   useEffect(() => { setLoading(true); void reload(); }, [reload]);
+
+  // 대화 화면이나 다른 탭에 다녀오는 사이 에이전트가 보드를 바꿨을 수 있어, 돌아오면 다시 읽습니다.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return;
+      void reload();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [reload]);
 
   function openCreate(presetOwner?: string, presetLabel?: string, presetStatus?: TaskStatus) {
     setOwner(presetOwner ?? '');
@@ -487,58 +559,37 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
         body: JSON.stringify({ title: trimmed, owner: owner || undefined, label: label.trim() || undefined, status: createStatus, priority, projectId: project.id }),
       });
       const data = await response.json() as { task?: ProjectTask; error?: string };
-      if (!response.ok || !data.task) throw new Error(data.error || '업무를 만들지 못했습니다.');
+      if (!response.ok || !data.task) throw new Error(data.error || t("업무를 만들지 못했습니다."));
       setTasks((current) => [...current, data.task as ProjectTask]);
       setTitle(''); setLabel(''); setPriority('중간');
-      onNotice(`새 업무가 ${data.task.owner}에게 배정되었습니다.`);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '업무를 만들지 못했습니다.'); }
+      onNotice(tf("새 업무가 {0}에게 배정되었습니다.", data.task.owner));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("업무를 만들지 못했습니다.")); }
     finally { setSaving(false); }
   }
 
   const patchTask = useCallback(async (task: ProjectTask, patch: Record<string, unknown>) => {
-    setPendingId(task.id);
     setTasks((current) => current.map((item) => item.id === task.id ? { ...item, ...patch } as ProjectTask : item));
     try {
       const response = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
       const data = await response.json() as { task?: ProjectTask; error?: string };
-      if (!response.ok || !data.task) throw new Error(data.error || '업무를 수정하지 못했습니다.');
+      if (!response.ok || !data.task) throw new Error(data.error || t("업무를 수정하지 못했습니다."));
       setTasks((current) => current.map((item) => item.id === task.id ? data.task as ProjectTask : item));
       return data.task;
     } catch (error) {
       setTasks((current) => current.map((item) => item.id === task.id ? task : item));
-      onNotice(error instanceof Error ? error.message : '업무를 수정하지 못했습니다.');
+      onNotice(error instanceof Error ? error.message : t("업무를 수정하지 못했습니다."));
       return null;
-    } finally { setPendingId(null); }
+    }
   }, [onNotice]);
 
-  async function runTask(task: ProjectTask) {
-    setRunningId(task.id);
-    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status: '진행 중' } : item));
-    try {
-      // 연결된 폴더가 있으면 브라우저에서 읽어 함께 보냅니다 (서버는 파일시스템에 접근할 수 없습니다).
-      const folderContext = await buildProjectFolderContext(project.id);
-      const response = await fetch('/api/agents/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, folderContext }) });
-      const data = await response.json() as {
-        output?: string; error?: string;
-        createdTasks?: Array<{ title: string; owner: string }>; createdFields?: Array<{ name: string }>;
-        recruited?: Array<{ name: string; role: string }>; delegated?: Array<{ title: string; agent: string }>;
-      };
-      if (!response.ok || !data.output) throw new Error(data.error || '에이전트 실행에 실패했습니다.');
-      // 에이전트가 카드나 필드를 만들었을 수 있으므로 보드를 통째로 다시 읽습니다.
-      await reload();
-      setOpenTaskId(task.id);
-      const extras = [
-        data.recruited?.length ? `에이전트 ${data.recruited.length}명 합류` : '',
-        data.delegated?.length ? `업무 ${data.delegated.length}건 위임·완료` : '',
-        data.createdTasks?.length ? `업무 ${data.createdTasks.length}개 생성` : '',
-        data.createdFields?.length ? `필드 ${data.createdFields.length}개 생성` : '',
-      ].filter(Boolean).join(' · ');
-      onNotice(`${task.owner}가 업무를 완료했습니다.${extras ? ` (${extras})` : ''}`);
-    } catch (error) {
-      setTasks((current) => current.map((item) => item.id === task.id ? task : item));
-      onNotice(error instanceof Error ? error.message : '에이전트 실행에 실패했습니다.');
-    } finally { setRunningId(null); }
-  }
+  /** 업무 카드에서 '대화하기' — 담당 에이전트와의 대화 화면으로 그 업무를 들고 넘어갑니다. */
+  const openTaskChat = useCallback((task: ProjectTask) => {
+    onOpenChat?.({
+      projectId: project.id,
+      agentName: task.owner,
+      draft: tf("'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.", task.title),
+    });
+  }, [onOpenChat, project.id]);
 
   const removeTask = useCallback(async (task: ProjectTask) => {
     const snapshot = tasks;
@@ -547,12 +598,12 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
       const response = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
       if (!response.ok) {
         const data = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(data?.error || '업무를 삭제하지 못했습니다.');
+        throw new Error(data?.error || t("업무를 삭제하지 못했습니다."));
       }
       onNotice('업무를 삭제했습니다.');
     } catch (error) {
       setTasks(snapshot);
-      onNotice(error instanceof Error ? error.message : '업무를 삭제하지 못했습니다.');
+      onNotice(error instanceof Error ? error.message : t("업무를 삭제하지 못했습니다."));
     }
   }, [tasks, onNotice]);
 
@@ -572,69 +623,69 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     const roster = members.length ? members : agents;
     const known = new Set(roster.map((agent) => agent.name));
     const columnList: BoardColumn[] = roster.map((agent) => ({
-      key: agent.id, title: agent.name, subtitle: agent.role, color: agent.color, owner: agent.name,
+      key: agent.id, title: agent.name, subtitle: t(agent.role), color: agent.color, owner: agent.name,
       tasks: byPriority(tasks.filter((task) => task.owner === agent.name)),
     }));
     const orphans = tasks.filter((task) => !known.has(task.owner));
-    if (orphans.length) columnList.push({ key: UNASSIGNED, title: '미배정', subtitle: '프로젝트에 없는 담당자', tasks: byPriority(orphans) });
+    if (orphans.length) columnList.push({ key: UNASSIGNED, title: t("미배정"), subtitle: t("프로젝트에 없는 담당자"), tasks: byPriority(orphans) });
     return columnList;
   }, [group, tasks, members, agents]);
 
   const openTask = tasks.find((task) => task.id === openTaskId) ?? null;
 
   const createDialog = <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-    <DialogTrigger render={<Button className="view-primary" onClick={() => openCreate()} />}><Plus size={16} /> 업무 추가</DialogTrigger>
+    <DialogTrigger render={<Button className="view-primary" onClick={() => openCreate()} />}><Plus size={16} /> {t("업무 추가")}</DialogTrigger>
     <DialogContent className="create-entity-dialog">
-      <DialogHeader><DialogTitle>{project.name} · 새 업무</DialogTitle><DialogDescription>담당을 비워 두면 프로젝트 매니저가 받아 필요한 에이전트를 합류시키고 나눠 맡깁니다. 중요도가 높을수록 보드 위쪽에 놓이고 에이전트도 먼저 처리합니다.</DialogDescription></DialogHeader>
-      <label className="entity-field"><span>업무 이름</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" /></label>
+      <DialogHeader><DialogTitle>{project.name} {t("· 새 업무")}</DialogTitle><DialogDescription>{t("담당을 비워 두면 프로젝트 매니저가 받아 필요한 에이전트를 합류시키고 나눠 맡깁니다. 중요도가 높을수록 보드 위쪽에 놓이고 에이전트도 먼저 처리합니다.")}</DialogDescription></DialogHeader>
+      <label className="entity-field"><span>{t("업무 이름")}</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("예: 결제 플로우 엣지 케이스 정리")} /></label>
       <div className="entity-row">
-        <label className="entity-field"><span>담당 에이전트</span>
+        <label className="entity-field"><span>{t("담당 에이전트")}</span>
           <NativeSelect value={owner} onChange={(event) => setOwner(event.target.value)}>
-            <NativeSelectOption value="">프로젝트 매니저에게 (기본)</NativeSelectOption>
-            {members.map((agent) => <NativeSelectOption key={agent.id} value={agent.name}>{agent.name} · {agent.role}</NativeSelectOption>)}
+            <NativeSelectOption value="">{t("프로젝트 매니저에게 (기본)")}</NativeSelectOption>
+            {members.map((agent) => <NativeSelectOption key={agent.id} value={agent.name}>{agent.name} · {t(agent.role)}</NativeSelectOption>)}
           </NativeSelect>
         </label>
-        <label className="entity-field"><span>분류</span><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="예: 리서치" /></label>
-        <label className="entity-field"><span>중요도</span>
+        <label className="entity-field"><span>{t("분류")}</span><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={t("예: 리서치")} /></label>
+        <label className="entity-field"><span>{t("중요도")}</span>
           <NativeSelect value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>
-            {PRIORITIES.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+            {PRIORITIES.map((option) => <NativeSelectOption key={option} value={option}>{t(option)}</NativeSelectOption>)}
           </NativeSelect>
         </label>
       </div>
       <DialogFooter>
-        <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
-        <DialogClose render={<Button disabled={!title.trim() || saving} onClick={createTask} />}>{saving ? '배정 중' : '업무 배정'}</DialogClose>
+        <DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose>
+        <DialogClose render={<Button disabled={!title.trim() || saving} onClick={createTask} />}>{saving ? t("배정 중") : t("업무 배정")}</DialogClose>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
 
   return <div className="workspace-view project-detail">
-    <button className="detail-back" onClick={onBack}><ArrowLeft size={15} /> 프로젝트 목록</button>
+    <button className="detail-back" onClick={onBack}><ArrowLeft size={15} /> {t("프로젝트 목록")}</button>
     <div className="workspace-heading">
       <div>
         <span className="section-kicker">Project</span>
         <h1>{project.name}</h1>
-        <p>{project.description || '프로젝트 설명이 없습니다.'}</p>
+        <p>{project.description || t("프로젝트 설명이 없습니다.")}</p>
       </div>
       <div className="view-actions">
-        <span className="project-status"><i />{project.status}</span>
+        <span className="project-status"><i />{t(project.status)}</span>
         {createDialog}
         <DropdownMenu>
-          <DropdownMenuTrigger render={<button className="project-menu" aria-label="프로젝트 메뉴" />}><EllipsisVertical size={16} /></DropdownMenuTrigger>
+          <DropdownMenuTrigger render={<button className="project-menu" aria-label={t("프로젝트 메뉴")} />}><EllipsisVertical size={16} /></DropdownMenuTrigger>
           <DropdownMenuContent className="project-menu-content" align="end">
-            <DropdownMenuItem onClick={onRename}><Pencil size={14} /> 이름 변경</DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={onDelete}><Trash2 size={14} /> 프로젝트 삭제</DropdownMenuItem>
+            <DropdownMenuItem onClick={onRename}><Pencil size={14} /> {t("이름 변경")}</DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={onDelete}><Trash2 size={14} /> {t("프로젝트 삭제")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </div>
 
     <div className="detail-metrics">
-      <article><span>전체 업무</span><strong>{tasks.length}</strong></article>
-      <article><span>검토 단계</span><strong>{reviewCount}</strong></article>
-      <article><span>참여 에이전트</span><strong>{members.length}</strong></article>
+      <article><span>{t("전체 업무")}</span><strong>{tasks.length}</strong></article>
+      <article><span>{t("검토 단계")}</span><strong>{reviewCount}</strong></article>
+      <article><span>{t("참여 에이전트")}</span><strong>{members.length}</strong></article>
       <article className="detail-progress">
-        <span>검토 도달률</span><strong>{progress}%</strong>
+        <span>{t("검토 도달률")}</span><strong>{progress}%</strong>
         <div className="detail-bar"><i style={{ width: `${progress}%` }} /></div>
       </article>
     </div>
@@ -643,41 +694,39 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
       <div className="board-toolbar">
         <div className="board-group">
           <LayoutGrid size={14} />
-          <span>그룹</span>
-          <NativeSelect value={group} onChange={(event) => changeGroup(event.target.value as BoardGroup)} aria-label="보드 그룹 기준">
-            {BOARD_GROUPS.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+          <span>{t("그룹")}</span>
+          <NativeSelect value={group} onChange={(event) => changeGroup(event.target.value as BoardGroup)} aria-label={t("보드 그룹 기준")}>
+            {BOARD_GROUPS.map((option) => <NativeSelectOption key={option} value={option}>{t(option)}</NativeSelectOption>)}
           </NativeSelect>
         </div>
         <button className="board-tool" onClick={() => setFieldOpen(true)}>
-          <Settings2 size={14} /> 사용자 지정 필드 <em>{fields.length}</em>
+          <Settings2 size={14} /> {t("사용자 지정 필드")} <em>{fields.length}</em>
         </button>
       </div>
 
       {loading
-        ? <div className="view-loading"><LoaderCircle className="spin" /><span>보드를 불러오는 중</span></div>
+        ? <div className="view-loading"><LoaderCircle className="spin" /><span>{t("보드를 불러오는 중")}</span></div>
         : columns.length
           ? <div className="board-columns">{columns.map((column) => <section className="board-column" key={column.key}>
               <header className="board-column-head">
                 {column.color
-                  ? <span className="board-column-avatar" style={{ background: column.color }}>{column.title.slice(0, 1)}</span>
+                  ? <span className="board-column-avatar" style={{ background: column.color }}>{t(column.title).slice(0, 1)}</span>
                   : <span className="board-column-mark" />}
-                <div><b>{column.title}</b>{column.subtitle && <small>{column.subtitle}</small>}</div>
+                <div><b>{t(column.title)}</b>{column.subtitle && <small>{t(column.subtitle)}</small>}</div>
                 <em>{column.tasks.length}</em>
               </header>
               <div className="board-column-body">
                 {column.tasks.map((task) => <BoardCard
                   key={task.id} task={task} fields={cardFields} values={values[task.id]} counts={counts[task.id]}
-                  running={runningId === task.id} pending={pendingId === task.id}
                   onOpen={() => setOpenTaskId(task.id)}
-                  onStatus={(status) => void patchTask(task, { status })}
-                  onRun={() => void runTask(task)}
+                  onChat={() => openTaskChat(task)}
                 />)}
                 <button className="board-add" onClick={() => openCreate(column.owner, column.label, column.status)}>
-                  <Plus size={13} /> 작업 추가
+                  <Plus size={13} /> {t("작업 추가")}
                 </button>
               </div>
             </section>)}</div>
-          : <p className="detail-empty">아직 이 프로젝트에 등록된 업무가 없습니다. 위의 &lsquo;업무 추가&rsquo;로 매니저에게 첫 업무를 맡겨 보세요.</p>}
+          : <p className="detail-empty">{t("아직 이 프로젝트에 등록된 업무가 없습니다. 위의 &lsquo;업무 추가&rsquo;로 매니저에게 첫 업무를 맡겨 보세요.")}</p>}
     </section>
 
     <ProjectFolders projectId={project.id} onNotice={onNotice} />
@@ -689,9 +738,9 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
       onNotice={onNotice}
       onPatch={(patch) => patchTask(openTask, patch)}
       onDelete={async () => { setOpenTaskId(null); await removeTask(openTask); }}
-      onRun={() => void runTask(openTask)}
-      running={runningId === openTask.id}
+      onChat={() => { setOpenTaskId(null); openTaskChat(openTask); }}
       onManageFields={() => setFieldOpen(true)}
+      onRefresh={reload}
     />}
 
     <FieldManagerDialog
@@ -701,31 +750,35 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
   </div>;
 }
 
-/** 보드 카드. 본체를 누르면 상세가 열리고, 아래 조작부는 클릭이 위로 전파되지 않게 막습니다. */
-function BoardCard({ task, fields, values, counts, running, pending, onOpen, onStatus, onRun }: {
+/**
+ * 보드 카드. 본체를 누르면 상세가 열립니다.
+ * 상태 변경·실행 같은 수동 조작은 두지 않습니다 — 진행은 담당 에이전트와의 대화로 지시합니다.
+ */
+function BoardCard({ task, fields, values, counts, onOpen, onChat }: {
   task: ProjectTask; fields: ProjectField[]; values?: Record<string, string>; counts?: TaskCounts;
-  running: boolean; pending: boolean; onOpen: () => void; onStatus: (status: TaskStatus) => void; onRun: () => void;
+  onOpen: () => void; onChat: () => void;
 }) {
   const badges = fields
     .map((field) => ({ field, value: values?.[field.id] ?? '' }))
     .filter((item) => item.value);
 
   return <article className="board-card">
-    <button className="board-card-open" onClick={onOpen} aria-label={`${task.title} 상세 열기`}>
+    <button className="board-card-open" onClick={onOpen} aria-label={tf("{0} 상세 열기", task.title)}>
       <div className="board-card-top">
         <span className="task-label" style={{ color: task.accent, backgroundColor: `${task.accent}14` }}>{task.label}</span>
-        <span className={`board-chip ${task.status === '진행 중' ? 'doing' : task.status === '검토' ? 'review' : ''}`}>{task.status}</span>
+        <span className={`board-chip ${task.status === '진행 중' ? 'doing' : task.status === '검토' ? 'review' : ''}`}>{t(task.status)}</span>
+        <ReviewBadge verdict={task.reviewVerdict} blockedReason={task.blockedReason} />
       </div>
       <b>{task.title}</b>
       {Boolean(badges.length) && <div className="board-card-fields">
         {badges.map(({ field, value }) => <span className="board-field-badge" key={field.id}>
-          <i>{field.name}</i>{field.type === 'checkbox' ? '예' : value}
+          <i>{field.name}</i>{field.type === 'checkbox' ? t("예") : value}
         </span>)}
       </div>}
       <div className="board-card-meta">
         <span className="mini-avatar" style={{ background: task.accent }}>{task.owner.slice(0, 1)}</span>
         <span>{task.owner}</span>
-        <span className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`} title={`중요도 ${toPriority(task.priority)}`}><Flag size={11} /> {toPriority(task.priority)}</span>
+        <span className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`} title={tf("중요도 {0}", t(toPriority(task.priority)))}><Flag size={11} /> {t(toPriority(task.priority))}</span>
       </div>
       {Boolean(counts && (counts.subtasks || counts.comments)) && <div className="board-card-counts">
         {Boolean(counts?.subtasks) && <span><ListChecks size={12} /> {counts?.doneSubtasks}/{counts?.subtasks}</span>}
@@ -733,13 +786,9 @@ function BoardCard({ task, fields, values, counts, running, pending, onOpen, onS
       </div>}
     </button>
     <div className="detail-task-actions">
-      <select className="task-status" aria-label={`${task.title} 상태`} value={task.status} disabled={pending} onChange={(event) => onStatus(event.target.value as TaskStatus)}>
-        {TASK_STATUSES.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-      <button className={task.result ? 'run-task result' : 'run-task'} disabled={running} onClick={task.result ? onOpen : onRun}>
-        {running ? <LoaderCircle className="spin" size={13} /> : task.result ? <Check size={13} /> : <Play size={13} fill="currentColor" />}
-        {running ? '실행 중' : task.result ? '결과' : '실행'}
-      </button>
+      {task.result
+        ? <button className="run-task result" onClick={onOpen}><Check size={13} /> {t("결과")}</button>
+        : <button className="run-task chat" onClick={onChat}><MessageSquare size={13} /> {t("대화하기")}</button>}
     </div>
   </article>;
 }
@@ -749,7 +798,7 @@ function FieldInput({ field, value, onChange }: { field: ProjectField; value: st
   if (field.type === 'checkbox') {
     return <span className="task-field-check">
       <Checkbox checked={Boolean(value)} aria-label={field.name} onCheckedChange={(checked) => onChange(checked ? '1' : '')} />
-      <span>{value ? '예' : '아니오'}</span>
+      <span>{value ? t("예") : t("아니오")}</span>
     </span>;
   }
   if (field.type === 'select') {
@@ -768,12 +817,12 @@ function FieldInput({ field, value, onChange }: { field: ProjectField; value: st
 }
 
 /** TASK 상세 패널. Asana 의 작업 상세와 같은 구성입니다. */
-function TaskDetailDialog({ task, project, agents, fields, values, running, reloadKey, onClose, onNotice, onPatch, onDelete, onRun, onManageFields }: {
+function TaskDetailDialog({ task, project, agents, fields, values, reloadKey, onClose, onNotice, onPatch, onDelete, onChat, onManageFields, onRefresh }: {
   task: ProjectTask; project: Project; agents: Agent[]; fields: ProjectField[]; values: Record<string, string> | undefined;
-  running: boolean; reloadKey: number;
+  reloadKey: number; onRefresh?: () => Promise<void>;
   onClose: () => void; onNotice: (message: string) => void;
   onPatch: (patch: Record<string, unknown>) => Promise<ProjectTask | null>;
-  onDelete: () => Promise<void>; onRun: () => void; onManageFields: () => void;
+  onDelete: () => Promise<void>; onChat: () => void; onManageFields: () => void;
 }) {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [description, setDescription] = useState('');
@@ -786,11 +835,11 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
     try {
       const response = await fetch(`/api/tasks/${task.id}/detail`);
       const data = await response.json() as (TaskDetail & { error?: string });
-      if (!response.ok) throw new Error(data.error || '업무 상세를 불러오지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("업무 상세를 불러오지 못했습니다."));
       setDetail(data);
       setDescription(data.task.description ?? '');
       setTitleDraft(data.task.title);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '업무 상세를 불러오지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("업무 상세를 불러오지 못했습니다.")); }
   }, [task.id, onNotice]);
 
   // oxlint-disable-next-line react/react-compiler -- 패널을 열 때, 그리고 보드가 갱신될 때 다시 읽습니다.
@@ -802,11 +851,11 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
       });
       const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || '저장하지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("저장하지 못했습니다."));
       if (patch.description !== undefined) {
         setDetail((current) => current ? { ...current, task: { ...current.task, description: patch.description as string } } : current);
       }
-    } catch (error) { onNotice(error instanceof Error ? error.message : '저장하지 못했습니다.'); void load(); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("저장하지 못했습니다.")); void load(); }
   }
 
   function setFieldValue(fieldId: string, next: string) {
@@ -822,10 +871,10 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: trimmed }),
       });
       const data = await response.json() as { subtask?: Subtask; error?: string };
-      if (!response.ok || !data.subtask) throw new Error(data.error || '하위 작업을 추가하지 못했습니다.');
+      if (!response.ok || !data.subtask) throw new Error(data.error || t("하위 작업을 추가하지 못했습니다."));
       setDetail((current) => current ? { ...current, subtasks: [...current.subtasks, data.subtask as Subtask] } : current);
       setSubtaskDraft('');
-    } catch (error) { onNotice(error instanceof Error ? error.message : '하위 작업을 추가하지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("하위 작업을 추가하지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
@@ -852,10 +901,10 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: trimmed }),
       });
       const data = await response.json() as { comment?: TaskComment; error?: string };
-      if (!response.ok || !data.comment) throw new Error(data.error || '댓글을 남기지 못했습니다.');
+      if (!response.ok || !data.comment) throw new Error(data.error || t("댓글을 남기지 못했습니다."));
       setDetail((current) => current ? { ...current, comments: [...current.comments, data.comment as TaskComment] } : current);
       setCommentDraft('');
-    } catch (error) { onNotice(error instanceof Error ? error.message : '댓글을 남기지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("댓글을 남기지 못했습니다.")); }
     finally { setBusy(false); }
   }
 
@@ -869,7 +918,7 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
             className="task-detail-title" value={titleDraft}
             onChange={(event) => setTitleDraft(event.target.value)}
             onBlur={() => { const next = titleDraft.trim(); if (next && next !== task.title) void onPatch({ title: next }); }}
-            aria-label="업무 이름"
+            aria-label={t("업무 이름")}
           />
         </DialogTitle>
         <DialogDescription>{project.name} · {task.label}</DialogDescription>
@@ -877,22 +926,21 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
 
       <div className="task-detail-body">
         <dl className="task-detail-meta">
-          <div><dt><UserRound size={13} /> 담당자</dt><dd>
+          <div><dt><UserRound size={13} /> {t("담당자")}</dt><dd>
             <NativeSelect value={task.owner} onChange={(event) => void onPatch({ owner: event.target.value })}>
-              {agents.map((agent) => <NativeSelectOption key={agent.id} value={agent.name}>{agent.name} · {agent.role}</NativeSelectOption>)}
+              {agents.map((agent) => <NativeSelectOption key={agent.id} value={agent.name}>{agent.name} · {t(agent.role)}</NativeSelectOption>)}
             </NativeSelect>
           </dd></div>
-          <div><dt><Flag size={13} /> 중요도</dt><dd>
+          <div><dt><Flag size={13} /> {t("중요도")}</dt><dd>
             <NativeSelect value={toPriority(task.priority)} onChange={(event) => void onPatch({ priority: event.target.value })}>
-              {PRIORITIES.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+              {PRIORITIES.map((option) => <NativeSelectOption key={option} value={option}>{t(option)}</NativeSelectOption>)}
             </NativeSelect>
           </dd></div>
-          <div><dt><ShieldCheck size={13} /> 상태</dt><dd>
-            <NativeSelect value={task.status} onChange={(event) => void onPatch({ status: event.target.value })}>
-              {TASK_STATUSES.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
-            </NativeSelect>
+          <div><dt><ShieldCheck size={13} /> {t("상태")}</dt><dd>
+            {/* 상태는 에이전트의 진행에 따라 바뀝니다 — 사람이 직접 옮기지 않습니다. */}
+            <span className={`board-chip ${task.status === '진행 중' ? 'doing' : task.status === '검토' ? 'review' : ''}`}>{t(task.status)}</span>
           </dd></div>
-          <div><dt><BriefcaseBusiness size={13} /> 분류</dt><dd>
+          <div><dt><BriefcaseBusiness size={13} /> {t("분류")}</dt><dd>
             <input className="task-field-input" defaultValue={task.label}
               onBlur={(event) => { const next = event.target.value.trim(); if (next && next !== task.label) void onPatch({ label: next }); }} />
           </dd></div>
@@ -900,66 +948,72 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
 
         <section className="task-detail-section">
           <header>
-            <h3>사용자 지정 필드</h3>
-            <button className="task-detail-add" onClick={onManageFields}><Plus size={13} /> 필드 추가</button>
+            <h3>{t("사용자 지정 필드")}</h3>
+            <button className="task-detail-add" onClick={onManageFields}><Plus size={13} /> {t("필드 추가")}</button>
           </header>
           {fields.length
             ? <dl className="task-detail-fields">{fields.map((field) => <div key={field.id}>
-                <dt>{field.name}{field.createdBy !== 'user' && <em title={`${field.createdBy} 이(가) 만든 필드`}><Sparkles size={10} /> {field.createdBy}</em>}</dt>
+                <dt>{field.name}{field.createdBy !== 'user' && <em title={tf("{0} 이(가) 만든 필드", field.createdBy)}><Sparkles size={10} /> {field.createdBy}</em>}</dt>
                 <dd><FieldInput
                   field={field}
                   value={detail?.values[field.id] ?? values?.[field.id] ?? ''}
                   onChange={(next) => { setFieldValue(field.id, next); void saveDetail({ values: { [field.id]: next } }); }}
                 /></dd>
               </div>)}</dl>
-            : <p className="detail-empty">아직 필드가 없습니다. 이 프로젝트의 업무가 공통으로 추적할 항목을 만들어 보세요.</p>}
+            : <p className="detail-empty">{t("아직 필드가 없습니다. 이 프로젝트의 업무가 공통으로 추적할 항목을 만들어 보세요.")}</p>}
         </section>
 
         <section className="task-detail-section">
-          <header><h3>설명</h3></header>
+          <header><h3>{t("설명")}</h3></header>
           <textarea
-            className="task-detail-description" value={description} placeholder="이 업무의 배경과 완료 조건을 적어 주세요."
+            className="task-detail-description" value={description} placeholder={t("이 업무의 배경과 완료 조건을 적어 주세요.")}
             onChange={(event) => setDescription(event.target.value)}
             onBlur={() => { if (description !== (detail?.task.description ?? '')) void saveDetail({ description }); }}
           />
         </section>
 
         <section className="task-detail-section">
-          <header><h3>하위 작업 <em>{doneCount}/{detail?.subtasks.length ?? 0}</em></h3></header>
+          <header><h3>{t("하위 작업")} <em>{doneCount}/{detail?.subtasks.length ?? 0}</em></h3></header>
           <ul className="task-subtasks">
             {detail?.subtasks.map((subtask) => <li key={subtask.id} className={subtask.done ? 'done' : ''}>
               <Checkbox checked={Boolean(subtask.done)} onCheckedChange={(checked) => void toggleSubtask(subtask, Boolean(checked))} />
               <span>{subtask.title}</span>
               {subtask.owner && <b>{subtask.owner}</b>}
-              <button onClick={() => void removeSubtask(subtask)} aria-label={`${subtask.title} 삭제`}><Trash2 size={12} /></button>
+              <button onClick={() => void removeSubtask(subtask)} aria-label={tf("{0} 삭제", subtask.title)}><Trash2 size={12} /></button>
             </li>)}
           </ul>
           <div className="task-inline-add">
-            <input value={subtaskDraft} placeholder="하위 작업 추가" onChange={(event) => setSubtaskDraft(event.target.value)}
+            <input value={subtaskDraft} placeholder={t("하위 작업 추가")} onChange={(event) => setSubtaskDraft(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addSubtask(); } }} />
             <button disabled={!subtaskDraft.trim() || busy} onClick={() => void addSubtask()}><CirclePlus size={14} /></button>
           </div>
         </section>
 
         {task.result && <section className="task-detail-section">
-          <header><h3>{task.owner}의 실행 결과</h3></header>
+          <header><h3>{task.owner}{t("의 실행 결과")}</h3></header>
           <div className="agent-result"><Markdown text={task.result} /></div>
         </section>}
 
         <section className="task-detail-section">
-          <header><h3>댓글</h3></header>
+          <header><h3>{t("실행 · 검토")} <ReviewBadge verdict={detail?.task.reviewVerdict ?? task.reviewVerdict} blockedReason={detail?.task.blockedReason ?? task.blockedReason} /></h3></header>
+          {(detail?.task.blockedReason ?? task.blockedReason) && <p className="gov-banner"><span><strong>{t("진행 불가")}</strong> — {detail?.task.blockedReason ?? task.blockedReason}</span></p>}
+          <ReviewActions taskId={task.id} hasResult={Boolean(detail?.task.result ?? task.result)} onNotice={onNotice} onDone={() => { void load(); void onRefresh?.(); }} />
+        </section>
+
+        <section className="task-detail-section">
+          <header><h3>{t("댓글")}</h3></header>
           <ul className="task-comments">
             {detail?.comments.map((comment) => <li key={comment.id}>
               <span className={comment.authorKind === 'agent' ? 'comment-avatar agent' : 'comment-avatar'}>{comment.author.slice(0, 1)}</span>
               <div>
-                <b>{comment.author}{comment.authorKind === 'agent' && <em><Bot size={10} /> 에이전트</em>}</b>
-                <p>{comment.content}</p>
+                <b>{comment.author}{comment.authorKind === 'agent' && <em><Bot size={10} /> {t("에이전트")}</em>}</b>
+                {isReviewComment(comment.content) ? <ReviewComment content={comment.content} /> : <p>{comment.content}</p>}
               </div>
             </li>)}
-            {!detail?.comments.length && <li className="detail-empty">아직 댓글이 없습니다.</li>}
+            {!detail?.comments.length && <li className="detail-empty">{t("아직 댓글이 없습니다.")}</li>}
           </ul>
           <div className="task-inline-add">
-            <input value={commentDraft} placeholder="댓글 추가" onChange={(event) => setCommentDraft(event.target.value)}
+            <input value={commentDraft} placeholder={t("댓글 추가")} onChange={(event) => setCommentDraft(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void addComment(); } }} />
             <button disabled={!commentDraft.trim() || busy} onClick={() => void addComment()}><Send size={14} /></button>
           </div>
@@ -967,11 +1021,9 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
       </div>
 
       <DialogFooter className="task-detail-footer">
-        <button className="task-detail-delete" onClick={() => void onDelete()}><Trash2 size={13} /> 업무 삭제</button>
-        <DialogClose render={<Button variant="outline" />}>닫기</DialogClose>
-        <Button disabled={running} onClick={onRun}>
-          {running ? <LoaderCircle className="spin" size={14} /> : <Play size={14} fill="currentColor" />} {running ? '실행 중' : '에이전트 실행'}
-        </Button>
+        <button className="task-detail-delete" onClick={() => void onDelete()}><Trash2 size={13} /> {t("업무 삭제")}</button>
+        <DialogClose render={<Button variant="outline" />}>{t("닫기")}</DialogClose>
+        <Button onClick={onChat}><MessageSquare size={14} /> {task.owner}{t("와 대화하기")}</Button>
       </DialogFooter>
 
     </DialogContent>
@@ -1001,11 +1053,11 @@ function FieldManagerDialog({ open, onOpenChange, projectId, fields, onChanged, 
         }),
       });
       const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || '필드를 만들지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("필드를 만들지 못했습니다."));
       setName(''); setOptions(''); setShowOnCard(false); setType('text');
       await onChanged();
       onNotice('사용자 지정 필드를 추가했습니다.');
-    } catch (error) { onNotice(error instanceof Error ? error.message : '필드를 만들지 못했습니다.'); }
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("필드를 만들지 못했습니다.")); }
     finally { setSaving(false); }
   }
 
@@ -1013,7 +1065,7 @@ function FieldManagerDialog({ open, onOpenChange, projectId, fields, onChanged, 
     const response = await fetch(`/api/projects/${projectId}/fields?fieldId=${field.id}`, { method: 'DELETE' });
     if (!response.ok) { onNotice('필드를 삭제하지 못했습니다.'); return; }
     await onChanged();
-    onNotice(`'${field.name}' 필드를 삭제했습니다.`);
+    onNotice(tf("'{0}' 필드를 삭제했습니다.", field.name));
   }
 
   async function toggleCard(field: ProjectField, next: boolean) {
@@ -1027,53 +1079,123 @@ function FieldManagerDialog({ open, onOpenChange, projectId, fields, onChanged, 
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="create-entity-dialog field-dialog">
       <DialogHeader>
-        <DialogTitle>사용자 지정 필드</DialogTitle>
-        <DialogDescription>이 프로젝트의 모든 업무가 공유합니다. 에이전트도 실행 중에 필드를 만들 수 있습니다.</DialogDescription>
+        <DialogTitle>{t("사용자 지정 필드")}</DialogTitle>
+        <DialogDescription>{t("이 프로젝트의 모든 업무가 공유합니다. 에이전트도 실행 중에 필드를 만들 수 있습니다.")}</DialogDescription>
       </DialogHeader>
 
       <ul className="field-list">
         {fields.map((field) => <li key={field.id}>
           <div>
             <b>{field.name}</b>
-            <small>{FIELD_TYPE_LABELS[field.type]}{field.type === 'select' && field.options.length ? ` · ${field.options.join(' / ')}` : ''}{field.createdBy !== 'user' ? ` · ${field.createdBy} 생성` : ''}</small>
+            <small>{t(FIELD_TYPE_LABELS[field.type])}{field.type === 'select' && field.options.length ? ` · ${field.options.join(' / ')}` : ''}{field.createdBy !== 'user' ? tf(" · {0} 생성", field.createdBy) : ''}</small>
           </div>
-          <span className="field-card-toggle" title="보드 카드에 배지로 표시">
-            <Switch checked={Boolean(field.showOnCard)} aria-label={`${field.name} 카드 표시`} onCheckedChange={(checked) => void toggleCard(field, Boolean(checked))} />
-            <span>카드 표시</span>
+          <span className="field-card-toggle" title={t("보드 카드에 배지로 표시")}>
+            <Switch checked={Boolean(field.showOnCard)} aria-label={tf("{0} 카드 표시", field.name)} onCheckedChange={(checked) => void toggleCard(field, Boolean(checked))} />
+            <span>{t("카드 표시")}</span>
           </span>
-          <button onClick={() => void removeField(field)} aria-label={`${field.name} 삭제`}><Trash2 size={13} /></button>
+          <button onClick={() => void removeField(field)} aria-label={tf("{0} 삭제", field.name)}><Trash2 size={13} /></button>
         </li>)}
-        {!fields.length && <li className="detail-empty">아직 만든 필드가 없습니다.</li>}
+        {!fields.length && <li className="detail-empty">{t("아직 만든 필드가 없습니다.")}</li>}
       </ul>
 
       <div className="entity-row">
-        <label className="entity-field"><span>필드 이름</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="예: 리스크 등급" /></label>
-        <label className="entity-field"><span>유형</span>
+        <label className="entity-field"><span>{t("필드 이름")}</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("예: 리스크 등급")} /></label>
+        <label className="entity-field"><span>{t("유형")}</span>
           <NativeSelect value={type} onChange={(event) => setType(event.target.value as FieldType)}>
-            {FIELD_TYPES.map((option) => <NativeSelectOption key={option} value={option}>{FIELD_TYPE_LABELS[option]}</NativeSelectOption>)}
+            {FIELD_TYPES.map((option) => <NativeSelectOption key={option} value={option}>{t(FIELD_TYPE_LABELS[option])}</NativeSelectOption>)}
           </NativeSelect>
         </label>
       </div>
-      {type === 'select' && <label className="entity-field"><span>옵션 (쉼표로 구분)</span>
-        <input value={options} onChange={(event) => setOptions(event.target.value)} placeholder="높음, 보통, 낮음" />
+      {type === 'select' && <label className="entity-field"><span>{t("옵션 (쉼표로 구분)")}</span>
+        <input value={options} onChange={(event) => setOptions(event.target.value)} placeholder={t("높음, 보통, 낮음")} />
       </label>}
       <span className="field-card-toggle standalone">
-        <Switch checked={showOnCard} aria-label="보드 카드에 배지로 표시" onCheckedChange={(checked) => setShowOnCard(Boolean(checked))} />
-        <span>보드 카드에 배지로 표시</span>
+        <Switch checked={showOnCard} aria-label={t("보드 카드에 배지로 표시")} onCheckedChange={(checked) => setShowOnCard(Boolean(checked))} />
+        <span>{t("보드 카드에 배지로 표시")}</span>
       </span>
 
       <DialogFooter>
-        <DialogClose render={<Button variant="outline" />}>닫기</DialogClose>
-        <Button disabled={!name.trim() || saving} onClick={() => void createField()}>{saving ? '추가 중' : '필드 추가'}</Button>
+        <DialogClose render={<Button variant="outline" />}>{t("닫기")}</DialogClose>
+        <Button disabled={!name.trim() || saving} onClick={() => void createField()}>{saving ? t("추가 중") : t("필드 추가")}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
 }
-function AgentsView({ agents, projects, onCreated, onNotice }: { agents: Agent[]; projects: Project[]; onCreated: () => Promise<void>; onNotice: (message: string) => void }) {
+const ALL_ROLES = '전체';
+const MANAGER_ROLE = '프로젝트 매니저';
+
+/** 프로젝트 하나와 그 프로젝트에 속한 에이전트들. id 가 없으면 '프로젝트 미지정' 묶음입니다. */
+type AgentGroup = { id: string | null; name: string; color: string; agents: Agent[] };
+
+function AgentsView({ agents, projects, assignments, onCreated, onNotice, onOpenChat }: { agents: Agent[]; projects: Project[]; assignments: Assignment[]; onCreated: () => Promise<void>; onNotice: (message: string) => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   // '에이전트 설정' 다이얼로그 상태. editing 이 있으면 열립니다.
   const [editing, setEditing] = useState<Agent | null>(null);
   const [draft, setDraft] = useState({ model: '', role: '', description: '', instructions: '' });
   const [updating, setUpdating] = useState(false);
+  // 상단 역할 필터. 에이전트가 늘어나면 역할(프로젝트 매니저·엔지니어·QA…)로 좁혀 봅니다.
+  const [roleFilter, setRoleFilter] = useState(ALL_ROLES);
+  const [layout, setLayout] = useState<ProjectLayout>('card');
+
+  // 마지막으로 고른 보기 방식을 브라우저에 기억해 둡니다.
+  useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- 브라우저에서만 읽을 수 있는 저장값입니다.
+    try { const stored = window.localStorage.getItem(AGENT_VIEW_KEY); if (stored === 'card' || stored === 'list') setLayout(stored); } catch { /* 저장소 접근 불가 시 기본값 유지 */ }
+  }, []);
+  const changeLayout = useCallback((next: ProjectLayout) => {
+    setLayout(next);
+    try { window.localStorage.setItem(AGENT_VIEW_KEY, next); } catch { /* 저장 실패는 무시 */ }
+  }, []);
+
+  const roleOptions = useMemo(
+    () => Array.from(new Set(agents.map((agent) => agent.role.trim()).filter(Boolean)))
+      // 프로젝트 매니저를 '전체' 바로 다음에 두고, 나머지는 가나다순으로 둡니다.
+      .sort((a, b) => (a === MANAGER_ROLE ? -1 : b === MANAGER_ROLE ? 1 : a.localeCompare(b, 'ko'))),
+    [agents],
+  );
+
+  // 고른 역할의 에이전트가 모두 사라져도 목록이 비지 않도록, 실제 적용 값은 계산해서 씁니다.
+  const activeRole = roleFilter !== ALL_ROLES && roleOptions.includes(roleFilter) ? roleFilter : ALL_ROLES;
+
+  const visibleAgents = useMemo(
+    () => (activeRole === ALL_ROLES ? agents : agents.filter((agent) => agent.role.trim() === activeRole)),
+    [agents, activeRole],
+  );
+
+  /** 에이전트가 참여 중인 프로젝트 id 목록. 소속(projectId)을 앞에 두고 합류(assignments)를 뒤에 붙입니다. */
+  const memberships = useCallback((agent: Agent) => {
+    const ids = agent.projectId ? [agent.projectId] : [];
+    for (const item of assignments) {
+      if (item.agentId === agent.id && !ids.includes(item.projectId)) ids.push(item.projectId);
+    }
+    return ids;
+  }, [assignments]);
+
+  /**
+   * 프로젝트별로 묶습니다. 한 에이전트가 여러 프로젝트에 걸쳐 있어도 목록이 중복되지 않도록
+   * 첫 번째 프로젝트(소속)에만 놓고, 나머지는 카드에 '외 N개 프로젝트' 로 알려 줍니다.
+   */
+  const groups = useMemo<AgentGroup[]>(() => {
+    const bucket = new Map<string, Agent[]>();
+    const loose: Agent[] = [];
+    for (const agent of visibleAgents) {
+      const home = memberships(agent)[0];
+      if (!home) { loose.push(agent); continue; }
+      const list = bucket.get(home);
+      if (list) list.push(agent); else bucket.set(home, [agent]);
+    }
+    // 매니저를 맨 앞에, 나머지는 이름순으로 둡니다.
+    const order = (list: Agent[]) => [...list].sort((a, b) =>
+      (b.isManager ? 1 : 0) - (a.isManager ? 1 : 0) || a.name.localeCompare(b.name, 'ko'));
+    const result: AgentGroup[] = projects
+      .filter((project) => bucket.has(project.id))
+      .map((project) => ({ id: project.id, name: project.name, color: project.color, agents: order(bucket.get(project.id) ?? []) }));
+    // 목록에 없는 프로젝트(삭제 직후 등)에 붙어 있던 에이전트도 흘리지 않습니다.
+    for (const [id, list] of bucket) {
+      if (!projects.some((project) => project.id === id)) result.push({ id, name: t('프로젝트 미지정'), color: 'var(--c-surface-tertiary)', agents: order(list) });
+    }
+    if (loose.length) result.push({ id: null, name: t('프로젝트 미지정'), color: 'var(--c-surface-tertiary)', agents: order(loose) });
+    return result;
+  }, [visibleAgents, projects, memberships]);
 
   const openSettings = useCallback((agent: Agent) => {
     setEditing(agent);
@@ -1089,62 +1211,134 @@ function AgentsView({ agents, projects, onCreated, onNotice }: { agents: Agent[]
         body: JSON.stringify({ id: editing.id, model: draft.model, role: draft.role.trim(), description: draft.description.trim(), instructions: draft.instructions.trim() }),
       });
       const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || '에이전트를 수정하지 못했습니다.');
+      if (!response.ok) throw new Error(data.error || t("에이전트를 수정하지 못했습니다."));
       const saved = editing;
       setEditing(null); await onCreated();
-      onNotice(`${saved.name} 설정을 저장했습니다.`);
-    } catch (error) { onNotice(error instanceof Error ? error.message : '에이전트를 수정하지 못했습니다.'); }
+      onNotice(tf("{0} 설정을 저장했습니다.", saved.name));
+    } catch (error) { onNotice(error instanceof Error ? error.message : t("에이전트를 수정하지 못했습니다.")); }
     finally { setUpdating(false); }
   }
 
   const settingsDialog = <Dialog open={Boolean(editing)} onOpenChange={(open) => { if (!open) setEditing(null); }}>
     <DialogContent className="create-entity-dialog agent-settings-dialog">
       <DialogHeader>
-        <DialogTitle>{editing?.name} 설정</DialogTitle>
-        <DialogDescription>이 에이전트가 쓸 AI 모델과 역할을 바꿉니다. 이름은 업무 담당자로 참조되고 있어 변경할 수 없습니다.</DialogDescription>
+        <DialogTitle>{editing?.name} {t("설정")}</DialogTitle>
+        <DialogDescription>{t("이 에이전트가 쓸 AI 모델과 역할을 바꿉니다. 이름은 업무 담당자로 참조되고 있어 변경할 수 없습니다.")}</DialogDescription>
       </DialogHeader>
       <label className="entity-field">
-        <span>AI 모델</span>
+        <span>{t("AI 모델")}</span>
         <NativeSelect value={draft.model} onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}>
-          <NativeSelectOption value="">기본 모델 사용 (.env 의 ANTHROPIC_MODEL)</NativeSelectOption>
-          {AGENT_MODELS.map((option) => <NativeSelectOption key={option.id} value={option.id}>{option.label} · {option.hint}</NativeSelectOption>)}
+          <NativeSelectOption value="">{t("기본 모델 사용 (.env 의 ANTHROPIC_MODEL)")}</NativeSelectOption>
+          {AGENT_MODELS.map((option) => <NativeSelectOption key={option.id} value={option.id}>{option.label} · {t(option.hint)}</NativeSelectOption>)}
         </NativeSelect>
-        <small className="entity-hint">업무 실행과 대화 모두 이 모델로 호출합니다. 사용량·비용은 &lsquo;사용량&rsquo; 화면에 모델별로 쌓입니다.</small>
+        <small className="entity-hint">{t("업무 실행과 대화 모두 이 모델로 호출합니다. 사용량·비용은 &lsquo;사용량&rsquo; 화면에 모델별로 쌓입니다.")}</small>
       </label>
-      <label className="entity-field"><span>역할</span><input value={draft.role} onChange={(event) => setDraft((current) => ({ ...current, role: event.target.value }))} placeholder="예: 데이터 분석가" /></label>
-      <label className="entity-field"><span>역할 설명</span><textarea value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="이 에이전트가 잘해야 하는 일" /></label>
+      <label className="entity-field"><span>{t("역할")}</span><input value={draft.role} onChange={(event) => setDraft((current) => ({ ...current, role: event.target.value }))} placeholder={t("예: 데이터 분석가")} /></label>
+      <label className="entity-field"><span>{t("역할 설명")}</span><textarea value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder={t("이 에이전트가 잘해야 하는 일")} /></label>
       <label className="entity-field">
-        <span>실행 지침</span>
-        <textarea className="entity-instructions" value={draft.instructions} onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))} placeholder="이 에이전트가 항상 지켜야 할 작업 방식" />
-        <small className="entity-hint">매 실행·대화의 시스템 프롬프트 맨 앞에 그대로 들어갑니다.</small>
+        <span>{t("실행 지침")}</span>
+        <textarea className="entity-instructions" value={draft.instructions} onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))} placeholder={t("이 에이전트가 항상 지켜야 할 작업 방식")} />
+        <small className="entity-hint">{t("매 실행·대화의 시스템 프롬프트 맨 앞에 그대로 들어갑니다.")}</small>
       </label>
       <DialogFooter>
-        <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
-        <Button disabled={!draft.role.trim() || !draft.instructions.trim() || updating} onClick={saveAgent}>{updating ? '저장 중' : '설정 저장'}</Button>
+        <DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose>
+        <Button disabled={!draft.role.trim() || !draft.instructions.trim() || updating} onClick={saveAgent}>{updating ? t("저장 중") : t("설정 저장")}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>;
 
-  const projectName = (id: string | null | undefined) => projects.find((project) => project.id === id)?.name ?? null;
+  /** 대화는 프로젝트 단위라, 소속 프로젝트(없으면 참여 중인 첫 프로젝트)를 찾아서 넘깁니다. */
+  const chatProjectId = useCallback((agent: Agent) => memberships(agent)[0] ?? '', [memberships]);
 
-  return <div className="workspace-view"><ViewHeading eyebrow="Agent Library" title="에이전트" description="프로젝트마다 전담 매니저가 있고, 나머지 팀원은 매니저가 필요할 때 합류시킵니다." />
+  const openAgentChat = useCallback((agent: Agent) => {
+    const projectId = chatProjectId(agent);
+    if (!projectId) { onNotice(tf("{0} 은(는) 아직 참여 중인 프로젝트가 없어 대화를 열 수 없습니다.", agent.name)); return; }
+    onOpenChat?.({ projectId, agentName: agent.name, draft: '' });
+  }, [chatProjectId, onNotice, onOpenChat]);
+
+  const roleSwitch = roleOptions.length > 1
+    ? <fieldset className="view-switch small" aria-label={t("역할 필터")}>
+        <button className={activeRole === ALL_ROLES ? 'selected' : ''} onClick={() => setRoleFilter(ALL_ROLES)}>{t("전체")}</button>
+        {roleOptions.map((role) => (
+          <button className={activeRole === role ? 'selected' : ''} key={role} onClick={() => setRoleFilter(role)}>{t(role)}</button>
+        ))}
+      </fieldset>
+    : null;
+
+  const layoutToggle = <fieldset className="layout-toggle" aria-label={t("에이전트 보기 방식")}>
+    <button className={layout === 'card' ? 'active' : ''} aria-pressed={layout === 'card'} onClick={() => changeLayout('card')} title={t("카드 보기")} type="button"><LayoutGrid size={15} /> {t("카드")}</button>
+    <button className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => changeLayout('list')} title={t("리스트 보기")} type="button"><List size={15} /> {t("리스트")}</button>
+  </fieldset>;
+
+  const action = <div className="view-actions">{roleSwitch}{agents.length > 0 && layoutToggle}</div>;
+
+  /** 다른 프로젝트에도 걸쳐 있으면 카드·행에 그 사실을 한 줄로 덧붙입니다. */
+  const alsoIn = (agent: Agent) => {
+    const extra = memberships(agent).length - 1;
+    return extra > 0 ? tf("외 {0}개 프로젝트 참여", extra) : null;
+  };
+
+  const modelTag = (agent: Agent) => <span className="agent-model-tag" title={agent.model ? tf("이 에이전트는 {0} 로 실행됩니다.", agent.model) : t(".env 의 ANTHROPIC_MODEL 을 그대로 씁니다.")}><Cpu size={12} />{agentModelLabel(agent.model) ?? t("기본 모델")}</span>;
+
+  const chatButton = (agent: Agent) => <button className="agent-profile-chat" onClick={() => openAgentChat(agent)} disabled={!chatProjectId(agent)}
+    title={chatProjectId(agent) ? tf("{0} 와(과) 대화하기", agent.name) : t("참여 중인 프로젝트가 없어 대화를 열 수 없습니다.")}><MessageSquare size={13} /> {t("대화하기")}</button>;
+
+  const agentCard = (agent: Agent) => <article className={agent.isManager ? 'agent-profile manager is-clickable' : 'agent-profile is-clickable'} key={agent.id}>
+    <button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => openSettings(agent)} />
+    <div className="agent-profile-head">
+      <span style={{ background: agent.color }}>{agent.name[0]}</span>
+      <div><h2>{agent.name}</h2><p>{t(agent.role)}</p></div>
+      {Boolean(agent.isManager) && <em><Sparkles size={11} /> {t("매니저")}</em>}
+    </div>
+    <p className="agent-description">{agent.description}</p>
+    <div className="agent-model-line">{modelTag(agent)}</div>
+    {alsoIn(agent) && <div className="agent-capability"><Check size={13} />{alsoIn(agent)}</div>}
+    <div className="agent-profile-actions">
+      {chatButton(agent)}
+      <button className="agent-profile-open" onClick={() => openSettings(agent)} aria-label={tf("{0} 에이전트 설정 열기", agent.name)}>{t("에이전트 설정")} <ChevronRight size={15} /></button>
+    </div>
+  </article>;
+
+  // 표 모양이지만 실제로는 '한 줄에 에이전트 하나' 목록이라 ARIA table 역할은 붙이지 않습니다.
+  const agentTable = (group: AgentGroup) => <ul className="agent-table" aria-label={t("에이전트 목록")}>
+    <li className="agent-row head" aria-hidden="true">
+      <span>{t("에이전트")}</span>
+      <span>{t("역할")}</span>
+      <span>{t("모델")}</span>
+      <span />
+    </li>
+    {group.agents.map((agent) => <li className="agent-row is-clickable" key={agent.id}>
+      <button className="open-overlay" onClick={() => openSettings(agent)} aria-label={tf("{0} 에이전트 설정 열기", agent.name)} />
+      <span className="agent-row-main">
+        <i className="agent-row-avatar" style={{ background: agent.color }}>{agent.name[0]}</i>
+        <b>{agent.name}{Boolean(agent.isManager) && <em className="agent-row-badge"><Sparkles size={10} /> {t("매니저")}</em>}</b>
+        <small>{agent.description || alsoIn(agent) || t("역할 설명이 없습니다.")}</small>
+      </span>
+      <span className="agent-row-role">{t(agent.role)}</span>
+      <span>{modelTag(agent)}</span>
+      <span className="agent-row-tools">
+        {chatButton(agent)}
+        <button className="project-row-open" onClick={() => openSettings(agent)}>{t("설정")} <ChevronRight size={15} /></button>
+      </span>
+    </li>)}
+  </ul>;
+
+  return <div className="workspace-view"><ViewHeading eyebrow="Agent Library" title={t("에이전트")} description={t("프로젝트마다 전담 매니저가 있고, 나머지 팀원은 매니저가 필요할 때 합류시킵니다.")} action={action} />
     {agents.length
-      ? <div className="agent-library">{agents.map((agent) => {
-          const home = projectName(agent.projectId);
-          return <article className={agent.isManager ? 'agent-profile manager' : 'agent-profile'} key={agent.id}>
-            <div className="agent-profile-head">
-              <span style={{ background: agent.color }}>{agent.name[0]}</span>
-              <div><h2>{agent.name}</h2><p>{agent.role}</p></div>
-              {Boolean(agent.isManager) && <em><Sparkles size={11} /> 매니저</em>}
+      ? groups.length
+        ? <div className="agent-groups">{groups.map((group) => <section className="agent-group" key={group.id ?? 'unassigned'}>
+            <div className="agent-group-head">
+              <span className="agent-group-mark" style={{ background: group.color }}>{group.id ? <FolderKanban size={14} /> : <Users size={14} />}</span>
+              <b>{group.name}</b>
+              <small>{group.agents.length === 1 ? t("1명") : tf("{0}명", group.agents.length)}</small>
             </div>
-            <p className="agent-description">{agent.description}</p>
-            <div className="agent-model-tag" title={agent.model ? `이 에이전트는 ${agent.model} 로 실행됩니다.` : '.env 의 ANTHROPIC_MODEL 을 그대로 씁니다.'}><Cpu size={12} />{agentModelLabel(agent.model) ?? '기본 모델'}</div>
-            <div className="agent-capability"><Check size={13} />{home ? `${home} 소속` : '프로젝트 미지정'}</div>
-            <button onClick={() => openSettings(agent)}>에이전트 설정 <ChevronRight size={15} /></button>
-          </article>;
-        })}</div>
-      : <div className="entity-empty"><CirclePlus size={30} /><h2>아직 에이전트가 없어요</h2><p>프로젝트를 만들면 그 프로젝트의 전담 매니저가 함께 생깁니다.</p></div>}
-    <div className="agent-template-note"><ShieldCheck size={20} /><div><strong>매니저가 팀을 꾸립니다</strong><p>업무를 지시하면 매니저가 직무 카탈로그(리서처·마케터·엔지니어·데이터 분석가 등)에서 필요한 사람을 합류시키고, 맡기고, 보고를 검토합니다.</p></div></div>
+            {layout === 'card'
+              ? <div className="agent-library">{group.agents.map(agentCard)}</div>
+              : agentTable(group)}
+          </section>)}</div>
+        : <div className="entity-empty"><Users size={30} /><h2>{t(activeRole)} {t("역할의 에이전트가 없어요")}</h2><p>{t("다른 역할을 골라 보거나 &lsquo;전체&rsquo; 로 돌아가세요.")}</p></div>
+      : <div className="entity-empty"><CirclePlus size={30} /><h2>{t("아직 에이전트가 없어요")}</h2><p>{t("프로젝트를 만들면 그 프로젝트의 전담 매니저가 함께 생깁니다.")}</p></div>}
+    <div className="agent-template-note"><ShieldCheck size={20} /><div><strong>{t("매니저가 팀을 꾸립니다")}</strong><p>{t("업무를 지시하면 매니저가 직무 카탈로그(리서처·마케터·엔지니어·데이터 분석가 등)에서 필요한 사람을 합류시키고, 맡기고, 보고를 검토합니다.")}</p></div></div>
     {settingsDialog}
   </div>;
 }
@@ -1168,21 +1362,51 @@ const CHAT_TOOL_LABELS: Record<string, string> = {
   create_task: '업무 카드를 만드는 중…',
 };
 
-function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void> }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null }) {
+  // 업무 카드에서 '대화하기' 로 들어오면 그 문맥으로 시작합니다 (WorkspaceView 가 key 를 바꿔 새로 마운트합니다).
+  const [projectId, setProjectId] = useState(initial?.projectId || projects[0]?.id || '');
   const availableAgents = useMemo(() => agents.filter((agent) => assignments.some((item) => item.projectId === projectId && item.agentId === agent.id)), [agents, assignments, projectId]);
   const [agentId, setAgentId] = useState('');
+  // 업무 카드에서 '대화하기' 로 들어오면 그 업무의 담당자를 이름으로 먼저 잡아 둡니다 (에이전트 목록이 늦게 와도 안전).
+  const [wantedAgent, setWantedAgent] = useState(initial?.agentName ?? '');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initial?.draft ?? '');
   const [sending, setSending] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [toolNote, setToolNote] = useState('');
   const [steps, setSteps] = useState<ManagerStep[]>([]);
+  // 사이드바에 띄우는 이 프로젝트의 업무. 대화 중 매니저가 카드를 만들거나 끝내면 다시 읽습니다.
+  const [boardTasks, setBoardTasks] = useState<ProjectTask[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
-  const selectedAgentId = availableAgents.some((agent) => agent.id === agentId) ? agentId : availableAgents[0]?.id || '';
+  const wanted = wantedAgent ? availableAgents.find((agent) => agent.name === wantedAgent) : undefined;
+  const selectedAgentId = wanted?.id || (availableAgents.some((agent) => agent.id === agentId) ? agentId : availableAgents[0]?.id || '');
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+
+  const loadBoardTasks = useCallback(() => {
+    if (!projectId) return;
+    fetch(`/api/tasks?projectId=${encodeURIComponent(projectId)}`)
+      .then(async (response) => await response.json() as { tasks?: ProjectTask[] })
+      .then((data) => setBoardTasks(data.tasks || []))
+      .catch(() => { /* 업무 목록은 보조 정보라 실패해도 대화를 막지 않습니다. */ });
+  }, [projectId]);
+
+  useEffect(() => { loadBoardTasks(); }, [loadBoardTasks]);
+
+  // 다른 창에 다녀오면 그 사이 바뀐 카드를 반영합니다.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== 'visible') return;
+      loadBoardTasks();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [loadBoardTasks]);
 
   useEffect(() => { if (!projectId || !selectedAgentId) return; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[] }).then((data) => setMessages(data.messages || [])).catch(() => setMessages([])); }, [projectId, selectedAgentId]);
 
@@ -1212,7 +1436,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { proj
       const response = await fetch('/api/chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, agentId: selectedAgentId, message, folderContext }) });
       if (!response.ok || !response.body) {
         const failure = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(failure?.error || '메시지를 보내지 못했습니다.');
+        throw new Error(failure?.error || t("메시지를 보내지 못했습니다."));
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -1234,7 +1458,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { proj
         }
         // 매니저 진행: 합류 → 위임 시작 → 보고 도착 순으로 한 줄씩 쌓입니다.
         if (event.type === 'manager') {
-          const agent = event.agent ?? '팀원';
+          const agent = event.agent ?? t("팀원");
           if (event.kind === 'recruited') {
             setToolNote('');
             setSteps((current) => [...current, { id: `r-${agent}-${current.length}`, kind: 'recruited', agent, role: event.role ?? '' }]);
@@ -1261,7 +1485,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { proj
             });
           }
         }
-        if (event.type === 'tool' && event.name) setToolNote(CHAT_TOOL_LABELS[event.name] ?? '도구를 쓰는 중…');
+        if (event.type === 'tool' && event.name) setToolNote(t(CHAT_TOOL_LABELS[event.name] ?? '도구를 쓰는 중…'));
         if (event.type === 'delta' && event.text) {
           streamed += event.text;
           setStreamText(streamed);
@@ -1273,13 +1497,13 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { proj
           setStreamText(''); setToolNote('');
           // 매니저가 대화 중에 팀을 꾸리거나 카드를 만들었으면 사이드바·보드를 다시 읽습니다.
           const notes = [
-            event.recruited?.length ? `에이전트 ${event.recruited.length}명 합류` : '',
-            event.delegated?.length ? `업무 ${event.delegated.length}건 위임·완료` : '',
-            event.createdTasks?.length ? `카드 ${event.createdTasks.length}개 생성` : '',
+            event.recruited?.length ? tf("에이전트 {0}명 합류", event.recruited.length) : '',
+            event.delegated?.length ? tf("업무 {0}건 위임·완료", event.delegated.length) : '',
+            event.createdTasks?.length ? tf("카드 {0}개 생성", event.createdTasks.length) : '',
           ].filter(Boolean);
           if (notes.length) { boardChanged = true; onNotice(notes.join(' · ')); }
         }
-        if (event.type === 'error') failure = event.error || '답변 생성에 실패했습니다.';
+        if (event.type === 'error') failure = event.error || t("답변 생성에 실패했습니다.");
       };
       for (;;) {
         const { done, value } = await reader.read();
@@ -1294,27 +1518,40 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { proj
       }
       if (buffer) consume(buffer);
       if (failure) throw new Error(failure);
-      if (boardChanged) await onRefresh();
+      if (boardChanged) { await onRefresh(); loadBoardTasks(); }
     }
-    catch (error) { onNotice(error instanceof Error ? error.message : '메시지를 보내지 못했습니다.'); }
+    catch (error) { onNotice(error instanceof Error ? error.message : t("메시지를 보내지 못했습니다.")); }
     finally { setSending(false); setStreamText(''); setToolNote(''); }
   }
 
-  return <div className="workspace-view chat-page"><ViewHeading eyebrow="Agent Chat" title="대화" description="매니저에게 지시하면 대화 중에 팀을 꾸리고 업무를 맡겨 결과까지 가져옵니다." />
-    <div className="chat-shell"><aside className="chat-context"><label>프로젝트<NativeSelect value={projectId} onChange={(event) => { setProjectId(event.target.value); setAgentId(''); }}><NativeSelectOption value="">프로젝트 선택</NativeSelectOption>{projects.map((project) => <NativeSelectOption key={project.id} value={project.id}>{project.name}</NativeSelectOption>)}</NativeSelect></label><strong>참여 에이전트</strong>{availableAgents.map((agent) => <button className={selectedAgentId === agent.id ? 'chat-agent active' : 'chat-agent'} key={agent.id} onClick={() => setAgentId(agent.id)}><span style={{ background: agent.color }}>{agent.name[0]}</span><div><b>{agent.name}</b><small>{agent.role}</small></div></button>)}</aside>
-      <section className="conversation"><header><span style={{ background: selectedAgent?.color || '#181d26' }}>{selectedAgent?.name[0] || <Bot size={17} />}</span><div><strong>{selectedAgent?.name || '에이전트를 선택하세요'}</strong><small>{selectedAgent?.role || '프로젝트 참여 에이전트'}</small></div><em><i /> 대화 가능</em></header>
-        <div className="message-list" ref={listRef} onScroll={handleScroll}>{!messages.length && !streamText && <div className="chat-welcome"><Sparkles size={24} /><h2>{selectedAgent?.name || 'AI 에이전트'}에게 무엇을 맡길까요?</h2><p>{selectedAgent?.isManager
-            ? '목표와 원하는 결과물을 알려주면 필요한 에이전트를 합류시켜 맡기고, 결과를 검토해 보고합니다.'
-            : '목표, 배경, 원하는 결과물을 알려주면 프로젝트 맥락에 맞춰 답합니다.'}</p></div>}{messages.map((message) => <div className={`message ${message.role}`} key={message.id}><span>{message.role === 'assistant' ? selectedAgent?.name[0] : '나'}</span>{message.role === 'assistant' ? <div className="bubble"><Markdown text={message.content} /></div> : <div className="bubble">{message.content}</div>}</div>)}{Boolean(steps.length) && <div className="manager-trace" aria-live="polite">
-          <strong>{sending ? '매니저가 일하는 중' : '이번 답변에서 한 일'}</strong>
+  return <div className="workspace-view chat-page"><ViewHeading eyebrow="Agent Chat" title={t("대화")} description={t("매니저에게 지시하면 대화 중에 팀을 꾸리고 업무를 맡겨 결과까지 가져옵니다.")} />
+    <div className="chat-shell"><aside className="chat-context"><label>{t("프로젝트")}<NativeSelect value={projectId} onChange={(event) => { setProjectId(event.target.value); setAgentId(''); setWantedAgent(''); }}><NativeSelectOption value="">{t("프로젝트 선택")}</NativeSelectOption>{projects.map((project) => <NativeSelectOption key={project.id} value={project.id}>{project.name}</NativeSelectOption>)}</NativeSelect></label><strong>{t("참여 에이전트")}</strong>{availableAgents.map((agent) => <button className={selectedAgentId === agent.id ? 'chat-agent active' : 'chat-agent'} key={agent.id} onClick={() => { setAgentId(agent.id); setWantedAgent(''); }}><span style={{ background: agent.color }}>{agent.name[0]}</span><div><b>{agent.name}</b><small>{t(agent.role)}</small></div></button>)}
+      <strong className="chat-tasks-title">{t("이 프로젝트의 업무")}<em>{boardTasks.length}</em></strong>
+      <div className="chat-tasks">
+        {boardTasks.map((task) => <button className="chat-task" key={task.id} title={`${task.owner} · ${t(task.status)}`}
+          onClick={() => setDraft(tf("'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.", task.title))}>
+          <b>{task.title}</b>
+          <span>
+            <i className={`chat-task-dot ${task.status === '진행 중' ? 'doing' : task.status === '검토' ? 'review' : ''}`} />{t(task.status)}
+            <em className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`}><Flag size={10} /> {t(toPriority(task.priority))}</em>
+          </span>
+        </button>)}
+        {!boardTasks.length && <p className="chat-tasks-empty">{t("아직 업무가 없습니다. 매니저에게 목표를 알려주면 카드를 만들어 나눠 맡깁니다.")}</p>}
+      </div>
+    </aside>
+      <section className="conversation"><header><span style={{ background: selectedAgent?.color || 'var(--c-inverse)' }}>{selectedAgent?.name[0] || <Bot size={17} />}</span><div><strong>{selectedAgent?.name || t("에이전트를 선택하세요")}</strong><small>{selectedAgent ? t(selectedAgent.role) : t("프로젝트 참여 에이전트")}</small></div><em><i /> {t("대화 가능")}</em></header>
+        <div className="message-list" ref={listRef} onScroll={handleScroll}>{!messages.length && !streamText && <div className="chat-welcome"><Sparkles size={24} /><h2>{selectedAgent?.name || t("AI 에이전트")}{t("에게 무엇을 맡길까요?")}</h2><p>{selectedAgent?.isManager
+            ? t("목표와 원하는 결과물을 알려주면 필요한 에이전트를 합류시켜 맡기고, 결과를 검토해 보고합니다.")
+            : t("목표, 배경, 원하는 결과물을 알려주면 프로젝트 맥락에 맞춰 답합니다.")}</p></div>}{messages.map((message) => <div className={`message ${message.role}`} key={message.id}><span>{message.role === 'assistant' ? selectedAgent?.name[0] : t("나")}</span>{message.role === 'assistant' ? <div className="bubble"><Markdown text={message.content} /></div> : <div className="bubble">{message.content}</div>}</div>)}{Boolean(steps.length) && <div className="manager-trace" aria-live="polite">
+          <strong>{sending ? t("매니저가 일하는 중") : t("이번 답변에서 한 일")}</strong>
           <ol>{steps.map((step) => step.kind === 'recruited'
-            ? <li className="done" key={step.id}><UserRound size={12} /><span><b>{step.agent}</b>{step.role ? ` · ${step.role}` : ''} 합류</span></li>
+            ? <li className="done" key={step.id}><UserRound size={12} /><span><b>{step.agent}</b>{step.role ? ` · ${t(step.role)}` : ''} {t("합류")}</span></li>
             : <li className={step.state} key={step.id}>
                 {step.state === 'running' ? <LoaderCircle className="spin" size={12} /> : step.state === 'blocked' ? <Clock3 size={12} /> : <Check size={12} />}
                 <span>
-                  {step.state === 'running' ? <><b>{step.agent}</b>에게 맡김 — {step.title}</> : null}
-                  {step.state === 'completed' ? <><b>{step.agent}</b> 보고 도착 — {step.summary || step.title}</> : null}
-                  {step.state === 'blocked' ? <><b>{step.agent}</b> 진행 불가 — {step.summary || '사유 미기재'}</> : null}
+                  {step.state === 'running' ? <><b>{step.agent}</b>{t("에게 맡김 —")} {step.title}</> : null}
+                  {step.state === 'completed' ? <><b>{step.agent}</b> {t("보고 도착 —")} {step.summary || step.title}</> : null}
+                  {step.state === 'blocked' ? <><b>{step.agent}</b> {t("진행 불가 —")} {step.summary || t("사유 미기재")}</> : null}
                 </span>
               </li>)}</ol>
         </div>}
@@ -1323,19 +1560,75 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh }: { proj
           : <div className="message assistant"><span>{selectedAgent?.name[0]}</span>{toolNote
               ? <div className="bubble tool-note"><LoaderCircle className="spin" size={13} /> {toolNote}</div>
               : <div className="bubble thinking"><i /><i /><i /></div>}</div>)}<div ref={bottomRef} className="message-anchor" /></div>
-        <div className="chat-composer"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={`${selectedAgent?.name || '에이전트'}에게 업무를 지시하세요...`} disabled={!selectedAgentId || sending} /><button onClick={() => void sendMessage()} disabled={!draft.trim() || sending}><Send size={17} /></button><small>Enter 전송 · Shift+Enter 줄바꿈</small></div></section>
+        <div className="chat-composer"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} /><button onClick={() => void sendMessage()} disabled={!draft.trim() || sending}><Send size={17} /></button><small>{t("Enter 전송 · Shift+Enter 줄바꿈")}</small></div></section>
     </div>
   </div>;
 }
 
+/** 테마 선택지의 이름과 아이콘. 값 자체는 lib/prefs 의 THEME_CHOICES 입니다. */
+const THEME_LABEL: Record<ThemeChoice, string> = { system: '시스템', dark: '다크', light: '라이트' };
+const THEME_ICON: Record<ThemeChoice, typeof Monitor> = { system: Monitor, dark: Moon, light: Sun };
+
+/** 켜고 끄는 항목들. 라벨은 t() 로 번역합니다. */
+const PREF_SWITCHES: [key: 'notifications' | 'autoAssign', title: string, description: string][] = [
+  ['notifications', '실행 완료 알림', '에이전트가 업무를 마치면 알려줍니다.'],
+  ['autoAssign', '에이전트 자동 추천', '새 업무에 가장 적합한 역할을 추천합니다.'],
+];
+
+/**
+ * 환경 설정. 모든 값은 이 기기(localStorage)에만 저장되고,
+ * 고르는 즉시 화면에 반영됩니다.
+ */
 function SettingsView({ onNotice }: { onNotice: (message: string) => void }) {
-  const [notifications, setNotifications] = useState(true); const [compact, setCompact] = useState(false); const [autoAssign, setAutoAssign] = useState(true);
-  // oxlint-disable-next-line react/react-compiler -- hydrate device-local preferences after mount
-  useEffect(() => { try { const saved = JSON.parse(localStorage.getItem('orbit-preferences') || '{}') as { notifications?: boolean; compact?: boolean; autoAssign?: boolean }; if (typeof saved.notifications === 'boolean') setNotifications(saved.notifications); if (typeof saved.compact === 'boolean') setCompact(saved.compact); if (typeof saved.autoAssign === 'boolean') setAutoAssign(saved.autoAssign); } catch { /* Keep safe defaults. */ } }, []);
-  function saveSettings() { localStorage.setItem('orbit-preferences', JSON.stringify({ notifications, compact, autoAssign })); onNotice('환경 설정이 이 기기에 저장되었습니다.'); }
-  return <div className="workspace-view narrow-view"><ViewHeading eyebrow="Preferences" title="환경 설정" description="업무 방식과 알림 기본값을 조정합니다." /><section className="settings-card"><div className="settings-title"><Settings2 size={19} /><div><strong>워크스페이스</strong><p>이 기기의 인터페이스와 자동화 기본값</p></div></div>{[[notifications, setNotifications, '실행 완료 알림', '에이전트가 업무를 마치면 알려줍니다.'], [autoAssign, setAutoAssign, '에이전트 자동 추천', '새 업무에 가장 적합한 역할을 추천합니다.'], [compact, setCompact, '간결한 화면', '카드 간격과 정보를 더 촘촘하게 표시합니다.']].map(([checked, setter, title, description]) => <div className="setting-row" key={title as string}><div><strong>{title as string}</strong><p>{description as string}</p></div><Switch aria-label={title as string} checked={checked as boolean} onCheckedChange={setter as (value: boolean) => void} /></div>)}<Button onClick={saveSettings} className="settings-save">설정 저장</Button></section></div>;
+  const prefs = usePrefs();
+
+  function change(patch: Partial<Prefs>) {
+    updatePrefs(patch);
+  }
+
+  return <div className="workspace-view narrow-view">
+    <ViewHeading eyebrow="Preferences" title={t('환경 설정')} description={t('화면 테마와 언어, 업무 방식 기본값을 조정합니다.')} />
+    <section className="settings-card">
+      <div className="settings-title"><Settings2 size={19} /><div><strong>{t('워크스페이스')}</strong><p>{t('이 기기의 인터페이스와 자동화 기본값')}</p></div></div>
+      {PREF_SWITCHES.map(([key, title, description]) => <div className="setting-row" key={key}>
+        <div><strong>{t(title)}</strong><p>{t(description)}</p></div>
+        <Switch aria-label={t(title)} checked={prefs[key]} onCheckedChange={(value) => change({ [key]: value })} />
+      </div>)}
+
+      <div className="settings-title settings-title-sub"><Sun size={19} /><div><strong>{t('화면')}</strong><p>{t('테마와 언어는 이 기기에서만 적용됩니다.')}</p></div></div>
+      <div className="setting-row">
+        <div><strong>{t('테마')}</strong><p>{t('시스템 설정을 따르거나 밝기를 직접 고릅니다.')}</p></div>
+        <fieldset className="view-switch setting-choice" aria-label={t('테마 선택')}>
+          {THEME_CHOICES.map((choice) => {
+            const Icon = THEME_ICON[choice];
+            return <button
+              aria-pressed={prefs.theme === choice}
+              className={prefs.theme === choice ? 'selected' : ''}
+              key={choice}
+              onClick={() => change({ theme: choice })}
+              type="button"
+            ><Icon size={14} /> {t(THEME_LABEL[choice])}</button>;
+          })}
+        </fieldset>
+      </div>
+      <div className="setting-row">
+        <div><strong>{t('언어')}</strong><p>{t('화면에 표시되는 문구의 언어입니다.')}</p></div>
+        <fieldset className="view-switch setting-choice" aria-label={t('언어 선택')}>
+          {LANGUAGES.map((code: Lang) => <button
+            aria-pressed={prefs.lang === code}
+            className={prefs.lang === code ? 'selected' : ''}
+            key={code}
+            onClick={() => change({ lang: code })}
+            type="button"
+          ><Languages size={14} /> {LANGUAGE_LABEL[code]}</button>)}
+        </fieldset>
+      </div>
+
+      <Button className="settings-save" onClick={() => onNotice(t('환경 설정이 이 기기에 저장되었습니다.'))}>{t('설정 저장')}</Button>
+    </section>
+  </div>;
 }
 
 function AccountView({ displayName, email }: { displayName: string; email: string }) {
-  return <div className="workspace-view narrow-view"><ViewHeading eyebrow="Account" title="계정" description="이 워크스페이스가 어떤 사용자로 동작하는지 확인합니다." /><section className="account-card"><span className="account-avatar"><UserRound size={27} /></span><div><h2>{displayName}</h2><p>{email}</p><em><ShieldCheck size={13} /> 로컬 전용 모드 · 외부 인증 없음</em></div></section><p className="account-note">표시 이름과 이메일은 <code>LOCAL_USER_NAME</code>, <code>LOCAL_USER_EMAIL</code> 환경변수로 바꿀 수 있습니다. 여러 사용자를 지원하려면 <code>app/auth.ts</code>의 <code>getCurrentUser()</code>에 실제 인증을 연결하세요.</p></div>;
+  return <div className="workspace-view narrow-view"><ViewHeading eyebrow="Account" title={t("계정")} description={t("이 워크스페이스가 어떤 사용자로 동작하는지 확인합니다.")} /><section className="account-card"><span className="account-avatar"><UserRound size={27} /></span><div><h2>{displayName}</h2><p>{email}</p><em><ShieldCheck size={13} /> {t("로컬 전용 모드 · 외부 인증 없음")}</em></div></section><p className="account-note">{t("표시 이름과 이메일은")} <code>LOCAL_USER_NAME</code>, <code>LOCAL_USER_EMAIL</code> {t("환경변수로 바꿀 수 있습니다. 여러 사용자를 지원하려면")} <code>app/auth.ts</code>{t("의")} <code>getCurrentUser()</code>{t("에 실제 인증을 연결하세요.")}</p></div>;
 }

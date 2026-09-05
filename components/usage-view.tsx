@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Coins, Cpu, Globe, LoaderCircle, MessageSquareText, Send } from 'lucide-react';
+import { t, tf } from '@/lib/i18n';
 
 /**
  * 시리즈 색은 DESIGN-airtable.md 팔레트에서 고른 값입니다.
  * ink(#181d26) / signature-coral(#aa2d00) — 흰 캔버스 위 명도·색상 분리 모두 확보.
  * 대비가 약한 구간은 아래 일별 표(표 뷰)가 완화 채널 역할을 합니다.
  */
-const SERIES_INPUT = '#181d26';
-const SERIES_OUTPUT = '#aa2d00';
+const SERIES_INPUT = 'var(--c-chart-input)';
+const SERIES_OUTPUT = 'var(--c-chart-output)';
 const RANGES = [7, 30, 90] as const;
 
 type Bucket = {
@@ -66,10 +67,10 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
     try {
       const tz = new Date().getTimezoneOffset();
       const response = await fetch(`/api/usage?days=${range}&tz=${tz}`);
-      if (!response.ok) throw new Error('사용량을 불러오지 못했습니다.');
+      if (!response.ok) throw new Error(t('사용량을 불러오지 못했습니다.'));
       setData(await response.json() as UsageData);
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : '사용량을 불러오지 못했습니다.');
+      onNotice(error instanceof Error ? error.message : t("사용량을 불러오지 못했습니다."));
     } finally { setLoading(false); }
   }, [onNotice]);
 
@@ -91,56 +92,56 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
       <div className="workspace-heading">
         <div>
           <span className="section-kicker">AI Usage</span>
-          <h1>AI 사용량</h1>
-          <p>Claude 호출로 소비한 토큰과 웹 검색, 그리고 공개 단가 기준 비용 추정입니다.</p>
+          <h1>{t("AI 사용량")}</h1>
+          <p>{t("Claude 호출로 소비한 토큰과 웹 검색, 그리고 공개 단가 기준 비용 추정입니다.")}</p>
         </div>
-        <fieldset className="view-switch" aria-label="조회 기간">
+        <fieldset className="view-switch" aria-label={t("조회 기간")}>
           {RANGES.map((range) => (
-            <button className={days === range ? 'selected' : ''} key={range} onClick={() => setDays(range)}>{range}일</button>
+            <button className={days === range ? 'selected' : ''} key={range} onClick={() => setDays(range)}>{range}{t("일")}</button>
           ))}
         </fieldset>
       </div>
 
-      {loading && !data ? <div className="view-loading"><LoaderCircle className="spin" /><span>사용량을 집계하는 중</span></div> : <>
-        <section className="usage-kpis" aria-label="사용량 요약">
+      {loading && !data ? <div className="view-loading"><LoaderCircle className="spin" /><span>{t("사용량을 집계하는 중")}</span></div> : <>
+        <section className="usage-kpis" aria-label={t("사용량 요약")}>
           <article className="stat-card usage-kpi">
             <span className="icon-tile violet"><Coins size={18} /></span>
-            <div><strong>{formatUsd(totals?.costUsd ?? 0)}</strong><span>비용 추정</span></div>
-            <em>최근 {data?.rangeDays ?? days}일 · 공개 단가 기준</em>
+            <div><strong>{formatUsd(totals?.costUsd ?? 0)}</strong><span>{t("비용 추정")}</span></div>
+            <em>{t("최근")} {data?.rangeDays ?? days}{t("일 · 공개 단가 기준")}</em>
           </article>
           <article className="stat-card usage-kpi">
             <span className="icon-tile blue"><Send size={18} /></span>
-            <div><strong>{totals?.requests ?? 0}</strong><span>API 요청</span></div>
-            <em>실행 + 대화 합계</em>
+            <div><strong>{totals?.requests ?? 0}</strong><span>{t("API 요청")}</span></div>
+            <em>{t("실행 + 대화 합계")}</em>
           </article>
           <article className="stat-card usage-kpi">
             <span className="icon-tile mint"><Cpu size={18} /></span>
-            <div><strong>{formatTokens(totalTokens)}</strong><span>총 토큰</span></div>
-            <em>입력 {formatTokens(totals?.inputTokens ?? 0)} · 출력 {formatTokens(totals?.outputTokens ?? 0)}</em>
+            <div><strong>{formatTokens(totalTokens)}</strong><span>{t("총 토큰")}</span></div>
+            <em>{t("입력")} {formatTokens(totals?.inputTokens ?? 0)} {t("· 출력")} {formatTokens(totals?.outputTokens ?? 0)}</em>
           </article>
           <article className="stat-card usage-kpi">
             <span className="icon-tile orange"><Globe size={18} /></span>
-            <div><strong>{totals?.webSearchRequests ?? 0}</strong><span>웹 검색</span></div>
-            <em>1,000회당 ${((data?.pricing.webSearchPerCall ?? 0.01) * 1000).toFixed(0)}</em>
+            <div><strong>{totals?.webSearchRequests ?? 0}</strong><span>{t("웹 검색")}</span></div>
+            <em>{t("1,000회당 $")}{((data?.pricing.webSearchPerCall ?? 0.01) * 1000).toFixed(0)}</em>
           </article>
         </section>
 
         <section className="usage-chart-card">
           <div className="section-header">
             <div>
-              <span className="section-kicker">추이</span>
-              <h2>{metric === 'cost' ? '일별 비용 추정' : '일별 토큰 사용량'}</h2>
+              <span className="section-kicker">{t("추이")}</span>
+              <h2>{metric === 'cost' ? t("일별 비용 추정") : t("일별 토큰 사용량")}</h2>
             </div>
-            <fieldset className="view-switch small" aria-label="표시 지표">
-              <button className={metric === 'cost' ? 'selected' : ''} onClick={() => setMetric('cost')}>비용</button>
-              <button className={metric === 'tokens' ? 'selected' : ''} onClick={() => setMetric('tokens')}>토큰</button>
+            <fieldset className="view-switch small" aria-label={t("표시 지표")}>
+              <button className={metric === 'cost' ? 'selected' : ''} onClick={() => setMetric('cost')}>{t("비용")}</button>
+              <button className={metric === 'tokens' ? 'selected' : ''} onClick={() => setMetric('tokens')}>{t("토큰")}</button>
             </fieldset>
           </div>
 
           {metric === 'tokens' && (
             <div className="usage-legend">
-              <span><i style={{ background: SERIES_INPUT }} /> 입력 토큰</span>
-              <span><i style={{ background: SERIES_OUTPUT }} /> 출력 토큰</span>
+              <span><i style={{ background: SERIES_INPUT }} /> {t("입력 토큰")}</span>
+              <span><i style={{ background: SERIES_OUTPUT }} /> {t("출력 토큰")}</span>
             </div>
           )}
 
@@ -166,7 +167,7 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
                     onMouseEnter={() => setHovered(index)}
                     onFocus={() => setHovered(index)}
                     onBlur={() => setHovered(null)}
-                    aria-label={`${point.date} · 요청 ${point.requests}건 · ${formatTokens(point.inputTokens + point.outputTokens)} 토큰 · ${formatUsd(point.costUsd)}`}
+                    aria-label={tf("{0} · 요청 {1}건 · {2} 토큰 · {3}", point.date, point.requests, formatTokens(point.inputTokens + point.outputTokens), formatUsd(point.costUsd))}
                   >
                     <span className="usage-stack">
                       {metric === 'cost'
@@ -188,9 +189,9 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
               return (
               <div className={`usage-tooltip ${align}`} style={{ left: `${left}%` }}>
                 <strong>{daily[hovered].date}</strong>
-                <span><i style={{ background: SERIES_INPUT }} /> 입력 <b>{formatTokens(daily[hovered].inputTokens)}</b></span>
-                <span><i style={{ background: SERIES_OUTPUT }} /> 출력 <b>{formatTokens(daily[hovered].outputTokens)}</b></span>
-                <span className="usage-tooltip-foot">요청 <b>{daily[hovered].requests}</b> · 검색 <b>{daily[hovered].webSearchRequests}</b> · <b>{formatUsd(daily[hovered].costUsd)}</b></span>
+                <span><i style={{ background: SERIES_INPUT }} /> {t("입력")} <b>{formatTokens(daily[hovered].inputTokens)}</b></span>
+                <span><i style={{ background: SERIES_OUTPUT }} /> {t("출력")} <b>{formatTokens(daily[hovered].outputTokens)}</b></span>
+                <span className="usage-tooltip-foot">{t("요청")} <b>{daily[hovered].requests}</b> {t("· 검색")} <b>{daily[hovered].webSearchRequests}</b> · <b>{formatUsd(daily[hovered].costUsd)}</b></span>
               </div>
               );
             })()}
@@ -199,22 +200,22 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
 
         <section className="usage-split">
           <Breakdown
-            kicker="기능별" title="어디에 썼나"
-            rows={(data?.byKind ?? []).map((row) => ({ key: row.kind, label: row.label, cost: row.costUsd, requests: row.requests, tokens: row.inputTokens + row.outputTokens }))}
+            kicker={t("기능별")} title={t("어디에 썼나")}
+            rows={(data?.byKind ?? []).map((row) => ({ key: row.kind, label: t(row.label), cost: row.costUsd, requests: row.requests, tokens: row.inputTokens + row.outputTokens }))}
             icon={<MessageSquareText size={16} />}
           />
           <Breakdown
-            kicker="에이전트별" title="누가 썼나"
+            kicker={t("에이전트별")} title={t("누가 썼나")}
             rows={(data?.byAgent ?? []).map((row) => ({ key: row.agentName, label: row.agentName, cost: row.costUsd, requests: row.requests, tokens: row.inputTokens + row.outputTokens }))}
             icon={<Cpu size={16} />}
           />
         </section>
 
         <section className="usage-table-card">
-          <div className="section-header"><div><span className="section-kicker">상세</span><h2>일별 내역</h2></div></div>
+          <div className="section-header"><div><span className="section-kicker">{t("상세")}</span><h2>{t("일별 내역")}</h2></div></div>
           <div className="usage-table-scroll">
             <table className="usage-table">
-              <thead><tr><th>날짜</th><th>요청</th><th>입력</th><th>출력</th><th>캐시 읽기</th><th>검색</th><th>비용 추정</th></tr></thead>
+              <thead><tr><th>{t("날짜")}</th><th>{t("요청")}</th><th>{t("입력")}</th><th>{t("출력")}</th><th>{t("캐시 읽기")}</th><th>{t("검색")}</th><th>{t("비용 추정")}</th></tr></thead>
               <tbody>
                 {daily.filter((point) => point.requests > 0).reverse().map((point) => (
                   <tr key={point.date}>
@@ -228,7 +229,7 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
                   </tr>
                 ))}
                 {!daily.some((point) => point.requests > 0) && (
-                  <tr><td colSpan={7} className="usage-empty">이 기간에 기록된 Claude 호출이 없습니다.</td></tr>
+                  <tr><td colSpan={7} className="usage-empty">{t("이 기간에 기록된 Claude 호출이 없습니다.")}</td></tr>
                 )}
               </tbody>
             </table>
@@ -236,16 +237,16 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
         </section>
 
         <section className="usage-table-card">
-          <div className="section-header"><div><span className="section-kicker">모델</span><h2>모델별 사용량과 적용 단가</h2></div></div>
+          <div className="section-header"><div><span className="section-kicker">{t("모델")}</span><h2>{t("모델별 사용량과 적용 단가")}</h2></div></div>
           <div className="usage-table-scroll">
             <table className="usage-table">
-              <thead><tr><th>모델</th><th>요청</th><th>입력</th><th>출력</th><th>입력 단가</th><th>출력 단가</th><th>비용 추정</th></tr></thead>
+              <thead><tr><th>{t("모델")}</th><th>{t("요청")}</th><th>{t("입력")}</th><th>{t("출력")}</th><th>{t("입력 단가")}</th><th>{t("출력 단가")}</th><th>{t("비용 추정")}</th></tr></thead>
               <tbody>
                 {(data?.byModel ?? []).map((row) => {
                   const price = data?.pricing.models.find((item) => row.model.startsWith(item.model));
                   return (
                     <tr key={row.model}>
-                      <td>{row.model}{!row.priceKnown && <em className="usage-warn"> 단가 미등록</em>}</td>
+                      <td>{row.model}{!row.priceKnown && <em className="usage-warn"> {t("단가 미등록")}</em>}</td>
                       <td>{row.requests}</td>
                       <td>{row.inputTokens.toLocaleString()}</td>
                       <td>{row.outputTokens.toLocaleString()}</td>
@@ -255,14 +256,12 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
                     </tr>
                   );
                 })}
-                {!(data?.byModel ?? []).length && <tr><td colSpan={7} className="usage-empty">아직 기록이 없습니다.</td></tr>}
+                {!(data?.byModel ?? []).length && <tr><td colSpan={7} className="usage-empty">{t("아직 기록이 없습니다.")}</td></tr>}
               </tbody>
             </table>
           </div>
           <p className="usage-note">
-            단가는 <code>lib/pricing.ts</code>에 상수로 적혀 있는 Anthropic 공개 가격(100만 토큰 기준)입니다.
-            프롬프트 캐시·웹 검색까지 반영한 <strong>추정치</strong>이므로 실제 청구액과 다를 수 있고,
-            단가가 바뀌면 그 파일만 고치면 됩니다. 단가가 등록되지 않은 모델은 Sonnet 5 기준으로 계산합니다.
+            {t("단가는")} <code>lib/pricing.ts</code>{t("에 상수로 적혀 있는 Anthropic 공개 가격(100만 토큰 기준)입니다. 프롬프트 캐시·웹 검색까지 반영한")} <strong>{t("추정치")}</strong>{t("이므로 실제 청구액과 다를 수 있고, 단가가 바뀌면 그 파일만 고치면 됩니다. 단가가 등록되지 않은 모델은 Sonnet 5 기준으로 계산합니다.")}
           </p>
         </section>
       </>}
@@ -283,10 +282,10 @@ function Breakdown({ kicker, title, rows, icon }: {
           <li key={row.key}>
             <div className="usage-breakdown-top"><strong>{row.label}</strong><span>{formatUsd(row.cost)}</span></div>
             <div className="usage-breakdown-track"><i style={{ width: `${Math.max(2, (row.cost / max) * 100)}%`, background: SERIES_INPUT }} /></div>
-            <small>요청 {row.requests}건 · {formatTokens(row.tokens)} 토큰</small>
+            <small>{t("요청")} {row.requests}{t("건 ·")} {formatTokens(row.tokens)} {t("토큰")}</small>
           </li>
         ))}
-      </ul> : <div className="usage-empty">아직 기록이 없습니다.</div>}
+      </ul> : <div className="usage-empty">{t("아직 기록이 없습니다.")}</div>}
     </article>
   );
 }

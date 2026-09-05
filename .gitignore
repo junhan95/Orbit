@@ -45,3 +45,7 @@ tsconfig.tsbuildinfo
 # eval ��� (����)
 /evals/results/
 
+
+# 세션 푸시 임시 파일·개발 서버 로그
+.claude-push/
+dev-server.log

@@ -1,0 +1,63 @@
+/* 거버넌스 화면 공통 — 승인함 · 실행 건강 · 기억 · 스킬 · 검토 배지. 토큰은 globals.css 의 --c-* 만 씁니다. */
+.gov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.gov-card{background:var(--c-surface-card);border:1px solid var(--c-line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.gov-card.wide{grid-column:1/-1}
+.gov-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gov-card-head h2{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.gov-card-head h2 em{font-style:normal;font-size:11px;color:var(--c-text-muted);font-weight:500}
+.gov-card-head p{margin:2px 0 0;font-size:11px;color:var(--c-text-muted)}
+.gov-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.view-actions.gov-toolbar{flex:0 0 auto;flex-wrap:nowrap}
+.gov-button{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border:1px solid var(--c-line);border-radius:6px;background:var(--c-surface-card);color:var(--c-ink);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap}
+.gov-button:hover{background:var(--c-surface-soft)}.gov-button:disabled{opacity:.55;cursor:not-allowed}
+.gov-button.primary{background:var(--c-inverse);color:var(--c-on-inverse);border-color:var(--c-inverse)}.gov-button.primary:hover{background:var(--c-inverse-2)}
+.gov-button.ok{color:var(--c-success);border-color:var(--c-success-border);background:var(--c-success-soft)}
+.gov-button.danger{color:var(--c-coral-ink);border-color:var(--c-coral-surface);background:var(--c-coral-surface)}
+.gov-button.ghost{border-color:transparent;background:transparent;color:var(--c-text-muted)}.gov-button.ghost:hover{color:var(--c-ink);background:var(--c-surface-soft)}
+.gov-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.gov-item{border:1px solid var(--c-line-soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--c-surface-soft)}
+.gov-item.pending{border-color:var(--c-mustard);background:var(--c-mustard-ring)}
+.gov-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.gov-item-top b{font-size:12px;color:var(--c-ink);line-height:1.45}
+.gov-item-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--c-text-muted);font-size:10px}
+.gov-item-body{margin:0;font-size:12px;line-height:1.6;color:var(--c-text);white-space:pre-wrap;overflow-wrap:anywhere}
+.gov-item-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.gov-empty{color:var(--c-text-muted);font-size:12px;line-height:1.6;margin:0;padding:12px 4px;text-align:center}
+.gov-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:600;background:var(--c-surface-strong);color:var(--c-text-muted);white-space:nowrap}
+.gov-chip.ok{background:var(--c-success-soft);color:var(--c-success)}
+.gov-chip.watch{background:var(--c-cream);color:var(--c-mustard-ink)}
+.gov-chip.diagnose{background:var(--c-cream);color:var(--c-coral-ink)}
+.gov-chip.act{background:var(--c-coral);color:var(--c-on-inverse)}
+.gov-chip.insufficient{background:var(--c-surface-strong);color:var(--c-text-soft)}
+.gov-chip.approve{background:var(--c-success-soft);color:var(--c-success)}
+.gov-chip.changes{background:var(--c-cream);color:var(--c-coral-ink)}
+.gov-chip.pending{background:var(--c-mustard-ring);color:var(--c-mustard-ink);border:1px solid var(--c-mustard)}
+.gov-chip.blocked{background:var(--c-coral-surface);color:var(--c-coral-ink)}
+.nav-button{position:relative}
+.gov-badge{position:absolute;top:8px;right:9px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--c-coral);color:var(--c-on-inverse);font-size:9px;font-weight:700;display:grid;place-items:center;line-height:1}
+.gov-metric{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--c-line-soft)}
+.gov-metric:last-child{border-bottom:0}
+.gov-metric b{font-size:12px;color:var(--c-ink);display:block}
+.gov-metric small{display:block;margin-top:2px;font-size:10px;color:var(--c-text-muted);overflow-wrap:anywhere}
+.gov-bar{height:6px;border-radius:12px;background:var(--c-surface-strong);overflow:hidden;margin-top:6px}
+.gov-bar i{display:block;height:100%;border-radius:12px;background:var(--c-inverse)}
+.gov-bar i.warn{background:var(--c-mustard)}.gov-bar i.over{background:var(--c-coral)}
+.gov-form{display:flex;flex-direction:column;gap:7px}
+.gov-form input,.gov-form textarea,.gov-form select{border:1px solid var(--c-line);border-radius:6px;padding:9px 11px;font-size:12px;outline:none;background:var(--c-surface-card);color:var(--c-text)}
+.gov-form textarea{min-height:88px;resize:vertical;font-family:inherit}
+.gov-form input:focus,.gov-form textarea:focus{border-color:var(--c-focus);box-shadow:0 0 0 3px var(--c-focus-ring)}
+.gov-form-row{display:flex;gap:7px;align-items:center}.gov-form-row>*{flex:1}
+.gov-review{border:1px solid var(--c-line);border-radius:10px;background:var(--c-surface-soft);overflow:hidden}
+.gov-review>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:12px;color:var(--c-ink)}
+.gov-review>summary::-webkit-details-marker{display:none}
+.gov-review>summary svg{color:var(--c-text-muted);transition:.16s ease}
+.gov-review[open]>summary svg.caret{transform:rotate(90deg)}
+.gov-review-body{padding:0 12px 12px;font-size:12px;line-height:1.6;color:var(--c-text);white-space:pre-wrap;overflow-wrap:anywhere;border-top:1px solid var(--c-line-soft)}
+.gov-review-body .important{color:var(--c-coral-ink)}
+.gov-inline{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.gov-banner{display:flex;align-items:center;gap:10px;border:1px solid var(--c-mustard);background:var(--c-mustard-ring);border-radius:10px;padding:10px 13px;font-size:12px;color:var(--c-text)}
+.gov-banner strong{color:var(--c-ink)}
+.gov-banner .gov-button{margin-left:auto}
+.gov-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.gov-usage{font-size:10px;color:var(--c-text-muted);margin-left:auto}
+@media(max-width:760px){.gov-grid{grid-template-columns:1fr}.gov-item-top{flex-direction:column}}

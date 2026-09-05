@@ -86,14 +86,16 @@ Hermes 에서 **의도적으로 가져오지 않은 것**: 임베딩 기반 검�
 
 우선순위는 "사람이 실제로 쓰는 화면에 도달하는 것"과 "안전망을 유지하는 것" 순입니다.
 
-### 단계 A — 화면에 닿게 하기 (UI 세션 · 1~2일)
-- 승인함 한 화면: 카드 승인(`/api/approvals`) + 기억 pending(`/api/memory`) 통합, 상단 배지.
-- 검토 열: `reviewVerdict` 배지, 🔍 댓글 접힘, [승인] [수정 반영 재실행] [다시 검토].
-- 대쉬보드 "실행 건강" 카드 + 진단 카드 배너 + 게이트 칩(`/api/health`).
-- 기억·스킬 탭, 대화 요약 배너(필요 시 `GET /api/chat/summary` 서버 추가).
-- 미커밋 UI 변경 커밋.
+### 단계 A — 화면에 닿게 하기 (UI 세션 · 1~2일) — ✅ 완료 (2026-09-05)
+- ✅ 승인함(`components/approvals-view.tsx`): 카드·전역 스킬 승인 + 프로젝트 기억 pending 통합, 사이드바 배지(`fetchInboxCount`, 1분 주기).
+- ✅ 검토 열(`components/review-panel.tsx`): 카드·상세의 `reviewVerdict`/`blockedReason` 배지, 🔍 댓글 `<details>` 접힘(Important 강조), [실행/수정 반영 재실행] [다시 검토], 서킷브레이커 409 배너 + '그래도 실행'.
+- ✅ 대쉬보드 "실행 건강" 카드(`components/health-card.tsx`): 지표 5개 σ 등급 칩, 열린 진단 카드 배너, 7일 게이트 칩, '지금 검사'.
+- ✅ 기억·스킬 탭(`components/memory-view.tsx`, `components/skills-view.tsx`): 그룹별 예산 막대, 추가·수정·삭제, pending 승인.
+- 보류: 대화 요약 배너(`GET /api/chat/summary` 서버 추가 필요) — 단계 B 로 이관.
+- 공통 스타일은 `components/governance.css`(`gov-*`), 색은 `globals.css` 의 `--c-*` 토큰만 사용.
 
 ### 단계 B — 구조 정리 (서버 · 1일)
+- 대화 요약 배너: `GET /api/chat/summary?projectId&agentId` 추가 후 ChatView 상단에 압축 요약 표시.
 - `agent_id` 참조 전환과 매니저 규칙 보강(complete_task 강조), `chatgpt-auth.ts` 삭제, 시드 데이터 정리.
 - 순수 함수 단위 테스트(vitest) 6~8개, `npm test` 를 `db:migrate:check`·`evals` 와 함께 배포 전 체크리스트로.
 
