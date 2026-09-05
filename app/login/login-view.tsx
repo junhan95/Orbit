@@ -87,7 +87,7 @@ export function LoginView() {
     </section>
 
     <p className="login-foot">
-      Claude 는 로그인 뒤 <b>본인 Anthropic API 키</b>로 연결합니다. Anthropic 정책상 제3자 앱은 Claude 계정 로그인을 제공할 수 없습니다.
+      로그인하면 <b>체험 크레딧 300</b>이 지급되어 바로 시작할 수 있습니다. 본인 Anthropic API 키가 있다면 연결해서 무료로 쓸 수 있고, Anthropic 정책상 Claude 계정 로그인은 제공하지 않습니다.
     </p>
   </main>;
 }

@@ -1939,7 +1939,7 @@ function AccountView({ displayName, email, onNotice, onProfileSaved }: {
       </div>)}
     </dl>
 
-    <CreditsCard onConnectKey={() => setKeyOpen(true)} onNotice={onNotice} />
+    <CreditsCard onConnectKey={() => setKeyOpen(true)} onNotice={onNotice} refreshKey={apiKey?.configured} />
 
     <section className="settings-card api-key-card">
       <div className="settings-title"><KeyRound size={16} /><div><strong>{t('Claude API 키')}</strong><p>{t('키를 연결하면 실행·대화가 이 키로 나가고 크레딧은 차감되지 않습니다. 비용은 본인 Anthropic Console 에 청구됩니다.')}</p></div></div>

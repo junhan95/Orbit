@@ -77,7 +77,7 @@ function shortModel(model: string): string {
   return model.replace(/^claude-/, '').replace(/-(\d)-(\d)$/, ' $1.$2').replace(/-(\d)$/, ' $1');
 }
 
-export function CreditsCard({ onNotice, onConnectKey }: { onNotice: (message: string) => void; onConnectKey?: () => void }) {
+export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: (message: string) => void; onConnectKey?: () => void; /** 바뀌면 다시 읽습니다 — API 키 연결·삭제 뒤 과금 경로가 바뀌므로 */ refreshKey?: unknown }) {
   const [data, setData] = useState<CreditsData | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -86,12 +86,12 @@ export function CreditsCard({ onNotice, onConnectKey }: { onNotice: (message: st
     fetchCredits().then(setData).catch((err) => setError(err instanceof Error ? err.message : t('크레딧 정보를 불러오지 못했습니다.')));
   }, []);
 
-  // oxlint-disable-next-line react/react-compiler -- 서버 데이터를 마운트 후 한 번 채웁니다
+  // oxlint-disable-next-line react/react-compiler -- 서버 데이터를 마운트 후(그리고 키 상태가 바뀔 때마다) 채웁니다
   useEffect(() => {
     let alive = true;
     fetchCredits().then((next) => { if (alive) setData(next); }).catch((err) => { if (alive) setError(err instanceof Error ? err.message : t('크레딧 정보를 불러오지 못했습니다.')); });
     return () => { alive = false; };
-  }, []);
+  }, [refreshKey]);
 
   /** 주문 생성 → 토스 결제창. 결제창이 열리면 페이지를 떠나므로 이후는 successUrl/failUrl 이 이어받습니다. */
   async function startCheckout(krw: number) {
