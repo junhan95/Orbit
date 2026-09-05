@@ -42,7 +42,7 @@ console.log(`데이터베이스: ${dbPath}`);
 if (!orphans.length) { console.log('정리할 미지정 에이전트가 없습니다.'); process.exit(0); }
 
 console.log(`미지정 에이전트 ${orphans.length}명:`);
-for (const agent of orphans) console.log(`  - ${agent.name} (${agent.role})`);
+for (const agent of orphans) console.log(`  - ${String(agent.name)} (${String(agent.role)})`);
 
 if (!apply) { console.log('\n미리보기입니다. 실제로 지우려면 --apply 를 붙여 다시 실행하세요.'); process.exit(0); }
 

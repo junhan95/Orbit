@@ -22,7 +22,7 @@
     },
     {
       "type": "approvals_pending_min",
-      "min": 2
+      "min": 3
     },
     {
       "type": "tool_called",
@@ -30,8 +30,7 @@
     },
     {
       "type": "approvals_include",
-      "action": "save_global_skill",
-      "soft": true
+      "action": "save_global_skill"
     }
   ]
 }

@@ -68,7 +68,7 @@ export const SAVE_SKILL_TOOL: ToolDefinition = {
   description: [
     '재사용할 절차를 스킬로 저장하거나(같은 이름이 있으면) 갱신합니다.',
     `한 번의 실행에서 ${MAX_SKILL_SAVES_PER_RUN}개만 저장할 수 있으니 정말 반복될 절차만 남기세요.`,
-    "scope='project' 는 이 프로젝트에서만, 'global' 은 모든 프로젝트에서 보입니다. 프로젝트 고유 경로·이름이 들어가면 project 로.",
+    "scope='project' 는 이 프로젝트에서만, 'global' 은 모든 프로젝트에서 보입니다. 사용자가 범위를 지정하면 그대로 따르세요. global 저장은 사람의 승인 대기에 들어가며, 승인되기 전에는 저장 완료로 보고하지 마세요.",
   ].join(' '),
   input_schema: {
     type: 'object',
@@ -76,9 +76,9 @@ export const SAVE_SKILL_TOOL: ToolDefinition = {
       name: { type: 'string', description: `스킬 이름 (동사형, ${SKILL_LIMITS.name}자 이내, 예: "D1 마이그레이션 적용")` },
       description: { type: 'string', description: `언제 이 스킬을 쓰는지 한 문장 (${SKILL_LIMITS.description}자 이내). 인덱스에 이 문장만 보입니다.` },
       body: { type: 'string', description: `절차 본문 (마크다운, ${SKILL_LIMITS.body}자 이내): 입력 → 단계 → 확인 → 함정` },
-      scope: { type: 'string', enum: ['global', 'project'], description: "기본 'project'" },
+      scope: { type: 'string', enum: ['global', 'project'], description: '필수. 사용자가 지정한 범위를 그대로 전달하세요. global은 사람 승인 후 모든 프로젝트에 저장, project는 현재 프로젝트에 즉시 저장합니다.' },
     },
-    required: ['name', 'description', 'body'],
+    required: ['name', 'description', 'body', 'scope'],
   },
 };
 
@@ -110,7 +110,8 @@ export async function executeSkillTool(name: string, input: ToolInput, ctx: Skil
     const skillName = typeof input.name === 'string' ? input.name.trim().slice(0, SKILL_LIMITS.name) : '';
     const description = typeof input.description === 'string' ? input.description.trim().slice(0, SKILL_LIMITS.description) : '';
     const body = typeof input.body === 'string' ? input.body.trim() : '';
-    const scope: SkillScope = input.scope === 'global' ? 'global' : 'project';
+    if (input.scope !== 'global' && input.scope !== 'project') return { error: "scope는 필수입니다. 사용자의 요청을 확인해 'global' 또는 'project'를 명시하세요. 아직 저장되지 않았습니다." };
+    const scope: SkillScope = input.scope;
     if (!skillName || !description || !body) return { error: 'name, description, body 가 모두 필요합니다.' };
     if (body.length > SKILL_LIMITS.body) return { error: `body 가 너무 깁니다 (${body.length}/${SKILL_LIMITS.body}자). 핵심 단계만 남기세요.` };
     if (scope === 'project' && !ctx.projectId) return { error: '이 실행은 프로젝트에 속해 있지 않습니다. scope=global 로 저장하거나 생략하세요.' };
@@ -124,7 +125,9 @@ export async function executeSkillTool(name: string, input: ToolInput, ctx: Skil
       return { error: `이번 실행에서는 스킬을 ${MAX_SKILL_SAVES_PER_RUN}개만 저장할 수 있습니다.` };
     }
     // 전역 스킬은 모든 프로젝트에 영향을 주므로 바로 쓰지 않고 사람의 승인을 기다립니다 (물어보기형 게이트).
-    if (scope === 'global' && ctx.actor !== 'user') {
+    // 이 함수는 에이전트 도구 전용입니다. 사람의 저장은 API에서 upsertSkill을 호출합니다.
+    // actor는 표시 이름이므로 권한 판단에 사용하지 않습니다.
+    if (scope === 'global') {
       const { id } = await requestApproval(db, userId, {
         action: 'save_global_skill', actor: ctx.actor, projectId: ctx.projectId, taskId: ctx.taskId ?? null, runId: ctx.runId ?? null,
         summary: `${ctx.actor} 가 전역 스킬 저장 요청: ${skillName}`, payload: { name: skillName, description, body },

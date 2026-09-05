@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- Preserve the composite component element/ref contract and explicit ARIA semantics. */
 'use client';
 
 import * as React from 'react';
@@ -49,6 +50,7 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<'div'> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- Pointer convenience only; the input and addon buttons retain their own keyboard handling.
     <div
       role="group"
       data-slot="input-group-addon"

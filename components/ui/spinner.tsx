@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- Preserve the composite component element/ref contract and explicit ARIA semantics. */
 import { cn } from '@/lib/utils';
 import { Loader2Icon } from 'lucide-react';
 

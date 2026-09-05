@@ -48,7 +48,7 @@ for (const { table, column } of TARGETS) {
     const cur = String(row.c || '').toLowerCase();
     if (PALETTE.includes(cur)) continue;
     const next = MAP[cur] ?? PALETTE[n % PALETTE.length];
-    console.log(`${table}.${column} ${row.id}: ${cur || '(빈값)'} -> ${next}`);
+    console.log(`${table}.${column} ${String(row.id)}: ${cur || '(빈값)'} -> ${next}`);
     if (apply) db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(next, row.id);
     n += 1;
   }

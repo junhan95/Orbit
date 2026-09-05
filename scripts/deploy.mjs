@@ -37,7 +37,7 @@ function makeConfig() {
     dev: undefined,
     d1_databases: [{ binding: 'DB', database_name: overlay.d1.database_name || 'orbit', database_id: overlay.d1.database_id }],
     // 비밀이 아닌 설정값. 시크릿(AUTH_SECRET 등)은 여기 넣지 말고 wrangler secret put 으로.
-    vars: { ...(base.vars ?? {}), ...(overlay.vars ?? {}) },
+    vars: { ...base.vars, ...overlay.vars },
     ...(overlay.routes ? { routes: overlay.routes } : {}),
     ...(overlay.workers_dev !== undefined ? { workers_dev: overlay.workers_dev } : {}),
   };

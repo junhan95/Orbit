@@ -249,8 +249,12 @@ async function main() {
     console.log(`   ${hard.length ? '실패' : soft.length ? '경고' : '통과'} · ${Math.round((Date.now() - started) / 1000)}s\n`);
     report.cases.push({
       id: kase.id, title: kase.title, pass: !hard.length, warn: Boolean(soft.length), seconds: Math.round((Date.now() - started) / 1000),
-      checks: outcome.results.map(({ type, name, pass, soft: isSoft, skipped, note }) => ({ type, name, pass, soft: isSoft, skipped, note })),
-      evidence: { status: outcome.ctx.run?.status, toolCalls: outcome.ctx.run?.toolCalls, summary: outcome.ctx.run?.summary, reviewVerdict: outcome.ctx.detail?.task?.reviewVerdict, taskId: outcome.ctx.taskId },
+      // 검사 임계값과 action을 보존해 케이스 변경 전후의 결과를 구분할 수 있게 합니다.
+      checks: outcome.results,
+      evidence: { status: outcome.ctx.run?.status, toolCalls: outcome.ctx.run?.toolCalls, summary: outcome.ctx.run?.summary, reviewVerdict: outcome.ctx.detail?.task?.reviewVerdict, taskId: outcome.ctx.taskId,
+        skillSaves: outcome.ctx.run?.skillSaves,
+        approvals: outcome.ctx.approvals?.map(({ action, status, taskId, runId }) => ({ action, status, taskId, runId })),
+      },
     });
   }
 

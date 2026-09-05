@@ -202,6 +202,7 @@ function renderInline(source: string): ReactNode[] {
     const [, , code, imageAlt, imageUrl, linkText, linkUrl, strong1, strong2, strike, em1, em2, autolink] = match;
 
     if (code !== undefined) nodes.push(<code className="md-inline-code" key={key++}>{code.trim()}</code>);
+    // oxlint-disable-next-line next/no-img-element -- User-supplied Markdown images have unknown dimensions and use native lazy loading.
     else if (imageUrl) nodes.push(<img className="md-img" src={safeUrl(imageUrl)} alt={imageAlt || ''} loading="lazy" key={key++} />);
     else if (linkUrl) nodes.push(<a className="md-link" href={safeUrl(linkUrl)} target="_blank" rel="noreferrer noopener" key={key++}>{renderInline(linkText)}</a>);
     else if (strong1 || strong2) nodes.push(<strong key={key++}>{renderInline(strong1 || strong2)}</strong>);

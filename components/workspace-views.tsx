@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- Preserve the composite component element/ref contract and explicit ARIA semantics. */
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -372,6 +373,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
 
   // 마지막으로 고른 보기 방식을 브라우저에 기억해 둡니다.
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- Hydrate browser-only preference after SSR; a lazy initializer would mismatch server markup.
     try { const stored = window.localStorage.getItem(PROJECT_VIEW_KEY); if (stored === 'card' || stored === 'list') setLayout(stored); } catch { /* 저장소 접근 불가 시 기본값 유지 */ }
   }, []);
   const changeLayout = useCallback((next: ProjectLayout) => {
@@ -452,7 +454,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
     {projects.length > 0 && (layout === 'card'
       ? <div className="project-grid">{projects.map((project) => <article className="project-card is-clickable" key={project.id}><button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} /><div className="project-card-top"><span className="project-symbol" style={{ background: project.color }}><FolderKanban size={20} /></span><span className="project-card-tools"><span className="project-status"><i />{t(project.status)}</span>{projectMenu(project)}</span></div><h2>{project.name}</h2><p>{project.description || t("프로젝트 설명이 없습니다.")}</p><div className="project-stats"><span><BriefcaseBusiness size={14} />{t("업무")} {project.taskCount}</span><span><Users size={14} />{t("에이전트")} {project.agentCount}</span>{Boolean(project.folderCount) && <span><FolderKanban size={14} />{t("폴더")} {project.folderCount}</span>}</div><button className="project-card-open" onClick={() => setOpenedId(project.id)} aria-label={tf("{0} 프로젝트 열기", project.name)}>{t("프로젝트 열기")} <ChevronRight size={15} /></button></article>)}</div>
       : <div className="project-table" role="table" aria-label={t("프로젝트 목록")}>
-          <div className="project-row head" role="row"><span role="columnheader">{t("프로젝트")}</span><span role="columnheader">{t("상태")}</span><span role="columnheader">{t("업무")}</span><span role="columnheader">{t("에이전트")}</span><span role="columnheader" /></div>
+          <div className="project-row head" role="row"><span role="columnheader">{t("프로젝트")}</span><span role="columnheader">{t("상태")}</span><span role="columnheader">{t("업무")}</span><span role="columnheader">{t("에이전트")}</span><span role="columnheader" aria-label={t("작업")} /></div>
           {projects.map((project) => <div className="project-row is-clickable" role="row" key={project.id}>
             <button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} />
             <span className="project-row-main" role="cell"><i className="project-dot" style={{ background: project.color }}><FolderKanban size={15} /></i><b>{project.name}</b><small>{project.description || t("프로젝트 설명이 없습니다.")}</small></span>
@@ -505,10 +507,12 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     [agents, assignments, project.id],
   );
 
-  // oxlint-disable-next-line react/react-compiler -- 브라우저에서만 읽을 수 있는 저장값입니다.
   useEffect(() => {
-    const stored = window.localStorage.getItem(BOARD_GROUP_KEY);
-    if (stored && (BOARD_GROUPS as readonly string[]).includes(stored)) setGroup(stored as BoardGroup);
+    try {
+      const stored = window.localStorage.getItem(BOARD_GROUP_KEY);
+      // oxlint-disable-next-line react/react-compiler -- Hydrate browser-only preference after SSR.
+      if (stored && (BOARD_GROUPS as readonly string[]).includes(stored)) setGroup(stored as BoardGroup);
+    } catch { /* 저장소 접근 불가 시 기본값 유지 */ }
   }, []);
 
   const changeGroup = useCallback((next: BoardGroup) => {
@@ -1610,7 +1614,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
         }
         if (event.type === 'error') failure = event.error || t("답변 생성에 실패했습니다.");
       };
-      for (;;) {
+      while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
