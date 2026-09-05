@@ -3,6 +3,7 @@
  *
  *   node scripts/build-landing.mjs            → dist-landing/index.html, 404.html, .nojekyll
  *   LANDING_APP_URL=https://app.example.com   → CTA 의 /login 을 이 주소로 바꿉니다 (없으면 상대 경로 유지)
+ *   LANDING_REDIRECT=https://orbitcrew.ai    → 랜딩 대신 이 주소로 보내는 리디렉션 페이지만 만듭니다
  *
  * 방법: Vite 를 미들웨어 모드로 띄워 app/landing/landing-view.tsx 를 그대로 불러온 뒤
  * react-dom/server 로 렌더합니다. 컴포넌트를 복제하지 않으므로 앱과 랜딩이 갈라지지 않습니다.
@@ -19,6 +20,35 @@ const OUT = 'dist-landing';
 const APP_URL = (process.env.LANDING_APP_URL || '').replace(/\/$/, '');
 /** 약관·방침 페이지는 Worker 가 내므로 정적 빌드에서는 서비스 도메인의 절대 주소로 바꿉니다. */
 const SITE_URL = (process.env.LANDING_SITE_URL || 'https://orbitcrew.ai').replace(/\/$/, '');
+
+/**
+ * LANDING_REDIRECT=https://orbitcrew.ai 가 있으면 랜딩을 굽지 않고, 그 주소로 보내는 리디렉션 페이지만 만듭니다.
+ * 랜딩이 서비스 도메인(Worker)으로 옮겨간 뒤 GitHub Pages 주소로 들어오는 방문자를 넘기기 위한 용도입니다.
+ */
+const REDIRECT = (process.env.LANDING_REDIRECT || '').replace(/\/$/, '');
+if (REDIRECT) {
+  const target = `${REDIRECT}/`;
+  const page = `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url=${target}">
+<link rel="canonical" href="${target}">
+<title>Orbit — ${target}</title>
+<script>location.replace(${JSON.stringify(target)} + location.hash);</script>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.6 system-ui,sans-serif;color:#1c1c1e;background:#fff}a{color:#4262ff}</style>
+</head>
+<body><p>Orbit 은 <a href="${target}">${target}</a> 로 이사했습니다.</p></body>
+</html>
+`;
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(resolve(OUT, 'index.html'), page);
+  writeFileSync(resolve(OUT, '404.html'), page);
+  writeFileSync(resolve(OUT, '.nojekyll'), '');
+  console.log(`리디렉션 페이지 생성 → ${OUT}/index.html, 404.html (→ ${target})`);
+  process.exit(0);
+}
 
 function cssBlock(css, selector) {
   const start = css.indexOf(`${selector} {`);

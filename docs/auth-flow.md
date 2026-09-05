@@ -77,7 +77,7 @@ Orbit 은 제3자 앱이므로 세 가지가 모두 막힙니다.
 ## 4. 서버 구성
 
 ```
-middleware.ts                      게이트. 세션 검증 → x-orbit-* 헤더로 사용자 전달. 정적 자산은 matcher 로 제외
+proxy.ts                      게이트. 세션 검증 → x-orbit-* 헤더로 사용자 전달. 정적 자산은 matcher 로 제외
 app/auth.ts       getCurrentUser() 이제 async. 헤더 우선, 없으면 쿠키+DB. 로컬 모드는 예전 그대로
 lib/auth.ts                        OAuth(라이브러리 없음)·세션·쿠키·state 서명
 app/api/auth/providers             GET  설정된 제공자 + 모드

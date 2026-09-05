@@ -105,7 +105,7 @@ gh workflow run pages.yml --repo junhan95/Orbit
 
 ## 커스텀 도메인 (orbitcrew.ai)
 
-운영 주소는 루트 = 랜딩, `app.` = 앱으로 나눕니다. 둘 다 같은 Worker 하나가 처리하고, `middleware.ts` 가 호스트를 보고 갈라 줍니다.
+운영 주소는 루트 = 랜딩, `app.` = 앱으로 나눕니다. 둘 다 같은 Worker 하나가 처리하고, `proxy.ts` 가 호스트를 보고 갈라 줍니다.
 
 | 호스트 | 역할 |
 |---|---|

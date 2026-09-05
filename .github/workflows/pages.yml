@@ -42,6 +42,7 @@ jobs:
       - run: node scripts/build-landing.mjs
         env:
           LANDING_APP_URL: ${{ vars.LANDING_APP_URL }}
+          LANDING_REDIRECT: ${{ vars.LANDING_REDIRECT }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist-landing

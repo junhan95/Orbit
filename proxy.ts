@@ -58,7 +58,7 @@ function splitHosts(request: NextRequest): NextResponse | null {
   return null;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const split = splitHosts(request);
   if (split) return split;
 
