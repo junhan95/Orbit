@@ -1,7 +1,8 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { PLAN_DEFAULT_TASKS, PLAN_MAX_TASKS, proposePlan, type PlannedTask } from '@/lib/planner';
-import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
+import { credentialErrorResponse, resolveCredential } from '@/lib/credits';
+import type { ClaudeCredential } from '@/lib/claude';
 import { toPriority } from '@/lib/priority';
 import { recallDocUpsert } from '@/lib/recall';
 import { usageInsert } from '@/lib/usage';
@@ -34,9 +35,9 @@ export async function POST(request: Request, context: RouteContext) {
     : PLAN_DEFAULT_TASKS;
 
   const { model } = getRuntimeConfig();
-  let apiKey: string;
-  try { apiKey = await resolveApiKey(db, user.userId); }
-  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
+  let apiKey: ClaudeCredential;
+  try { apiKey = await resolveCredential(db, user.userId); }
+  catch (error) { const denied = credentialErrorResponse(error); if (denied) return denied; throw error; }
 
   try {
     const { proposal, result } = await proposePlan({ db, userId: user.userId, apiKey, model, project, goal, maxTasks });

@@ -1,7 +1,8 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { runTaskReview } from '@/lib/reviewer';
-import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
+import { credentialErrorResponse, resolveCredential } from '@/lib/credits';
+import type { ClaudeCredential } from '@/lib/claude';
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 
@@ -14,9 +15,9 @@ export async function POST(_request: Request, context: RouteContext) {
   const user = await getCurrentUser();
   const { id } = await context.params;
   const { model } = getRuntimeConfig();
-  let apiKey: string;
-  try { apiKey = await resolveApiKey(getDatabase(), user.userId); }
-  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
+  let apiKey: ClaudeCredential;
+  try { apiKey = await resolveCredential(getDatabase(), user.userId); }
+  catch (error) { const denied = credentialErrorResponse(error); if (denied) return denied; throw error; }
 
   try {
     const outcome = await runTaskReview({ db: getDatabase(), userId: user.userId, apiKey, model, taskId: id });

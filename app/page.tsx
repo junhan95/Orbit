@@ -11,7 +11,7 @@ import { ApprovalsView, fetchInboxCount } from '@/components/approvals-view';
 import { HealthCard } from '@/components/health-card';
 import { MemoryView } from '@/components/memory-view';
 import { SkillsView } from '@/components/skills-view';
-import { type ApiKeyState, ApiKeyDialog, NO_API_KEY_EVENT, fetchApiKeyState, installNoApiKeyWatcher } from '@/components/api-key-dialog';
+import { type ApiKeyState, ApiKeyDialog, INSUFFICIENT_CREDITS_EVENT, NO_API_KEY_EVENT, fetchApiKeyState, installNoApiKeyWatcher } from '@/components/api-key-dialog';
 import { OrbitMark } from '@/components/orbit-mark';
 import { WorkspaceView, type ChatTarget, type WorkspaceSection } from '@/components/workspace-views';
 import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
@@ -167,6 +167,7 @@ export default function Home() {
     return () => window.removeEventListener(NO_API_KEY_EVENT, open);
   }, []);
 
+
   // 첫 로그인(?welcome=1)이거나 OAuth 모드인데 키가 없으면 온보딩으로 바로 안내합니다.
   useEffect(() => {
     let alive = true;
@@ -174,11 +175,15 @@ export default function Home() {
       if (!alive) return;
       setApiKeyState(state);
       const welcome = new URLSearchParams(window.location.search).get('welcome') === '1';
-      if (welcome) window.history.replaceState(null, '', window.location.pathname);
+      if (welcome) {
+        window.history.replaceState(null, '', window.location.pathname);
+        // 가입 체험 크레딧 안내 — 키 연결은 선택이라 모달 대신 토스트로만 알립니다.
+        if (!state.required) flash(t('환영합니다! 체험 크레딧 300 이 지급되었습니다. 프로젝트를 만들면 바로 시작됩니다.'));
+      }
       if (state.required && !state.configured) setApiKeyOpen(true);
     }).catch(() => { /* 로그인 전(401)이면 위의 /api/me 처리가 /login 으로 보냅니다 */ });
     return () => { alive = false; };
-  }, []);
+  }, [flash]);
 
   const clock = {
     today: mountedAt ? new Intl.DateTimeFormat(locale(), { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(mountedAt) : '',
@@ -221,6 +226,30 @@ export default function Home() {
     if (section === '대쉬보드') { void refreshStats(); void refreshTasks(); }
     refreshInbox();
   }, [refreshStats, refreshTasks, refreshInbox]);
+
+  // 토스 결제창에서 돌아온 뒤(?credits=done|error|canceled) — 안내하고 계정 화면으로. 주소는 바로 정리합니다.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('credits');
+    if (!result) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    const message = result === 'done'
+      ? tf('충전이 완료되었습니다 — {0} 크레딧이 들어왔습니다.', params.get('amount') ?? '')
+      : result === 'canceled' ? t('결제를 취소했습니다.') : (params.get('message') || t('결제에 실패했습니다.'));
+    // oxlint-disable-next-line react/react-compiler -- 마운트 후 주소 쿼리를 한 번 읽어 안내하는 것이라 의도된 setState 입니다
+    flash(message);
+    goTo('계정');
+  }, [flash, goTo]);
+
+  // 크레딧이 바닥나 402 가 돌아오면 안내하고 계정 화면(충전 · 키 연결)으로 보냅니다.
+  useEffect(() => {
+    const onEmpty = (event: Event) => {
+      flash((event as CustomEvent<string>).detail || t('크레딧 잔액이 부족합니다. 충전하거나 본인 API 키를 연결해 주세요.'));
+      goTo('계정');
+    };
+    window.addEventListener(INSUFFICIENT_CREDITS_EVENT, onEmpty);
+    return () => window.removeEventListener(INSUFFICIENT_CREDITS_EVENT, onEmpty);
+  }, [flash, goTo]);
 
   useEffect(() => {
     refreshInbox();

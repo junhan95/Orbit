@@ -15,7 +15,7 @@ scripts/migrate.mjs --remote ─▶ 원격 D1 에 저널 순서로 마이그레�
                         │
 wrangler deploy ─▶ https://orbit.<서브도메인>.workers.dev
                         │
-wrangler secret put ×4 ─▶ AUTH_SECRET, GOOGLE_CLIENT_SECRET, KEY_ENCRYPTION_SECRET (+ 필요 시 ANTHROPIC_API_KEY)
+wrangler secret put ×5 ─▶ AUTH_SECRET, GOOGLE_CLIENT_SECRET, KEY_ENCRYPTION_SECRET, ANTHROPIC_API_KEY, TOSS_SECRET_KEY
 ```
 
 `wrangler.deploy.json` 은 저장소에 커밋합니다(비밀값 없음). 시크릿은 절대 파일에 넣지 않습니다.
@@ -64,7 +64,7 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET   --config dist/server/wrangler.dep
 npx wrangler secret put KEY_ENCRYPTION_SECRET  --config dist/server/wrangler.deploy.json
 ```
 각각 프롬프트에 값을 붙여 넣습니다. `KEY_ENCRYPTION_SECRET` 은 **로컬 `.env` 와 다른 값을 새로 만들어도 됩니다** — 원격 D1 은 비어 있어 저장된 키가 없습니다. 이후에는 바꾸지 마세요(사용자 키가 전부 복호화 불가).
-`ANTHROPIC_API_KEY` 는 OAuth 모드에서 쓰지 않으므로(BYOK) 넣지 않아도 됩니다.
+`ANTHROPIC_API_KEY` 는 **크레딧 경로(키를 등록하지 않은 사용자)의 운영자 키**로 필요합니다. `TOSS_SECRET_KEY` 는 크레딧 충전 결제(승인·취소)용입니다 — 베타 기간에는 토스 테스트 키(`test_sk_…`)를 그대로 씁니다. 두 값은 `.env` 에서 읽어 넣는 `scripts/push-secrets.ps1` 로 한 번에 등록할 수 있습니다.
 확인: `npx wrangler secret list --config dist/server/wrangler.deploy.json` 에 3개가 보입니다. 시크릿을 넣으면 새 버전이 자동 배포됩니다.
 
 ### 7단계 — 구글 리디렉션 URI 추가
@@ -93,7 +93,10 @@ gh workflow run pages.yml --repo junhan95/Orbit
 | `AUTH_SECRET` | secret | `openssl rand -base64 32` |
 | `GOOGLE_CLIENT_SECRET` | secret | 구글 보안 비밀번호 |
 | `KEY_ENCRYPTION_SECRET` | secret | `openssl rand -base64 32` — 이후 불변 |
-| `ANTHROPIC_API_KEY` | secret (선택) | 로컬 모드로 배포할 때만 |
+| `ANTHROPIC_API_KEY` | secret | 운영자 키 — 크레딧 경로 전용 (docs/pricing-credits.md) |
+| `TOSS_CLIENT_KEY` | vars | 토스 API 개별 연동 클라이언트 키 (브라우저 노출 가능, 베타는 `test_ck_…`) |
+| `TOSS_SECRET_KEY` | secret | 토스 시크릿 키 (베타는 `test_sk_…`) |
+| `CREDIT_MARKUP` · `CREDIT_FX_RATE` · `CREDIT_TRIAL_CREDITS` | vars (선택) | 크레딧 배수·환율·체험 크레딧. 없으면 1.8 / 1400 / 300 |
 
 ## 3. 알아둘 것
 

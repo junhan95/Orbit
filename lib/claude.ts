@@ -21,6 +21,29 @@ export type ClaudeUsage = {
 };
 export type ClaudeResult = { id: string | null; model: string; text: string; stopReason: string | null; usage: ClaudeUsage };
 
+/**
+ * 과금 핸들 — apiKey 자리에 문자열(BYOK·로컬 키) 대신 넣을 수 있습니다 (lib/credits.ts CreditBilling).
+ * 호출마다 onUsage 로 계량하고, stop 을 돌려주면 툴 루프가 'insufficient_credits' 로 멈춥니다.
+ * 이 파일은 키를 꺼내 쓰고 훅을 부를 뿐, 크레딧 규칙은 모릅니다.
+ */
+export interface ClaudeBilling {
+  apiKey: string;
+  /** 실제로 보낼 모델 (예: 체험 크레딧만 있으면 허용 모델로 바꿈). 없으면 그대로. */
+  resolveModel?(model: string): string;
+  /** 호출 직전. 잔액이 이미 없으면 던집니다. */
+  beforeCall?(): void | Promise<void>;
+  /** 응답 하나가 올 때마다. stop=true 면 더 이상 호출하지 않습니다. */
+  onUsage?(model: string, usage: ClaudeUsage): { stop: boolean } | Promise<{ stop: boolean }>;
+}
+export type ClaudeCredential = string | ClaudeBilling;
+
+function credentialKey(credential: ClaudeCredential): string {
+  return typeof credential === 'string' ? credential : credential.apiKey;
+}
+function billingOf(credential: ClaudeCredential): ClaudeBilling | null {
+  return typeof credential === 'string' ? null : credential;
+}
+
 export type ToolDefinition = { name: string; description: string; input_schema: Record<string, unknown> };
 export type ToolInput = Record<string, unknown>;
 /** 툴 실행기. 문자열이나 JSON 직렬화 가능한 값을 돌려주면 그대로 tool_result 가 됩니다. 예외를 던지면 is_error 로 전달됩니다. */
@@ -155,7 +178,7 @@ function webSearchTool(maxUses: number | undefined) {
 }
 
 export async function callClaude(options: {
-  apiKey: string;
+  apiKey: ClaudeCredential;
   model: string;
   system: string;
   messages: ClaudeMessage[];
@@ -166,13 +189,17 @@ export async function callClaude(options: {
   const messages = normalizeMessages(options.messages);
   if (!messages.length) throw new Error('Claude에 보낼 메시지가 없습니다.');
 
+  const billing = billingOf(options.apiKey);
+  const model = billing?.resolveModel?.(options.model) ?? options.model;
+  await billing?.beforeCall?.();
   const data = await requestMessages(
-    { apiKey: options.apiKey, model: options.model, system: options.system, maxTokens: options.maxTokens, tools: webSearchTool(options.webSearchMaxUses) },
+    { apiKey: credentialKey(options.apiKey), model, system: options.system, maxTokens: options.maxTokens, tools: webSearchTool(options.webSearchMaxUses) },
     messages,
   );
+  await billing?.onUsage?.(data.model || model, readUsage(data.usage));
   const text = textOf(data.content);
   if (!text) throw new Error('Claude가 결과를 반환하지 못했습니다.');
-  return { id: data.id ?? null, model: data.model || options.model, text, stopReason: data.stop_reason ?? null, usage: readUsage(data.usage) };
+  return { id: data.id ?? null, model: data.model || model, text, stopReason: data.stop_reason ?? null, usage: readUsage(data.usage) };
 }
 
 /**
@@ -182,7 +209,7 @@ export async function callClaude(options: {
  * - 반환 text 는 마지막 응답의 텍스트만 씁니다 ("검색해 보겠습니다" 류의 중간 발화는 버립니다).
  */
 export async function runClaudeAgent(options: {
-  apiKey: string;
+  apiKey: ClaudeCredential;
   model: string;
   system: string;
   messages: ClaudeMessage[];
@@ -197,7 +224,8 @@ export async function runClaudeAgent(options: {
 
   const conversation: ApiMessage[] = initial.map((message) => ({ role: message.role, content: message.content }));
   const tools = [...webSearchTool(options.webSearchMaxUses), ...(options.tools ?? [])];
-  const request: RequestOptions = { apiKey: options.apiKey, model: options.model, system: options.system, maxTokens: options.maxTokens, tools };
+  const billing = billingOf(options.apiKey);
+  const request: RequestOptions = { apiKey: credentialKey(options.apiKey), model: billing?.resolveModel?.(options.model) ?? options.model, system: options.system, maxTokens: options.maxTokens, tools };
   const maxIterations = Math.max(1, options.maxIterations ?? 8);
 
   let usage: ClaudeUsage = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, webSearchRequests: 0 };
@@ -210,6 +238,7 @@ export async function runClaudeAgent(options: {
   const usagePerIteration: ClaudeUsage[] = [];
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    await billing?.beforeCall?.();
     const data = await requestMessages(request, conversation);
     usagePerIteration.push(readUsage(data.usage));
     usage = addUsage(usage, readUsage(data.usage));
@@ -217,9 +246,14 @@ export async function runClaudeAgent(options: {
     lastModel = data.model || lastModel;
     lastText = textOf(data.content);
     stopReason = data.stop_reason ?? null;
+    const verdict = await billing?.onUsage?.(lastModel, readUsage(data.usage));
 
     const toolUses = (data.content ?? []).filter((block) => block.type === 'tool_use' && block.name && block.id);
     turns.push({ text: lastText, toolNames: toolUses.map((use) => use.name as string) });
+    // 크레딧이 바닥나면 툴 결과를 이어 보내지 않고 여기까지의 결과로 멈춥니다 (docs/pricing-credits.md §4).
+    if (verdict?.stop && stopReason === 'tool_use') {
+      return { id: lastId, model: lastModel, text: lastText, stopReason: 'insufficient_credits', usage, iterations: iteration, toolCalls, turns, usagePerIteration };
+    }
     if (stopReason !== 'tool_use' || !toolUses.length) {
       return { id: lastId, model: lastModel, text: lastText, stopReason, usage, iterations: iteration, toolCalls, turns, usagePerIteration };
     }
@@ -254,7 +288,7 @@ export async function runClaudeAgent(options: {
 // ── 스트리밍 ───────────────────────────────────────────────────────────────
 
 export type StreamOptions = {
-  apiKey: string;
+  apiKey: ClaudeCredential;
   model: string;
   system: string;
   messages: ClaudeMessage[];
@@ -380,7 +414,8 @@ export async function streamClaudeAgent(options: StreamOptions): Promise<AgentRu
 
   const conversation: ApiMessage[] = initial.map((message) => ({ role: message.role, content: message.content }));
   const tools = [...webSearchTool(options.webSearchMaxUses), ...(options.tools ?? [])];
-  const request: RequestOptions = { apiKey: options.apiKey, model: options.model, system: options.system, maxTokens: options.maxTokens, tools };
+  const billing = billingOf(options.apiKey);
+  const request: RequestOptions = { apiKey: credentialKey(options.apiKey), model: billing?.resolveModel?.(options.model) ?? options.model, system: options.system, maxTokens: options.maxTokens, tools };
   const maxIterations = Math.max(1, options.maxIterations ?? 4);
 
   let usage: ClaudeUsage = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, webSearchRequests: 0 };
@@ -392,11 +427,13 @@ export async function streamClaudeAgent(options: StreamOptions): Promise<AgentRu
   const usagePerIteration: ClaudeUsage[] = [];
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    await billing?.beforeCall?.();
     const data = await streamOnce(request, conversation, options.onDelta);
     usagePerIteration.push(readUsage(data.usage));
     usage = addUsage(usage, readUsage(data.usage));
     lastId = data.id ?? lastId;
     lastModel = data.model || lastModel;
+    const verdict = await billing?.onUsage?.(lastModel, readUsage(data.usage));
     // 스트리밍은 중간 발화도 이미 사용자에게 흘러갔으므로 전체를 이어 붙입니다.
     const chunk = textOf(data.content);
     if (chunk) text = text ? `${text}\n\n${chunk}` : chunk;
@@ -404,6 +441,9 @@ export async function streamClaudeAgent(options: StreamOptions): Promise<AgentRu
 
     const toolUses = data.content.filter((block) => block.type === 'tool_use' && block.name && block.id);
     turns.push({ text: chunk, toolNames: toolUses.map((use) => use.name as string) });
+    if (verdict?.stop && stopReason === 'tool_use') {
+      return { id: lastId, model: lastModel, text, stopReason: 'insufficient_credits', usage, iterations: iteration, toolCalls, turns, usagePerIteration };
+    }
     if (stopReason !== 'tool_use' || !toolUses.length) {
       return { id: lastId, model: lastModel, text, stopReason, usage, iterations: iteration, toolCalls, turns, usagePerIteration };
     }

@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Markdown } from '@/components/markdown';
 import { ReviewActions, ReviewBadge, ReviewComment, isReviewComment } from '@/components/review-panel';
 import { type ApiKeyState, ApiKeyDialog, fetchApiKeyState } from '@/components/api-key-dialog';
+import { CreditsCard } from '@/components/credits-card';
 import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
 import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
 import { FIELD_TYPES, FIELD_TYPE_LABELS, type FieldType, type ProjectField } from '@/lib/fields';
@@ -19,7 +20,7 @@ import {
   buildProjectFolderContext, ensureReadPermission, fetchProjectFolders, forgetHandle, getHandle,
   inspectFolder, pickDirectory, saveHandle, scanDirectory, supportsFolderPicker,
 } from '@/lib/folder-access';
-import { AGENT_MODELS, agentModelLabel } from '@/lib/models';
+import { AGENT_MODELS, DEFAULT_MODEL_FALLBACK, agentModelLabel } from '@/lib/models';
 import {
   ATTACHMENT_ACCEPT, type ChatAttachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_TOTAL_BYTES,
   formatBytes, readAttachment, toPayload,
@@ -76,14 +77,17 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  // 서버가 실제로 쓰는 기본 모델(.env 의 ANTHROPIC_MODEL). 모델 미지정 표시에 이 이름을 씁니다.
+  const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL_FALLBACK);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
       const response = await fetch('/api/workspace');
-      const data = await response.json() as { projects?: Project[]; agents?: Agent[]; assignments?: Assignment[]; error?: string };
+      const data = await response.json() as { projects?: Project[]; agents?: Agent[]; assignments?: Assignment[]; defaultModel?: string; error?: string };
       if (!response.ok) throw new Error(data.error || t("워크스페이스를 불러오지 못했습니다."));
       setProjects(data.projects || []); setAgents(data.agents || []); setAssignments(data.assignments || []);
+      if (data.defaultModel) setDefaultModel(data.defaultModel);
     } catch (error) { onNotice(error instanceof Error ? error.message : t("워크스페이스를 불러오지 못했습니다.")); }
     finally { setLoading(false); }
   }, [onNotice]);
@@ -93,7 +97,7 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
 
   if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t("워크스페이스를 불러오는 중")}</span></div>;
   if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
-  if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
+  if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} defaultModel={defaultModel} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
   if (section === '대화') return <ChatView key={chatTarget?.key ?? 'chat'} projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
   return <AccountView displayName={displayName} email={email} onNotice={onNotice} onProfileSaved={onProfileSaved} />;
@@ -1142,13 +1146,15 @@ const MANAGER_ROLE = '프로젝트 매니저';
 /** 프로젝트 하나와 그 프로젝트에 속한 에이전트들. id 가 없으면 '프로젝트 미지정' 묶음입니다. */
 type AgentGroup = { id: string | null; name: string; color: string; agents: Agent[] };
 
-function AgentsView({ agents, projects, assignments, onCreated, onNotice, onOpenChat }: { agents: Agent[]; projects: Project[]; assignments: Assignment[]; onCreated: () => Promise<void>; onNotice: (message: string) => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
+function AgentsView({ agents, projects, assignments, defaultModel, onCreated, onNotice, onOpenChat }: { agents: Agent[]; projects: Project[]; assignments: Assignment[]; defaultModel: string; onCreated: () => Promise<void>; onNotice: (message: string) => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   // '에이전트 설정' 다이얼로그 상태. editing 이 있으면 열립니다.
   const [editing, setEditing] = useState<Agent | null>(null);
   const [draft, setDraft] = useState({ model: '', role: '', description: '', instructions: '' });
   const [updating, setUpdating] = useState(false);
   // 상단 역할 필터. 에이전트가 늘어나면 역할(프로젝트 매니저·엔지니어·QA…)로 좁혀 봅니다.
   const [roleFilter, setRoleFilter] = useState(ALL_ROLES);
+  // 모델 미지정 에이전트에 표시할 이름 — 서버가 알려준 기본 모델을 사람이 읽는 이름으로 바꿉니다.
+  const defaultModelName = agentModelLabel(defaultModel) ?? defaultModel;
   const [layout, setLayout] = useState<ProjectLayout>('card');
 
   // 마지막으로 고른 보기 방식을 브라우저에 기억해 둡니다.
@@ -1243,7 +1249,7 @@ function AgentsView({ agents, projects, assignments, onCreated, onNotice, onOpen
       <label className="entity-field">
         <span>{t("AI 모델")}</span>
         <NativeSelect value={draft.model} onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}>
-          <NativeSelectOption value="">{t("기본 모델 사용 (.env 의 ANTHROPIC_MODEL)")}</NativeSelectOption>
+          <NativeSelectOption value="">{tf("기본 모델 사용 ({0})", defaultModelName)}</NativeSelectOption>
           {AGENT_MODELS.map((option) => <NativeSelectOption key={option.id} value={option.id}>{option.label} · {t(option.hint)}</NativeSelectOption>)}
         </NativeSelect>
         <small className="entity-hint">{t("업무 실행과 대화 모두 이 모델로 호출합니다. 사용량·비용은 &lsquo;사용량&rsquo; 화면에 모델별로 쌓입니다.")}</small>
@@ -1293,7 +1299,7 @@ function AgentsView({ agents, projects, assignments, onCreated, onNotice, onOpen
     return extra > 0 ? tf("외 {0}개 프로젝트 참여", extra) : null;
   };
 
-  const modelTag = (agent: Agent) => <span className="agent-model-tag" title={agent.model ? tf("이 에이전트는 {0} 로 실행됩니다.", agent.model) : t(".env 의 ANTHROPIC_MODEL 을 그대로 씁니다.")}><Cpu size={12} />{agentModelLabel(agent.model) ?? t("기본 모델")}</span>;
+  const modelTag = (agent: Agent) => <span className="agent-model-tag" title={agent.model ? tf("이 에이전트는 {0} 로 실행됩니다.", agent.model) : tf("모델을 따로 고르지 않아 기본 모델 {0} 로 실행됩니다.", defaultModel)}><Cpu size={12} />{agentModelLabel(agent.model) ?? defaultModelName}</span>;
 
   const chatButton = (agent: Agent) => <button className="agent-profile-chat" onClick={() => openAgentChat(agent)} disabled={!chatProjectId(agent)}
     title={chatProjectId(agent) ? tf("{0} 와(과) 대화하기", agent.name) : t("참여 중인 프로젝트가 없어 대화를 열 수 없습니다.")}><MessageSquare size={13} /> {t("대화하기")}</button>;
@@ -1933,14 +1939,16 @@ function AccountView({ displayName, email, onNotice, onProfileSaved }: {
       </div>)}
     </dl>
 
+    <CreditsCard onConnectKey={() => setKeyOpen(true)} onNotice={onNotice} />
+
     <section className="settings-card api-key-card">
-      <div className="settings-title"><KeyRound size={16} /><div><strong>{t('Claude API 키')}</strong><p>{t('에이전트 실행·대화가 이 키로 나가고, 비용은 본인 Anthropic Console 에 청구됩니다.')}</p></div></div>
+      <div className="settings-title"><KeyRound size={16} /><div><strong>{t('Claude API 키')}</strong><p>{t('키를 연결하면 실행·대화가 이 키로 나가고 크레딧은 차감되지 않습니다. 비용은 본인 Anthropic Console 에 청구됩니다.')}</p></div></div>
       <div className="api-key-row">
         {apiKey?.configured
           ? <><span className="api-key-status ok"><ShieldCheck size={13} /> {t('연결됨')}</span><code>{apiKey.hint}</code></>
           : apiKey?.mode === 'local'
             ? <span className="api-key-status"><ShieldCheck size={13} /> {t('로컬 모드 — .env 의 ANTHROPIC_API_KEY 사용')}</span>
-            : <span className="api-key-status warn">{t('연결된 키 없음 — 에이전트를 돌릴 수 없습니다')}</span>}
+            : <span className="api-key-status">{t('연결된 키 없음 — 크레딧으로 실행됩니다')}</span>}
         <span className="api-key-actions">
           <Button onClick={() => setKeyOpen(true)} size="sm" variant="outline">{apiKey?.configured ? t('바꾸기') : t('연결')}</Button>
           {apiKey?.configured ? <Button onClick={async () => {
@@ -1956,12 +1964,6 @@ function AccountView({ displayName, email, onNotice, onProfileSaved }: {
       <Button type="submit" variant="outline">{t('로그아웃')}</Button>
       <small className="entity-hint">{t('이 기기의 세션만 끝납니다. 다시 로그인하면 같은 워크스페이스로 돌아옵니다.')}</small>
     </form> : null}
-
-    <p className="account-note">
-      {t('여기 적은 이름·소속·한 줄 소개는 에이전트 실행과 대화의 시스템 프롬프트에 들어갑니다. 사진과 연락처는 화면에만 쓰입니다.')}
-      {' '}
-      {t('비워 두면 계정 기본값')} <code>LOCAL_USER_NAME</code>, <code>LOCAL_USER_EMAIL</code> {t('을(를) 씁니다. 여러 사용자를 지원하려면')} <code>app/auth.ts</code>{t('의')} <code>getCurrentUser()</code>{t('에 실제 인증을 연결하세요.')}
-    </p>
 
     <Dialog open={editing} onOpenChange={(open) => { if (!open) setEditing(false); }}>
       <DialogContent className="create-entity-dialog profile-dialog">

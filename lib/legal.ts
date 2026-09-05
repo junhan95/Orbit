@@ -11,6 +11,8 @@ export const COMPANY = {
   ceoEn: 'Junhan Park',
   /** 사업자등록번호 */
   registration: '299-21-00736',
+  /** 통신판매업 신고번호 — 신고 후 채우면 약관·푸터에 표시됩니다 (비어 있으면 표시 안 함) */
+  mailOrderRegistration: '' as string,
   /** 사업장 소재지 — 도로명까지만 표기 */
   address: '경기도 의왕시 원골로 43',
   addressEn: '43 Wongol-ro, Uiwang-si, Gyeonggi-do, Republic of Korea',
@@ -24,8 +26,20 @@ export const COMPANY = {
   app: 'https://app.orbitcrew.ai',
 } as const;
 
-/** 약관·방침 시행일 (YYYY-MM-DD) */
+/** 약관·방침 시행일 (YYYY-MM-DD) — 2026-09-05 크레딧·결제 조항 추가 (docs/pricing-credits.md §6) */
 export const LEGAL_EFFECTIVE = '2026-09-05';
+
+/** 약관에 적는 크레딧 상수. 단가 배수·체험 크레딧은 lib/credits-pricing.ts 가 원본이고 여기서는 문구용으로만 씁니다. */
+export const CREDIT_TERMS = {
+  krwPerCredit: 10,
+  trialCredits: 300,
+  /** 유효기간(년) — 상사채권 소멸시효에 맞춤 */
+  validYears: 5,
+  /** 단가 변경 고지 기간(일) */
+  priceNoticeDays: 30,
+  pg: '토스페이먼츠',
+  pgEn: 'Toss Payments',
+} as const;
 
 export const LEGAL_LINKS = [
   { href: '/privacy', label: '개인정보처리방침', labelEn: 'Privacy Policy' },

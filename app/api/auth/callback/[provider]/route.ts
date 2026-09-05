@@ -4,12 +4,13 @@ import {
   isProvider, isSecureOrigin, parseCookies, sessionCookie, upsertUser, verifyState,
 } from '@/lib/auth';
 import { loadProfile, saveProfile } from '@/lib/profile';
+import { grantTrialCredits } from '@/lib/credits';
 
 type RouteContext = { params: Promise<{ provider: string }> | { provider: string } };
 
 /**
  * 제공자에서 돌아오는 자리. code 를 토큰으로 바꾸고 프로필을 읽어 사용자를 만들거나 찾은 뒤
- * 세션 쿠키를 심고 앱으로 보냅니다. 첫 로그인이면 계정 프로필에 이름·이메일을 미리 채워 둡니다.
+ * 세션 쿠키를 심고 앱으로 보냅니다. 첫 로그인이면 계정 프로필에 이름·이메일을 미리 채우고 체험 크레딧을 지급합니다.
  */
 export async function GET(request: Request, context: RouteContext) {
   const { provider } = await context.params;
@@ -38,6 +39,9 @@ export async function GET(request: Request, context: RouteContext) {
       if (!current.displayName && !current.email) {
         await saveProfile(db, id, { displayName: identity.name ?? '', email: identity.email ?? '' });
       }
+      // 가입 체험 크레딧 (docs/pricing-credits.md §1.4). 실패해도 로그인은 막지 않습니다 — /api/credits 가 다시 시도합니다.
+      try { await grantTrialCredits(db, id); }
+      catch (error) { console.error('[credits] trial grant failed', error); }
     }
     const token = await createSession(db, id, request.headers.get('user-agent'));
     const headers = new Headers({ Location: `${origin}/${isNew ? '?welcome=1' : ''}` });

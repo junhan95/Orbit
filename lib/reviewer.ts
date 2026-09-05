@@ -9,7 +9,7 @@
  *
  * 검토 정책은 프로젝트/전역 스킬 중 이름이 '검토 정책' 인 것이 있으면 그 본문을, 없으면 DEFAULT_REVIEW_POLICY 를 씁니다.
  */
-import { runClaudeAgent, type ToolDefinition, type ToolInput } from './claude';
+import { runClaudeAgent, type ClaudeCredential, type ToolDefinition, type ToolInput } from './claude';
 import { loadMemoryScopes, renderMemorySection } from './memory';
 import { agentCommentInsert } from './run-loop';
 import { usageInsert } from './usage';
@@ -95,7 +95,7 @@ async function loadReviewPolicy(db: D1Database, userId: string, projectId: strin
 }
 
 export type ReviewParams = {
-  db: D1Database; userId: string; apiKey: string; model: string; taskId: string;
+  db: D1Database; userId: string; apiKey: ClaudeCredential; model: string; taskId: string;
   /** 검토 대상 실행. 생략하면 이 카드의 최근 완료 실행 */
   runId?: string | null;
 };

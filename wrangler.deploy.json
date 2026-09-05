@@ -8,7 +8,8 @@
     "AUTH_MODE": "oauth",
     "GOOGLE_CLIENT_ID": "715945586418-4hoaqsn4gmdbiuv65hvr3fbvj0krdtle.apps.googleusercontent.com",
     "APP_URL": "https://app.orbitcrew.ai",
-    "LANDING_URL": "https://orbitcrew.ai"
+    "LANDING_URL": "https://orbitcrew.ai",
+    "TOSS_CLIENT_KEY": "test_ck_AQ92ymxN34yX706ox45gVajRKXvd"
   },
   "routes": [
     {

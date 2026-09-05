@@ -19,7 +19,10 @@ import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
  * 앵커 id 는 영어 트리가 원본(#features), 한국어 트리는 ko- 접두(#ko-features)를 씁니다.
  *
  * 섹션: 히어로(+앱 목업) → 신뢰 스트립 → 제품 노트 → 어바웃 → 기능(벤토) → 작동 방식
- *       → 크루(에이전트 팀) → 비교표 → 시작 안내(무료 + Claude API 키) → FAQ → CTA → 푸터
+ *       → 크루(에이전트 팀) → 비교표 → 요금(크레딧 · 팀 · 기업) → 시작 안내 → FAQ → CTA → 푸터
+ *
+ * 요금 카피는 docs/pricing-credits.md 를 따릅니다 — 개인은 크레딧 종량제(가입 시 300 크레딧, 1 크레딧 = 10원),
+ * 본인 Claude API 키를 연결하면 무료(BYOK). 팀 플랜은 준비 중, 기업은 셀프호스팅 문의.
  *
  * 스타일은 globals.css 를 건드리지 않도록 이 파일 안에 가둡니다(.lp 스코프).
  *
@@ -62,6 +65,11 @@ interface Dict {
   convo: { me: string; user: string; pm: string; pmMsg: string; card1: string; card1meta: string; card2: string; card2meta: string; reviewer: string; reviewMsg: string };
   crew: { eyebrow: string; h: string; p: string; items: { role: string; tag: string; d: string; tone: Tone }[] };
   compare: { eyebrow: string; h: string; colLabel: string; cols: string[]; rows: { k: string; v: string[] }[] };
+  pricing: {
+    eyebrow: string; h: string; p: string;
+    plans: { name: string; price: string; unit: string; d: string; perks: string[]; cta: string; href: string; tag?: string; featured?: boolean }[];
+    note: string; noteLink: string; rateNote: string;
+  };
   start: { eyebrow: string; h: string; p1: string; p2: string; p3: string; perks: string[]; cta: string; steps: { n: string; t: string; d: string }[] };
   faq: { eyebrow: string; h: string; items: { q: string; a: string }[] };
   cta: { a: string; b: string; p: string; btn: string };
@@ -78,6 +86,7 @@ const KO: Dict = {
     { label: '기능', id: 'features' },
     { label: '작동 방식', id: 'how' },
     { label: '크루', id: 'crew' },
+    { label: '요금', id: 'pricing' },
     { label: '시작하기', id: 'start' },
   ],
   openApp: '앱 열기',
@@ -93,8 +102,8 @@ const KO: Dict = {
   facts: [{ n: '4', l: '층 기억' }, { n: '4', l: '패스 검토' }, { n: '14', l: '일 관제 기준선' }, { n: '3', l: '단계 승인 레벨' }],
   factsLabel: '핵심 수치',
   trust: [
-    { icon: 'key', t: '이용료 없음', d: 'Claude API 키만 있으면 됩니다' },
-    { icon: 'lock', t: '암호화 저장', d: 'API 키는 서버에서 암호화' },
+    { icon: 'key', t: '가입 즉시 시작', d: '300 크레딧 무료 · 쓴 만큼만 결제' },
+    { icon: 'lock', t: '본인 키면 무료', d: 'Claude API 키는 서버에서 암호화' },
     { icon: 'login', t: 'Google · GitHub 로그인', d: '별도 가입 절차 없음' },
     { icon: 'code', t: '오픈소스', d: 'AGPL-3.0 · 저장소 공개' },
     { icon: 'globe', t: '한국어 · English', d: '라이트 · 다크 테마' },
@@ -176,36 +185,65 @@ const KO: Dict = {
       { k: '사람의 역할', v: ['질문·복붙', '지시·상태 변경', '승인 · 거절 · 방향만'] },
     ],
   },
+  pricing: {
+    eyebrow: 'PRICING',
+    h: '월 구독 없이, 쓴 만큼만',
+    p: '개인은 크레딧을 충전해 AI 사용량만큼 씁니다. 광고도, 개인 월 정액도 없습니다. 팀과 기업은 필요한 만큼만 위로 올라갑니다.',
+    plans: [
+      {
+        name: '개인', price: '쓴 만큼만', unit: '1 크레딧 = 10원 · 5,000원부터 충전',
+        d: '가입 즉시 300 크레딧이 들어옵니다. 매니저가 팀을 꾸려 일하는 장면을 몇 번 겪어 보고, 마음에 들면 충전하세요.',
+        perks: ['가입 즉시 300 크레딧 무료', '모델별 단가 공개 — 앱 안 단가표', '실측 토큰 · 크레딧 차감 내역', '미사용 유료 크레딧 환불'],
+        cta: '무료로 시작', href: '/login', tag: '지금 이용 가능', featured: true,
+      },
+      {
+        name: '팀', price: '준비 중', unit: '좌석당 · 가격 미정',
+        d: '같은 프로젝트를 동료와 함께 보고, 매니저가 만든 카드를 나눠 받습니다.',
+        perks: ['멤버 초대 · 프로젝트 공유', '공용 크레딧 풀', '권한 · 감사 로그', '개인 워크스페이스는 계속 무료'],
+        cta: '대기 명단 등록', href: 'mailto:hello@orbitcrew.ai?subject=orbitcrew%20%ED%8C%80%20%ED%94%8C%EB%9E%9C%20%EB%8C%80%EA%B8%B0%20%EB%AA%85%EB%8B%A8', tag: '2단계',
+      },
+      {
+        name: '기업', price: '셀프호스팅', unit: '귀사 서버 · 연 라이선스',
+        d: '데이터가 밖으로 나가면 안 되는 조직을 위해 귀사 인프라에 설치하고 자체 키로 돌립니다.',
+        perks: ['귀사 서버 설치 · 데이터 외부 반출 없음', '자체 Anthropic 키 · 사용량 통제', 'AGPL-3.0 또는 상용 라이선스', '도입 지원 · 우선 대응'],
+        cta: '문의하기', href: 'mailto:hello@orbitcrew.ai?subject=orbitcrew%20%EA%B8%B0%EC%97%85%20%EC%85%80%ED%94%84%ED%98%B8%EC%8A%A4%ED%8C%85%20%EB%AC%B8%EC%9D%98',
+      },
+    ],
+    note: '이미 Claude API 키가 있다면 연결해서 무료로 씁니다 — AI 사용 요금은 본인 Anthropic 계정으로 직접 냅니다.',
+    noteLink: '키 연결 안내',
+    rateNote: '크레딧 단가 = Anthropic 공개 단가 × 1.8 (부가세 포함). 예: Sonnet 5 대화 한 턴 약 3.5 크레딧.',
+  },
   start: {
     eyebrow: 'GET STARTED',
-    h: 'orbitcrew 는 무료입니다',
-    p1: '구독료도, 별도 결제도 없습니다. 다만 에이전트가 Claude 로 움직이기 때문에 ',
-    p2: '본인 Claude API 키(Anthropic 계정)',
-    p3: '가 필요합니다. AI 사용 요금은 그 계정으로 Anthropic 에 직접 내고, 얼마나 썼는지는 앱 안의 사용량 화면에서 바로 봅니다.',
+    h: '가입하면 바로 시작됩니다',
+    p1: 'API 키를 만들 필요가 없습니다. 로그인하면 ',
+    p2: '300 크레딧',
+    p3: '이 바로 들어오고, 프로젝트 이름만 정하면 매니저가 첫 업무를 만들어 옵니다. 더 쓰고 싶으면 그때 충전하고, Claude API 키가 있다면 연결해서 무료로 씁니다.',
     perks: [
-      'orbitcrew 이용료 0원 — 구독 · 결제 · 광고 없음',
-      '필요한 것은 Claude API 키 하나 — 암호화 저장, 언제든 교체',
-      '에이전트별 모델 선택, 실측 토큰 + 비용 추정',
+      '가입 즉시 300 크레딧 — 카드 등록 없음',
+      '월 구독 · 광고 없음, 쓴 만큼만 결제',
+      '본인 Claude API 키를 연결하면 orbitcrew 는 무료',
       '오픈소스(AGPL-3.0) — 직접 배포도 가능',
     ],
     cta: '지금 시작하기',
     steps: [
-      { n: '1', t: 'Google 또는 GitHub 로 로그인', d: '계정을 새로 만들지 않습니다. 첫 로그인이면 짧은 안내가 한 번 나옵니다.' },
-      { n: '2', t: 'Claude API 키 연결', d: 'Anthropic 계정에서 발급한 키를 붙입니다. 키는 서버에서 암호화돼 저장되고, 대화는 그 키로 나갑니다.' },
-      { n: '3', t: '프로젝트 이름과 작업 폴더', d: '이것만 정하면 매니저가 배정되고 첫 업무를 만들어 옵니다.' },
+      { n: '1', t: 'Google 또는 GitHub 로 로그인', d: '계정을 새로 만들지 않습니다. 첫 로그인이면 300 크레딧이 지급되고 짧은 안내가 한 번 나옵니다.' },
+      { n: '2', t: '프로젝트 이름과 작업 폴더', d: '이것만 정하면 매니저가 배정되고 첫 업무를 만들어 옵니다.' },
+      { n: '3', t: '더 쓰고 싶을 때 — 충전 또는 키 연결', d: '5,000원부터 충전하거나, Anthropic 계정의 API 키를 연결합니다. 키는 서버에서 암호화돼 저장되고 그 키로 나가는 호출은 과금되지 않습니다.' },
     ],
   },
   faq: {
     eyebrow: 'FAQ',
     h: '자주 묻는 질문',
     items: [
-      { q: '정말 무료인가요?', a: '네. orbitcrew 자체 이용료는 없습니다. 다만 에이전트가 Claude 로 동작하므로 본인 Claude API 키가 필요하고, AI 사용 요금은 본인 Anthropic 계정으로 직접 냅니다. 앱의 사용량 화면에서 토큰과 추정 비용을 바로 확인할 수 있습니다.' },
-      { q: 'Claude API 키는 어디서 받나요?', a: 'Anthropic 콘솔(console.anthropic.com)에서 발급합니다. claude.ai 유료 구독과는 별개로, API 사용량만큼 과금되는 계정입니다. 키를 orbitcrew 에 붙이면 바로 시작할 수 있습니다.' },
-      { q: 'Claude 계정으로 바로 로그인할 수 있나요?', a: '아니요. Anthropic 정책상 제3자 앱에서 Claude 계정 로그인은 제공되지 않습니다. 로그인은 Google · GitHub 로 하고, Claude 는 본인 API 키로 연결합니다.' },
-      { q: 'API 키는 어디에 어떻게 저장되나요?', a: '서버 측 마스터 시크릿으로 암호화해 저장하고, 실행 시에만 복호화합니다. 운영자가 대신 공용 키로 호출하는 방식은 쓰지 않습니다.' },
+      { q: '얼마인가요?', a: '월 구독은 없습니다. 가입하면 300 크레딧(3,000원 상당)이 무료로 들어오고, 그 뒤로는 쓴 만큼 크레딧이 차감됩니다. 1 크레딧은 10원이고 5,000원부터 충전합니다. 본인 Claude API 키를 연결하면 orbitcrew 는 무료이고 AI 요금은 Anthropic 에 직접 냅니다.' },
+      { q: '크레딧은 어떻게 계산되나요?', a: '모델별 단가는 Anthropic 공개 단가의 1.8배(부가세 포함)이고, 앱 안 단가표에 모두 공개돼 있습니다. 예를 들어 Sonnet 5 로 대화 한 턴은 약 3.5 크레딧, 매니저가 하위 에이전트를 여럿 돌리는 실행 한 번은 대략 45~180 크레딧입니다. 호출마다 실측 토큰으로 차감되고 내역을 바로 볼 수 있습니다.' },
+      { q: '충전한 크레딧은 환불되나요?', a: '유료로 충전한 크레딧의 미사용분은 환불됩니다(결제 취소 방식). 가입 시 받은 무료 크레딧과 보너스는 환불·양도되지 않습니다. 사용은 무료·보너스 크레딧부터 차감됩니다.' },
+      { q: 'Claude API 키가 있으면 어떻게 되나요?', a: '계정 화면에서 키를 연결하면 그 뒤의 모든 호출은 본인 키로 나가고 크레딧은 차감되지 않습니다. 키는 서버 측 마스터 시크릿으로 암호화해 저장하고 실행 시에만 복호화합니다. 키가 없는 사용자의 호출만 orbitcrew 의 운영 키로 나가며, 그 비용이 크레딧입니다.' },
+      { q: 'Claude 계정으로 바로 로그인할 수 있나요?', a: '아니요. Anthropic 정책상 제3자 앱에서 Claude 계정 로그인은 제공되지 않습니다. 로그인은 Google · GitHub 로 하고, Claude 는 크레딧 또는 본인 API 키로 씁니다.' },
       { q: '내 컴퓨터의 파일에도 접근하나요?', a: '프로젝트에 폴더를 연결한 경우에만, 브라우저의 폴더 선택기로 허용한 범위 안에서 파일 목록과 내용을 업무 실행 컨텍스트로 전달합니다.' },
       { q: '에이전트가 마음대로 일을 벌이지는 않나요?', a: '대화창의 승인 레벨(자동 / 카드만 / 읽기 전용)로 매니저 자율도를 제한합니다. 카드를 많이 만들거나 전역 스킬을 저장하려 하면 승인 게이트로 넘어가고, 연속 실패는 서킷브레이커가 끊습니다.' },
-      { q: '어떤 모델을 쓰나요?', a: '에이전트마다 Claude 모델을 골라 배정할 수 있고, 지정하지 않으면 기본 모델로 실행됩니다. 사용량 화면에서 토큰 실측과 공개 단가 기준 비용 추정을 함께 봅니다.' },
+      { q: '어떤 모델을 쓰나요?', a: '에이전트마다 Claude 모델을 골라 배정할 수 있고, 지정하지 않으면 기본 모델로 실행됩니다. 무료 크레딧만 있는 동안은 Haiku · Sonnet 으로 실행되고, 충전하면 상위 모델도 열립니다. 사용량 화면에서 토큰 실측과 크레딧 차감을 함께 봅니다.' },
       { q: '오픈소스인가요?', a: '네. AGPL-3.0 라이선스로 저장소가 공개돼 있습니다. 직접 배포해 쓰거나 코드를 살펴볼 수 있습니다.' },
     ],
   },
@@ -252,6 +290,7 @@ const EN: Dict = {
     { label: 'Features', id: 'features' },
     { label: 'How it works', id: 'how' },
     { label: 'Crew', id: 'crew' },
+    { label: 'Pricing', id: 'pricing' },
     { label: 'Get started', id: 'start' },
   ],
   openApp: 'Open app',
@@ -267,8 +306,8 @@ const EN: Dict = {
   facts: [{ n: '4', l: 'memory layers' }, { n: '4', l: 'review passes' }, { n: '14', l: 'day baseline' }, { n: '3', l: 'approval levels' }],
   factsLabel: 'Key numbers',
   trust: [
-    { icon: 'key', t: 'No fees', d: 'All you need is a Claude API key' },
-    { icon: 'lock', t: 'Encrypted at rest', d: 'API keys are encrypted server-side' },
+    { icon: 'key', t: 'Start instantly', d: '300 free credits · pay as you go' },
+    { icon: 'lock', t: 'Free with your own key', d: 'Claude API keys are encrypted server-side' },
     { icon: 'login', t: 'Google · GitHub sign-in', d: 'No separate sign-up' },
     { icon: 'code', t: 'Open source', d: 'AGPL-3.0 · public repository' },
     { icon: 'globe', t: 'English · 한국어', d: 'Light · dark theme' },
@@ -350,36 +389,65 @@ const EN: Dict = {
       { k: 'Your role', v: ['Ask · copy-paste', 'Instruct · move statuses', 'Approve · reject · steer'] },
     ],
   },
+  pricing: {
+    eyebrow: 'PRICING',
+    h: 'No subscription. Pay for what you use.',
+    p: 'Individuals top up credits and spend them on AI usage. No ads, no personal monthly plan. Teams and companies step up only as far as they need.',
+    plans: [
+      {
+        name: 'Personal', price: 'Pay as you go', unit: '1 credit = ₩10 · top up from ₩5,000',
+        d: '300 credits land the moment you sign up. Watch the manager build a team a few times, then top up if you like it.',
+        perks: ['300 free credits on sign-up', 'Per-model rates published in the app', 'Measured tokens · credit ledger', 'Unused paid credits refundable'],
+        cta: 'Start free', href: '/login', tag: 'Available now', featured: true,
+      },
+      {
+        name: 'Team', price: 'Coming soon', unit: 'per seat · pricing TBD',
+        d: 'Share a project with colleagues and split the cards the manager creates.',
+        perks: ['Invite members · share projects', 'Shared credit pool', 'Permissions · audit log', 'Personal workspaces stay free'],
+        cta: 'Join the waitlist', href: 'mailto:hello@orbitcrew.ai?subject=orbitcrew%20Team%20waitlist', tag: 'Phase 2',
+      },
+      {
+        name: 'Enterprise', price: 'Self-hosted', unit: 'your servers · annual license',
+        d: 'For organizations whose data can’t leave the building: install on your infrastructure and run on your own keys.',
+        perks: ['Runs on your servers · no data egress', 'Your Anthropic key · usage control', 'AGPL-3.0 or commercial license', 'Onboarding support · priority response'],
+        cta: 'Contact us', href: 'mailto:hello@orbitcrew.ai?subject=orbitcrew%20Enterprise%20self-hosting',
+      },
+    ],
+    note: 'Already have a Claude API key? Connect it and orbitcrew is free — AI usage is billed by Anthropic to your account.',
+    noteLink: 'How to connect a key',
+    rateNote: 'Credit rate = Anthropic list price × 1.8 (VAT included). Example: one Sonnet 5 chat turn ≈ 3.5 credits.',
+  },
   start: {
     eyebrow: 'GET STARTED',
-    h: 'orbitcrew is free',
-    p1: 'No subscription, no separate payment. Because the agents run on Claude, you need ',
-    p2: 'your own Claude API key (an Anthropic account)',
-    p3: '. AI usage is billed by Anthropic to that account, and the app’s usage screen shows exactly how much you’ve spent.',
+    h: 'Sign in and you’re running',
+    p1: 'No API key to create. Sign in and ',
+    p2: '300 credits',
+    p3: ' are there right away — name a project and the manager comes back with the first task. Top up when you want more, or connect your own Claude API key and use orbitcrew for free.',
     perks: [
-      'orbitcrew costs $0 — no subscription, no payments, no ads',
-      'All you need is one Claude API key — encrypted, replaceable anytime',
-      'Pick a model per agent, see measured tokens + estimated cost',
+      '300 credits on sign-up — no card required',
+      'No subscription, no ads — pay for what you use',
+      'Connect your own Claude API key and orbitcrew is free',
       'Open source (AGPL-3.0) — self-host if you like',
     ],
     cta: 'Start now',
     steps: [
-      { n: '1', t: 'Sign in with Google or GitHub', d: 'No new account to create. A short intro shows once on first sign-in.' },
-      { n: '2', t: 'Connect your Claude API key', d: 'Paste the key from your Anthropic account. It’s encrypted server-side, and chats go out on that key.' },
-      { n: '3', t: 'Name the project and pick a folder', d: 'That’s it — a manager is assigned and comes back with the first task.' },
+      { n: '1', t: 'Sign in with Google or GitHub', d: 'No new account to create. Your first sign-in grants 300 credits and shows a short intro once.' },
+      { n: '2', t: 'Name the project and pick a folder', d: 'That’s it — a manager is assigned and comes back with the first task.' },
+      { n: '3', t: 'When you want more — top up or connect a key', d: 'Top up from ₩5,000, or connect the API key from your Anthropic account. It’s encrypted server-side, and calls on your key are never charged to credits.' },
     ],
   },
   faq: {
     eyebrow: 'FAQ',
     h: 'Frequently asked questions',
     items: [
-      { q: 'Is it really free?', a: 'Yes. orbitcrew itself has no fee. Because the agents run on Claude you need your own Claude API key, and AI usage is billed by Anthropic to your account. The usage screen in the app shows tokens and estimated cost as you go.' },
-      { q: 'Where do I get a Claude API key?', a: 'From the Anthropic Console (console.anthropic.com). It’s a pay-as-you-go API account, separate from a claude.ai subscription. Paste the key into orbitcrew and you’re ready.' },
-      { q: 'Can I sign in with my Claude account?', a: 'No. Anthropic’s policy doesn’t allow Claude account sign-in for third-party apps. You sign in with Google or GitHub and connect Claude with your own API key.' },
-      { q: 'Where and how is my API key stored?', a: 'Encrypted with a server-side master secret and decrypted only at run time. We never call Claude on your behalf with a shared operator key.' },
+      { q: 'How much does it cost?', a: 'There is no subscription. Sign-up grants 300 free credits (about ₩3,000), after which credits are deducted as you use AI. One credit is ₩10 and top-ups start at ₩5,000. Connect your own Claude API key and orbitcrew is free — Anthropic bills the AI usage to you directly.' },
+      { q: 'How are credits calculated?', a: 'Per-model rates are 1.8× Anthropic’s list price (VAT included) and are published in the app. One Sonnet 5 chat turn is about 3.5 credits; a manager run that drives several agents is roughly 45–180 credits. Every call is deducted from measured tokens and shows up in your ledger.' },
+      { q: 'Can I get a refund on credits?', a: 'Unused paid credits are refundable (as a payment cancellation). Free sign-up credits and bonuses are not refundable or transferable. Usage draws from free and bonus credits first.' },
+      { q: 'What if I have my own Claude API key?', a: 'Connect it on the account screen and every call from then on goes out on your key with no credit deduction. The key is encrypted with a server-side master secret and decrypted only at run time. Only calls from users without a key use orbitcrew’s operator key — that cost is what credits pay for.' },
+      { q: 'Can I sign in with my Claude account?', a: 'No. Anthropic’s policy doesn’t allow Claude account sign-in for third-party apps. You sign in with Google or GitHub and use Claude through credits or your own API key.' },
       { q: 'Does it access files on my computer?', a: 'Only when you link a folder to a project, and only within what you allow through the browser’s folder picker. File lists and contents are passed as context for task runs.' },
       { q: 'Won’t the agents run wild?', a: 'The approval level in the chat (auto / cards only / read-only) limits the manager’s autonomy. Creating many cards or saving a global skill goes through an approval gate, and repeated failures trip a circuit breaker.' },
-      { q: 'Which models does it use?', a: 'You can assign a Claude model to each agent; unassigned agents use the default. The usage screen shows measured tokens alongside a cost estimate based on public pricing.' },
+      { q: 'Which models does it use?', a: 'You can assign a Claude model to each agent; unassigned agents use the default. While you only have free credits, runs use Haiku and Sonnet; topping up unlocks the larger models. The usage screen shows measured tokens alongside credit deductions.' },
       { q: 'Is it open source?', a: 'Yes. The repository is public under AGPL-3.0. Self-host it or read the code.' },
     ],
   },
@@ -771,7 +839,43 @@ function LandingContent({ lang }: { lang: LandingLang }) {
         </div>
       </section>
 
-      {/* ── Section 8 — Start / 무료 + Claude API 키 ────────── */}
+      {/* ── Section 8 — Pricing / 크레딧 · 팀 · 기업 (docs/pricing-credits.md §5) ── */}
+      <section className="lp-pricing" id={id('pricing')}>
+        <header className="lp-sec-head lp-sec-head-center lp-reveal">
+          <p className="lp-eyebrow">{t.pricing.eyebrow}</p>
+          <h2 className="lp-h3">{t.pricing.h}</h2>
+          <p className="lp-p">{t.pricing.p}</p>
+        </header>
+        <div className="lp-plans">
+          {t.pricing.plans.map((plan, i) => (
+            <article key={plan.name} className={`lp-plan lp-reveal${plan.featured ? ' lp-plan-featured' : ''}`} style={{ '--d': i } as CSSProperties}>
+              <div className="lp-plan-head">
+                <h3>{plan.name}</h3>
+                {plan.tag ? <span className="lp-plan-tag">{plan.tag}</span> : null}
+              </div>
+              <p className="lp-plan-price">{plan.price}</p>
+              <p className="lp-plan-unit">{plan.unit}</p>
+              <p className="lp-plan-d">{plan.d}</p>
+              <ul className="lp-plan-perks">
+                {plan.perks.map((perk) => (
+                  <li key={perk}><Icon name="check" />{perk}</li>
+                ))}
+              </ul>
+              {/* oxlint-disable-next-line next/no-html-link-for-pages -- 정적 빌드에서 /login 은 앱 주소로 치환됩니다 */}
+              <a className={`lp-btn${plan.featured ? '' : ' lp-btn-ghost'}`} href={plan.href}>
+                {plan.cta}
+                {plan.featured ? <i className="lp-btn-line" /> : null}
+              </a>
+            </article>
+          ))}
+        </div>
+        <p className="lp-plan-note lp-reveal">
+          {t.pricing.note} <a href={href('start')}>{t.pricing.noteLink}</a>
+        </p>
+        <p className="lp-plan-rate lp-reveal">{t.pricing.rateNote}</p>
+      </section>
+
+      {/* ── Section 9 — Start / 가입 즉시 300 크레딧 ────────── */}
       <section className="lp-start" id={id('start')}>
         <div className="lp-start-left lp-reveal">
           <p className="lp-eyebrow">{t.start.eyebrow}</p>
@@ -803,7 +907,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
         </ol>
       </section>
 
-      {/* ── Section 9 — FAQ ────────────────────────────────── */}
+      {/* ── Section 10 — FAQ ───────────────────────────────── */}
       <section className="lp-faq" id={id('faq')}>
         <header className="lp-sec-head lp-reveal">
           <p className="lp-eyebrow">{t.faq.eyebrow}</p>
@@ -822,7 +926,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
         </div>
       </section>
 
-      {/* ── Section 10 — CTA ───────────────────────────────── */}
+      {/* ── Section 11 — CTA ───────────────────────────────── */}
       <section className="lp-cta" id={id('cta')}>
         <div className="lp-cta-bg" aria-hidden="true">
           <div className="lp-stars lp-stars-a" />
@@ -1594,6 +1698,26 @@ const LP_CSS = `
 .lp-td-us .lp-ic{ width:16px; height:16px; color:var(--lp-success); }
 
 /* ── 시작 안내 ── */
+.lp-pricing{ background:var(--lp-bg); padding:clamp(70px,9vw,130px) var(--lp-gutter) clamp(40px,5vw,64px); border-top:1px solid var(--lp-line-soft); }
+.lp-plans{ display:grid; grid-template-columns:1fr; gap:18px; max-width:1120px; margin:0 auto; }
+@media (min-width:860px){ .lp-plans{ grid-template-columns:repeat(3,minmax(0,1fr)); align-items:stretch; } }
+.lp-plan{ display:flex; flex-direction:column; padding:28px 26px 26px; border:1px solid var(--lp-line); border-radius:var(--lp-r-lg); background:var(--lp-card); box-shadow:inset 0 1px 0 #ffffff0a; transition:border-color .25s ease,transform .3s var(--lp-ease),box-shadow .3s ease; }
+.lp-plan:hover{ border-color:#a78bfa66; transform:translateY(-3px); box-shadow:inset 0 1px 0 #ffffff14,0 0 50px -20px #4f46e5; }
+.lp-plan-featured{ border-color:#a78bfa88; background:linear-gradient(180deg,#4f46e51a,#fafafa05 60%); box-shadow:inset 0 1px 0 #ffffff1a,0 0 70px -24px #6366f1; }
+.lp-plan-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.lp-plan-head h3{ margin:0; font-size:15px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--lp-muted); }
+.lp-plan-tag{ font-size:10.5px; font-weight:600; letter-spacing:.06em; padding:4px 10px; border-radius:99px; background:#ffffff14; color:var(--lp-text); }
+.lp-plan-featured .lp-plan-tag{ background:var(--lp-brand); color:var(--lp-on-brand); }
+.lp-plan-price{ margin:18px 0 0; font-size:clamp(26px,2.6vw,32px); font-weight:600; letter-spacing:-.02em; color:var(--lp-ink); line-height:1.15; }
+.lp-plan-unit{ margin:6px 0 0; font-size:13px; color:var(--lp-muted); }
+.lp-plan-d{ margin:16px 0 0; font-size:14px; line-height:1.7; color:var(--lp-text); }
+.lp-plan-perks{ list-style:none; margin:18px 0 26px; padding:0; display:flex; flex-direction:column; gap:9px; flex:1; }
+.lp-plan-perks li{ display:flex; align-items:flex-start; gap:10px; font-size:13.5px; line-height:1.5; color:var(--lp-text); }
+.lp-plan-perks .lp-ic{ flex:none; width:16px; height:16px; margin-top:2px; color:var(--lp-success); }
+.lp-plan .lp-btn{ justify-content:center; }
+.lp-plan-note{ max-width:760px; margin:clamp(28px,4vw,40px) auto 0; text-align:center; font-size:14px; line-height:1.7; color:var(--lp-text); }
+.lp-plan-note a{ color:var(--lp-ink); text-decoration:underline; text-underline-offset:3px; white-space:nowrap; }
+.lp-plan-rate{ max-width:760px; margin:10px auto 0; text-align:center; font-size:12.5px; color:var(--lp-muted); }
 .lp-start{ background:var(--lp-bg); padding:clamp(70px,9vw,130px) var(--lp-gutter); display:grid; grid-template-columns:1fr; gap:clamp(32px,5vw,72px); align-items:start; }
 @media (min-width:900px){ .lp-start{ grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); } }
 .lp-start-left .lp-p{ margin:16px 0 0; }

@@ -20,6 +20,8 @@ export async function fetchApiKeyState(): Promise<ApiKeyState> {
  * 화면 곳곳의 fetch 를 일일이 손대지 않으려고 window.fetch 를 한 겹 감쌉니다 (앱 셸에서 한 번만).
  */
 export const NO_API_KEY_EVENT = 'orbit:no-api-key';
+/** 402 { code: 'insufficient_credits' } — 크레딧이 바닥났을 때. detail 에 서버 메시지가 실립니다. */
+export const INSUFFICIENT_CREDITS_EVENT = 'orbit:insufficient-credits';
 let installed = false;
 export function installNoApiKeyWatcher() {
   if (installed || typeof window === 'undefined') return;
@@ -27,10 +29,11 @@ export function installNoApiKeyWatcher() {
   const original = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const response = await original(input, init);
-    if (response.status === 409) {
+    if (response.status === 409 || response.status === 402) {
       try {
-        const data = await response.clone().json() as { code?: string };
+        const data = await response.clone().json() as { code?: string; error?: string };
         if (data?.code === 'no_api_key') window.dispatchEvent(new CustomEvent(NO_API_KEY_EVENT));
+        if (data?.code === 'insufficient_credits') window.dispatchEvent(new CustomEvent(INSUFFICIENT_CREDITS_EVENT, { detail: data.error ?? '' }));
       } catch { /* JSON 이 아니면 우리 관심사가 아닙니다 */ }
     }
     return response;
@@ -39,7 +42,8 @@ export function installNoApiKeyWatcher() {
 
 /**
  * Anthropic API 키 연결 모달.
- * OAuth 모드에서는 키가 없으면 에이전트를 돌릴 수 없으므로 첫 로그인과 409 응답 때 자동으로 뜹니다.
+ * 키는 선택입니다 — 없으면 크레딧으로 실행됩니다(docs/pricing-credits.md). 운영자 키가 없어 크레딧 경로가 닫힌 배포에서만
+ * (`required`) 첫 로그인과 409 응답 때 자동으로 뜹니다.
  * 키는 서버로 한 번 보내져 검증·암호화 저장되고, 이 컴포넌트는 값을 어디에도 남기지 않습니다.
  */
 export function ApiKeyDialog({ open, state, onOpenChange, onSaved, onNotice }: {
@@ -75,7 +79,7 @@ export function ApiKeyDialog({ open, state, onOpenChange, onSaved, onNotice }: {
       <DialogHeader>
         <DialogTitle><KeyRound size={16} /> {replacing ? t('Anthropic API 키 바꾸기') : t('Anthropic API 키 연결')}</DialogTitle>
         <DialogDescription>
-          {t('orbitcrew 는 Claude 계정이 아니라 본인의 Anthropic API 키로 에이전트를 돌립니다. 사용량은 본인 Console 에 청구되고, 이 앱은 사용자별 토큰·비용만 실측합니다.')}
+          {t('본인 Anthropic API 키를 연결하면 크레딧 대신 이 키로 에이전트를 돌립니다. 사용량은 본인 Console 에 청구되고, orbitcrew 는 무료입니다. 이 앱은 사용자별 토큰·비용만 실측합니다.')}
         </DialogDescription>
       </DialogHeader>
 

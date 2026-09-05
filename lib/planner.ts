@@ -3,7 +3,7 @@
  * 프로젝트 목표를 받아 에이전트별로 나눈 업무 카드 초안을 만듭니다. 서버는 제안만 하고, 실제 카드 생성은
  * 사용자가 검토한 뒤 apply 로 따로 요청합니다 (에이전트가 보드를 멋대로 채우지 않게).
  */
-import { runClaudeAgent, type ToolDefinition } from './claude';
+import { runClaudeAgent, type ClaudeCredential, type ToolDefinition } from './claude';
 import { loadMemoryScopes, renderMemorySection } from './memory';
 import { type Priority, toPriority } from './priority';
 
@@ -58,7 +58,7 @@ const PLAN_TOOL: ToolDefinition = {
 export type PlanParams = {
   db: D1Database;
   userId: string;
-  apiKey: string;
+  apiKey: ClaudeCredential;
   model: string;
   project: { id: string; name: string; description: string };
   goal: string;

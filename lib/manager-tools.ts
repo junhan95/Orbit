@@ -9,7 +9,7 @@
  * 폭주를 막으려고 실행당 합류 4명 · 위임 4건으로 상한을 둡니다.
  */
 import { AGENT_CATALOG, findCatalogRole, renderCatalog, uniqueAgentName } from '@/lib/agent-catalog';
-import type { ToolDefinition } from '@/lib/claude';
+import type { ClaudeCredential, ToolDefinition } from '@/lib/claude';
 import { runTask } from '@/lib/run-task';
 import { type Priority, toPriority } from '@/lib/priority';
 import { recallDocUpsert } from '@/lib/recall';
@@ -75,7 +75,7 @@ export type ManagerEvent =
 export type ManagerContext = {
   db: D1Database;
   userId: string;
-  apiKey: string;
+  apiKey: ClaudeCredential;
   fallbackModel: string;
   projectId: string;
   projectName: string;

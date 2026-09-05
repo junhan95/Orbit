@@ -1,7 +1,8 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { runTask } from '@/lib/run-task';
-import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
+import { credentialErrorResponse, resolveCredential } from '@/lib/credits';
+import type { ClaudeCredential } from '@/lib/claude';
 
 /**
  * POST /api/agents/run { taskId, force?, folderContext? }
@@ -13,9 +14,9 @@ export async function POST(request: Request) {
   if (typeof body?.taskId !== 'string') return Response.json({ error: '실행할 업무가 필요합니다.' }, { status: 400 });
 
   const { model: fallbackModel } = getRuntimeConfig();
-  let apiKey: string;
-  try { apiKey = await resolveApiKey(getDatabase(), user.userId); }
-  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
+  let apiKey: ClaudeCredential;
+  try { apiKey = await resolveCredential(getDatabase(), user.userId); }
+  catch (error) { const denied = credentialErrorResponse(error); if (denied) return denied; throw error; }
 
   const outcome = await runTask({
     db: getDatabase(), userId: user.userId, taskId: body.taskId, apiKey, fallbackModel,

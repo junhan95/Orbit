@@ -8,7 +8,7 @@
  * 트리거: 요약 이후 메시지가 COMPACT_TRIGGER 개를 넘으면, 최근 KEEP_RECENT 개를 남기고 나머지를 요약에 흡수.
  * 응답을 막지 않도록 runInBackground 로 돌립니다.
  */
-import { runClaudeAgent, type ClaudeMessage } from './claude';
+import { runClaudeAgent, type ClaudeCredential, type ClaudeMessage } from './claude';
 import { recallDocUpsert } from './recall';
 import { usageInsert } from './usage';
 
@@ -52,7 +52,7 @@ export function shouldCompact(messagesSinceSummary: number): boolean {
 
 export type CompactParams = {
   db: D1Database; userId: string; projectId: string; agentId: string; agentName: string;
-  apiKey: string; model: string;
+  apiKey: ClaudeCredential; model: string;
 };
 
 /**

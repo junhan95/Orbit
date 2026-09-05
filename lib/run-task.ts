@@ -3,7 +3,7 @@
  * 워커 컨텍스트·기억·스킬·게이트·검토·관제·기억 리뷰가 전부 여기 한곳에 있어야 두 경로의 동작이 같습니다.
  */
 import { getRuntimeConfig } from '@/db';
-import { runClaudeAgent, type ToolDefinition } from '@/lib/claude';
+import { runClaudeAgent, type ClaudeCredential, type ToolDefinition } from '@/lib/claude';
 import { PRIORITY_HINT, toPriority } from '@/lib/priority';
 import {
   MANAGER_TOOLS, MANAGER_TOOL_NAMES, createManagerLog, executeManagerTool, loadMembers, renderTeam,
@@ -74,7 +74,7 @@ function formatWhen(timestamp: number): string {
 
 export type RunTaskParams = {
   db: D1Database; userId: string; taskId: string;
-  apiKey: string; fallbackModel: string;
+  apiKey: ClaudeCredential; fallbackModel: string;
   /** 서킷브레이커 무시 */
   force?: boolean;
   /** 브라우저가 읽어 보낸 연결 폴더 스냅샷 */
@@ -332,6 +332,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
       outputBody,
       truncated ? '\n\n---\n※ 출력 토큰 한도에 걸려 여기서 끊겼습니다. 더 긴 결과가 필요하면 app/api/agents/run/route.ts 의 maxTokens 를 올리세요.' : '',
       result.stopReason === 'max_iterations' ? '\n\n---\n※ 툴 호출 반복 상한에 도달해 중단했습니다.' : '',
+      result.stopReason === 'insufficient_credits' ? '\n\n---\n※ 크레딧 잔액이 부족해 여기서 중단했습니다. 충전하거나 본인 API 키를 연결한 뒤 다시 실행해 주세요.' : '',
     ].join('').trim();
     // complete_task 를 안 부르고 끝난 경우의 안전망: 본문 앞부분을 요약으로 씁니다.
     const summary = done?.summary ?? clip(outputBody.replace(/\s+/g, ' '), 300);

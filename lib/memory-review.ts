@@ -5,7 +5,7 @@
  * 응답을 막지 않도록 waitUntil 로 백그라운드에서 돌립니다.
  */
 import { waitUntil } from 'cloudflare:workers';
-import { runClaudeAgent, type ClaudeMessage, messageText } from './claude';
+import { runClaudeAgent, type ClaudeCredential, type ClaudeMessage, messageText } from './claude';
 import { MEMORY_REVIEW_PROMPT, MEMORY_TOOL, executeMemoryTool } from './memory';
 import { usageInsert } from './usage';
 
@@ -23,7 +23,7 @@ export function runInBackground(task: () => Promise<unknown>): void {
 export type MemoryReviewParams = {
   db: D1Database;
   userId: string;
-  apiKey: string;
+  apiKey: ClaudeCredential;
   model: string;
   /** 원래 실행/대화의 시스템 프롬프트 (기억 블록 포함) — 같은 맥락에서 판단하게 합니다 */
   system: string;

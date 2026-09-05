@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
@@ -295,3 +296,48 @@ export const userKeys = sqliteTable('user_keys', {
   keyHint: text('key_hint').notNull(),
   createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
 });
+
+/**
+ * 크레딧 원장 (docs/pricing-credits.md §3). 잔액을 한 칸에 두고 가감하지 않고, 모든 변동을 불변 행으로 쌓아
+ * 잔액 = SUM(amount_mc) 로 구합니다. 단위는 밀리크레딧(1/1,000 크레딧 = 0.01원) 정수.
+ *   kind   : trial | charge | bonus | usage | refund | adjust   (usage·refund 는 음수)
+ *   bucket : paid | promo — 차감은 promo 부터. 환불 시 paid 잔액만 보면 되게 합니다.
+ *   trial 은 사용자당 한 번뿐 — 부분 유니크 인덱스가 중복 지급을 막습니다.
+ */
+export const creditLedger = sqliteTable('credit_ledger', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  kind: text('kind').notNull(), bucket: text('bucket').notNull(),
+  amountMc: integer('amount_mc').notNull(),
+  refType: text('ref_type'), refId: text('ref_id'),
+  meta: text('meta'),                  // JSON: 모델별 토큰, 환율·배수 스냅샷 등
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  index('idx_credit_ledger_user').on(table.userId, table.createdAt),
+  uniqueIndex('idx_credit_ledger_trial').on(table.userId).where(sql`kind = 'trial'`),
+]);
+
+/** 실행 중 가예약. 사용 가능 잔액 = 원장 합계 − open 상태 예약 합계. 정산되면 settled, 취소되면 released. */
+export const creditHolds = sqliteTable('credit_holds', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  runId: text('run_id').notNull(),
+  amountMc: integer('amount_mc').notNull(),
+  status: text('status').notNull(),    // open | settled | released
+  createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_credit_holds_run').on(table.runId),
+  index('idx_credit_holds_user_status').on(table.userId, table.status),
+]);
+
+/** 결제(충전) 주문. id 가 PG 의 orderId 이고, 승인되면 원장에 charge(+bonus) 행이 붙습니다. 카드 번호는 저장하지 않습니다. */
+export const payments = sqliteTable('payments', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  provider: text('provider').notNull(),          // 'toss'
+  paymentKey: text('payment_key'),
+  amountKrw: integer('amount_krw').notNull(),
+  creditsMc: integer('credits_mc').notNull(),
+  bonusMc: integer('bonus_mc').notNull().default(0),
+  status: text('status').notNull(),              // pending | done | failed | canceled | refunded
+  method: text('method'), receiptUrl: text('receipt_url'),
+  raw: text('raw'),                              // 승인 응답 JSON
+  createdAt: integer('created_at').notNull(), approvedAt: integer('approved_at'),
+}, (table) => [index('idx_payments_user').on(table.userId, table.createdAt)]);

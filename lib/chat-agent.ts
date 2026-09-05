@@ -15,7 +15,7 @@
  *   // 저장 시 chatMessageIndex(...) 를 batch 에 함께 넣어 회상 인덱스에 반영합니다.
  */
 import type { Autonomy } from './autonomy';
-import type { ClaudeMessage, ToolDefinition, ToolExecutor } from './claude';
+import type { ClaudeCredential, ClaudeMessage, ToolDefinition, ToolExecutor } from './claude';
 import { CONTEXT_MAX_MESSAGES, loadChatSummary, renderChatSummary, type ChatSummary } from './compaction';
 import {
   MANAGER_TOOLS, MANAGER_TOOL_NAMES, createManagerLog, executeManagerTool, loadMembers, renderTeam,
@@ -38,7 +38,7 @@ export type ChatContext = {
  * — 업무 카드 실행과 똑같은 도구입니다 (lib/manager-tools.ts).
  */
 export type ChatManagerOptions = {
-  apiKey: string;
+  apiKey: ClaudeCredential;
   fallbackModel: string;
   /** 브라우저가 읽어 보낸 연결 폴더 스냅샷 */
   folderContext?: string;

@@ -1,7 +1,8 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
-import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
+import { credentialErrorResponse, resolveCredential } from '@/lib/credits';
+import type { ClaudeCredential } from '@/lib/claude';
 import { compactConversation, loadChatSummary, shouldCompact } from '@/lib/compaction';
 import { runInBackground, runMemoryReview } from '@/lib/memory-review';
 import { runClaudeAgent } from '@/lib/claude';
@@ -61,9 +62,9 @@ export async function POST(request: Request) {
 
   const { model: fallbackModel } = getRuntimeConfig();
   const model = resolveAgentModel(context.agentModel, fallbackModel);
-  let apiKey: string;
-  try { apiKey = await resolveApiKey(db, user.userId); }
-  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse({ userMessage }); throw error; }
+  let apiKey: ClaudeCredential;
+  try { apiKey = await resolveCredential(db, user.userId); }
+  catch (error) { const denied = credentialErrorResponse(error, { userMessage }); if (denied) return denied; throw error; }
 
   const chat = await prepareChatTurn(db, user.userId, {
     projectId, agentId, context,
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
       system: chat.system, messages: chat.messages, tools: chat.tools, executeTool: chat.executeTool,
     });
     if (!result.text) throw new Error('답변을 생성하지 못했습니다.');
+    if (result.stopReason === 'insufficient_credits') result.text += '\n\n---\n※ 크레딧 잔액이 부족해 여기서 중단했습니다. 충전하거나 본인 API 키를 연결해 주세요.';
 
     const assistantMessage: ChatRow = { id: crypto.randomUUID(), role: 'assistant', content: result.text, createdAt: Date.now() };
     await db.batch([

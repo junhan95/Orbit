@@ -1,7 +1,8 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_TEXT_CHARS, type AttachmentPayload } from '@/lib/attachments';
-import { ApiKeyMissingError, apiKeyMissingResponse, resolveApiKey } from '@/lib/user-keys';
+import { credentialErrorResponse, resolveCredential } from '@/lib/credits';
+import type { ClaudeCredential } from '@/lib/claude';
 import { toAutonomy } from '@/lib/autonomy';
 import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
 import type { ManagerEvent } from '@/lib/manager-tools';
@@ -96,9 +97,9 @@ export async function POST(request: Request) {
 
   const { model: fallbackModel, reviewModel } = getRuntimeConfig();
   const model = resolveAgentModel(context.agentModel, fallbackModel);
-  let apiKey: string;
-  try { apiKey = await resolveApiKey(db, user.userId); }
-  catch (error) { if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(); throw error; }
+  let apiKey: ClaudeCredential;
+  try { apiKey = await resolveCredential(db, user.userId); }
+  catch (error) { const denied = credentialErrorResponse(error); if (denied) return denied; throw error; }
 
   // 파일 자체는 보관하지 않습니다 — 기록에는 이름만 남깁니다.
   const storedContent = attachments.length
@@ -149,6 +150,7 @@ export async function POST(request: Request) {
           onToolCall: (name) => { send({ type: 'tool', name }); },
         });
         if (!result.text) throw new Error('답변을 생성하지 못했습니다.');
+        if (result.stopReason === 'insufficient_credits') { const note = '\n\n---\n※ 크레딧 잔액이 부족해 여기서 중단했습니다. 충전하거나 본인 API 키를 연결해 주세요.'; result.text += note; send({ type: 'delta', text: note }); }
 
         const assistantMessage: ChatRow = { id: crypto.randomUUID(), role: 'assistant', content: result.text, createdAt: Date.now() };
         await db.batch([
