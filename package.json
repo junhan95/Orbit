@@ -19,7 +19,10 @@
     "db:migrate:baseline": "node scripts/migrate.mjs --baseline",
     "evals": "node scripts/evals.mjs",
     "test": "vitest run",
-    "check": "npm run lint && npm run test && npm run db:migrate:check"
+    "check": "npm run lint && npm run test && npm run db:migrate:check",
+    "deploy:config": "node scripts/deploy.mjs config",
+    "deploy:migrate": "node scripts/deploy.mjs migrate",
+    "deploy": "node scripts/deploy.mjs all"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

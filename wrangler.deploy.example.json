@@ -1,0 +1,9 @@
+{
+  "name": "orbit",
+  "d1": { "database_name": "orbit", "database_id": "<wrangler d1 create orbit 결과의 database_id>" },
+  "vars": {
+    "AUTH_MODE": "oauth",
+    "APP_URL": "https://orbit.<계정-서브도메인>.workers.dev",
+    "GOOGLE_CLIENT_ID": "<구글 클라이언트 ID>"
+  }
+}

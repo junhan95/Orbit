@@ -69,6 +69,7 @@ LOCAL_USER_ID= / LOCAL_USER_NAME= / LOCAL_USER_EMAIL=
 | `npm run evals` | 실제 실행 10건을 케이스로 한 회귀 eval (Claude API 호출, 비용 발생) |
 | `npm run db:migrate` / `:check` / `:status` | 마이그레이션 적용 / 빈 DB 전체 적용 검증 / 상태 |
 | `npm run build` | 프로덕션 빌드 |
+| `npm run deploy` | 빌드 → 배포 설정 → 원격 D1 마이그레이션 → Cloudflare Workers 배포 ([`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md)) |
 
 ## 구조
 
@@ -97,6 +98,7 @@ middleware.ts        로그인 게이트
 - [`docs/orbit-collaboration-blueprint.md`](docs/orbit-collaboration-blueprint.md) — 협업 알고리즘: 무엇을 어디서 가져왔고 어떻게 구현했는지
 - [`docs/auth-flow.md`](docs/auth-flow.md) — 접속 흐름, 정책 근거, BYOK 계획
 - [`docs/db-migrations.md`](docs/db-migrations.md) — 마이그레이션 운영
+- [`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md) — Cloudflare Workers 배포 절차
 - [`docs/hermes-analysis.md`](docs/hermes-analysis.md) · [`docs/ai-native-sdlc-review.md`](docs/ai-native-sdlc-review.md) — 참조 모델 분석
 - [`evals/README.md`](evals/README.md) — eval 케이스 작성법
 
