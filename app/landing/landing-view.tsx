@@ -389,10 +389,10 @@ const LP_CSS = `
 .lp-nav-links{ display:flex; gap:34px; }
 .lp-nav-links a{ font-weight:700; font-size:clamp(12px,2.4vw,15px); letter-spacing:.06em; color:var(--lp-text); white-space:nowrap; }
 .lp-nav-links a:hover{ color:var(--lp-ink); }
-.lp .lp-nav-cta{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; background:transparent; border:0;
-  color:var(--lp-ink); font-size:14px; font-weight:500; padding:12px 24px; cursor:pointer;
-  border-radius:var(--lp-r-full); box-shadow:inset 0 0 0 1px var(--lp-line-strong); transition:background .2s ease; }
-.lp .lp-nav-cta:hover{ background:var(--lp-ink); color:var(--lp-on-inverse); box-shadow:inset 0 0 0 1px var(--lp-ink); }
+.lp .lp-nav-cta{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; background:var(--lp-brand); border:0;
+  color:var(--lp-on-brand); font-size:14px; font-weight:600; padding:12px 24px; cursor:pointer;
+  border-radius:var(--lp-r-full); transition:background .2s ease; }
+.lp .lp-nav-cta:hover{ background:var(--lp-brand-deep); }
 .lp-nav-cta-arrow{ transition:transform .2s ease; }
 .lp .lp-nav-cta:hover .lp-nav-cta-arrow{ transform:translateX(3px); }
 .lp-burger{ display:none; margin-left:auto; background:transparent; border:0; padding:8px; cursor:pointer; flex-direction:column; gap:5px; }
