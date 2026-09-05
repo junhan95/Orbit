@@ -1,0 +1,54 @@
+# 랜딩페이지(/landing)를 정적으로 구워 GitHub Pages 에 올립니다.
+# 앱 본체는 Cloudflare Workers 에서 돌고, 여기는 마케팅 페이지만 담당합니다.
+# CTA 가 가리킬 앱 주소는 저장소 Variables 의 LANDING_APP_URL 로 정합니다 (없으면 상대 경로).
+name: Deploy landing to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/landing/**'
+      - 'app/globals.css'
+      - 'scripts/build-landing.mjs'
+      - '.github/workflows/pages.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - run: node scripts/build-landing.mjs
+        env:
+          LANDING_APP_URL: ${{ vars.LANDING_APP_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-landing
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

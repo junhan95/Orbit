@@ -100,21 +100,21 @@ export function LandingView() {
             className="lp-burger"
             type="button"
             aria-label="메뉴"
+            aria-controls="lp-mobile-menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
           >
             <span /><span /><span />
           </button>
 
-          {menuOpen && (
-            <div className="lp-mobile-menu">
-              {NAV_LINKS.map(([label, href]) => (
-                <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>
-              ))}
-              {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
-              <a href="/login" onClick={() => setMenuOpen(false)}>앱 열기</a>
-            </div>
-          )}
+          {/* 항상 렌더하고 hidden 으로 숨깁니다 — 정적 빌드(scripts/build-landing.mjs)에서는 작은 스크립트가 hidden 을 토글합니다 */}
+          <div className="lp-mobile-menu" hidden={!menuOpen} id="lp-mobile-menu">
+            {NAV_LINKS.map(([label, href]) => (
+              <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>
+            ))}
+            {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
+            <a href="/login" onClick={() => setMenuOpen(false)}>앱 열기</a>
+          </div>
         </nav>
 
         <div className="lp-hero-body">
@@ -383,6 +383,7 @@ const LP_CSS = `
 .lp-burger{ display:none; margin-left:auto; background:transparent; border:0; padding:8px; cursor:pointer; flex-direction:column; gap:5px; }
 .lp-burger span{ width:22px; height:2px; background:var(--lp-ink); display:block; }
 .lp-mobile-menu{ flex-basis:100%; display:flex; flex-direction:column; gap:18px; padding:22px 0 4px; }
+.lp-mobile-menu[hidden]{ display:none; }
 .lp-mobile-menu a{ font-weight:700; color:var(--lp-ink); }
 
 .lp-hero-body{ position:relative; z-index:3; flex:1; display:flex; flex-direction:column; justify-content:center;
@@ -467,7 +468,7 @@ const LP_CSS = `
 /* ── 모바일 ── */
 @media (max-width:700px){
   .lp{ --lp-indent:34px; }
-  .lp-nav-links,.lp-nav-cta{ display:none; }
+  .lp .lp-nav-links,.lp .lp-nav-cta{ display:none; }
   .lp-burger{ display:flex; }
   .lp-scrim{ display:none; }
   .lp-nav{ order:1; }
