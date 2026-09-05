@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { OrbitMark } from '@/components/orbit-mark';
+import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
 
 /**
  * Orbit 랜딩페이지.
@@ -216,8 +217,22 @@ export function LandingView() {
       </section>
 
       <footer className="lp-footer">
-        <span className="lp-logo-word lp-footer-word">orbit</span>
-        <span>AI Agent Command Center</span>
+        <div className="lp-footer-row">
+          <span className="lp-footer-brand">
+            <span className="lp-logo-word lp-footer-word">orbit</span>
+            <span>AI Agent Command Center</span>
+          </span>
+          <nav className="lp-footer-links" aria-label="법적 고지">
+            {LEGAL_LINKS.map((link) => (
+              // oxlint-disable-next-line next/no-html-link-for-pages -- 정적 빌드에서는 절대 주소로 치환됩니다 (scripts/build-landing.mjs)
+              <a href={link.href} key={link.href}>{link.label}</a>
+            ))}
+            <a href={`mailto:${COMPANY.email}`}>문의</a>
+          </nav>
+        </div>
+        <p className="lp-footer-legal">
+          {COMPANY.name} · 대표 {COMPANY.ceo} · 사업자등록번호 {COMPANY.registration} · {COMPANY.address} · {COMPANY.email}
+        </p>
       </footer>
     </div>
   );
@@ -440,9 +455,15 @@ const LP_CSS = `
 .lp-h2-center{ align-items:center; }
 .lp-h2-center .lp-in2{ padding-left:0; }
 .lp-p-center{ margin:0; }
-.lp-footer{ background:var(--lp-bg); border-top:1px solid var(--lp-line); padding:26px var(--lp-gutter);
-  display:flex; align-items:center; gap:14px; font-size:12px; color:var(--lp-muted); }
+.lp-footer{ background:var(--lp-bg); border-top:1px solid var(--lp-line); padding:26px var(--lp-gutter) 30px;
+  display:flex; flex-direction:column; gap:14px; font-size:12px; color:var(--lp-muted); }
+.lp-footer-row{ display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; }
+.lp-footer-brand{ display:inline-flex; align-items:center; gap:14px; }
 .lp-footer-word{ font-size:18px; }
+.lp-footer-links{ display:flex; gap:18px; }
+.lp .lp-footer-links a{ color:var(--lp-muted); text-decoration:none; }
+.lp .lp-footer-links a:hover{ color:var(--lp-ink); text-decoration:underline; }
+.lp-footer-legal{ margin:0; font-size:11.5px; line-height:1.7; color:var(--lp-muted); }
 
 /* ── 궤도 SVG ── */
 .lp-orbit{ width:100%; height:auto; display:block; }

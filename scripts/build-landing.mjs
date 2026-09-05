@@ -17,6 +17,8 @@ import { createServer } from 'vite';
 
 const OUT = 'dist-landing';
 const APP_URL = (process.env.LANDING_APP_URL || '').replace(/\/$/, '');
+/** 약관·방침 페이지는 Worker 가 내므로 정적 빌드에서는 서비스 도메인의 절대 주소로 바꿉니다. */
+const SITE_URL = (process.env.LANDING_SITE_URL || 'https://orbitcrew.ai').replace(/\/$/, '');
 
 function cssBlock(css, selector) {
   const start = css.indexOf(`${selector} {`);
@@ -47,6 +49,7 @@ try {
 }
 
 if (APP_URL) body = body.replaceAll('href="/login"', `href="${APP_URL}/login"`);
+for (const path of ['/privacy', '/terms']) body = body.replaceAll(`href="${path}"`, `href="${SITE_URL}${path}"`);
 
 const html = `<!doctype html>
 <html lang="ko">
