@@ -32,6 +32,8 @@ export interface ClaudeBilling {
   resolveModel?(model: string): string;
   /** 호출 직전. 잔액이 이미 없으면 던집니다. */
   beforeCall?(): void | Promise<void>;
+  /** Release a call reservation on every HTTP/stream completion path. */
+  afterCall?(): void | Promise<void>;
   /** 응답 하나가 올 때마다. stop=true 면 더 이상 호출하지 않습니다. */
   onUsage?(model: string, usage: ClaudeUsage): { stop: boolean } | Promise<{ stop: boolean }>;
 }
@@ -49,6 +51,12 @@ export type ToolInput = Record<string, unknown>;
 /** 툴 실행기. 문자열이나 JSON 직렬화 가능한 값을 돌려주면 그대로 tool_result 가 됩니다. 예외를 던지면 is_error 로 전달됩니다. */
 export type ToolExecutor = (name: string, input: ToolInput) => Promise<unknown>;
 export type ToolCallTrace = { name: string; input: ToolInput; ok: boolean; chars: number };
+
+function toolReturnedError(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && (
+    ('error' in value && value.error !== undefined && value.error !== null) || ('ok' in value && value.ok === false)
+  );
+}
 export type AgentTurn = { text: string; toolNames: string[] };
 /** text 는 마지막 응답의 텍스트, turns 에는 반복마다의 텍스트와 그 턴에서 호출한 툴 이름이 순서대로 담깁니다. */
 export type AgentRunResult = ClaudeResult & { iterations: number; toolCalls: ToolCallTrace[]; turns: AgentTurn[]; usagePerIteration: ClaudeUsage[] };
@@ -70,6 +78,15 @@ type MessagesResponse = {
   stop_reason?: string;
   error?: { message?: string };
 };
+
+async function billedRequest<T extends MessagesResponse>(billing: ClaudeBilling | null, model: string, invoke: () => Promise<T>) {
+  await billing?.beforeCall?.();
+  try {
+    const data = await invoke();
+    const verdict = await billing?.onUsage?.(data.model || model, readUsage(data.usage));
+    return { data, verdict };
+  } finally { await billing?.afterCall?.(); }
+}
 type ApiMessage = { role: 'user' | 'assistant'; content: string | unknown[] };
 
 type RequestOptions = {
@@ -130,6 +147,7 @@ async function requestMessages(options: RequestOptions, messages: ApiMessage[]):
   const payload = buildPayload(options, messages, false);
 
   const response = await fetch(ANTHROPIC_ENDPOINT, {
+    signal: AbortSignal.timeout(180_000),
     method: 'POST',
     headers: {
       'x-api-key': options.apiKey,
@@ -191,12 +209,10 @@ export async function callClaude(options: {
 
   const billing = billingOf(options.apiKey);
   const model = billing?.resolveModel?.(options.model) ?? options.model;
-  await billing?.beforeCall?.();
-  const data = await requestMessages(
+  const { data } = await billedRequest(billing, model, () => requestMessages(
     { apiKey: credentialKey(options.apiKey), model, system: options.system, maxTokens: options.maxTokens, tools: webSearchTool(options.webSearchMaxUses) },
     messages,
-  );
-  await billing?.onUsage?.(data.model || model, readUsage(data.usage));
+  ));
   const text = textOf(data.content);
   if (!text) throw new Error('Claude가 결과를 반환하지 못했습니다.');
   return { id: data.id ?? null, model: data.model || model, text, stopReason: data.stop_reason ?? null, usage: readUsage(data.usage) };
@@ -218,6 +234,7 @@ export async function runClaudeAgent(options: {
   executeTool?: ToolExecutor;
   maxIterations?: number;
   webSearchMaxUses?: number;
+  beforeIteration?: () => Promise<void>;
 }): Promise<AgentRunResult> {
   const initial = normalizeMessages(options.messages);
   if (!initial.length) throw new Error('Claude에 보낼 메시지가 없습니다.');
@@ -238,15 +255,14 @@ export async function runClaudeAgent(options: {
   const usagePerIteration: ClaudeUsage[] = [];
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    await billing?.beforeCall?.();
-    const data = await requestMessages(request, conversation);
+    await options.beforeIteration?.();
+    const { data, verdict } = await billedRequest(billing, request.model, () => requestMessages(request, conversation));
     usagePerIteration.push(readUsage(data.usage));
     usage = addUsage(usage, readUsage(data.usage));
     lastId = data.id ?? lastId;
     lastModel = data.model || lastModel;
     lastText = textOf(data.content);
     stopReason = data.stop_reason ?? null;
-    const verdict = await billing?.onUsage?.(lastModel, readUsage(data.usage));
 
     const toolUses = (data.content ?? []).filter((block) => block.type === 'tool_use' && block.name && block.id);
     turns.push({ text: lastText, toolNames: toolUses.map((use) => use.name as string) });
@@ -268,6 +284,7 @@ export async function runClaudeAgent(options: {
       try {
         if (!options.executeTool) throw new Error(`툴 실행기가 없습니다: ${name}`);
         const raw = await options.executeTool(name, input);
+        isError = toolReturnedError(raw);
         content = typeof raw === 'string' ? raw : JSON.stringify(raw ?? null);
       } catch (error) {
         isError = true;
@@ -317,6 +334,7 @@ async function streamOnce(request: RequestOptions, messages: ApiMessage[], onDel
   const payload = buildPayload(request, messages, true);
 
   const response = await fetch(ANTHROPIC_ENDPOINT, {
+    signal: AbortSignal.timeout(180_000),
     method: 'POST',
     headers: { 'x-api-key': request.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'content-type': 'application/json', accept: 'text/event-stream' },
     body: JSON.stringify(payload),
@@ -427,13 +445,11 @@ export async function streamClaudeAgent(options: StreamOptions): Promise<AgentRu
   const usagePerIteration: ClaudeUsage[] = [];
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    await billing?.beforeCall?.();
-    const data = await streamOnce(request, conversation, options.onDelta);
+    const { data, verdict } = await billedRequest(billing, request.model, () => streamOnce(request, conversation, options.onDelta));
     usagePerIteration.push(readUsage(data.usage));
     usage = addUsage(usage, readUsage(data.usage));
     lastId = data.id ?? lastId;
     lastModel = data.model || lastModel;
-    const verdict = await billing?.onUsage?.(lastModel, readUsage(data.usage));
     // 스트리밍은 중간 발화도 이미 사용자에게 흘러갔으므로 전체를 이어 붙입니다.
     const chunk = textOf(data.content);
     if (chunk) text = text ? `${text}\n\n${chunk}` : chunk;
@@ -459,6 +475,7 @@ export async function streamClaudeAgent(options: StreamOptions): Promise<AgentRu
       try {
         if (!options.executeTool) throw new Error(`툴 실행기가 없습니다: ${name}`);
         const raw = await options.executeTool(name, input);
+        isError = toolReturnedError(raw);
         content = typeof raw === 'string' ? raw : JSON.stringify(raw ?? null);
       } catch (error) {
         isError = true;

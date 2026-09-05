@@ -22,6 +22,9 @@ import { agentCommentInsert, checkCircuitBreaker, describeTaskCard, formatRunCom
 import { SAVE_SKILL_TOOL, SKILL_GUIDANCE, USE_SKILL_TOOL, executeSkillTool, listSkills, renderSkillIndex, type SkillToolContext } from '@/lib/skills';
 import { TASK_TOOLS, TASK_TOOL_NAMES, createTaskToolLog, describeFields, executeTaskTool, type TaskToolContext } from '@/lib/task-tools';
 import { usageInsert } from '@/lib/usage';
+import { acquireLease, leasedBatch, LeaseLostError, releaseLease, renewLease } from '@/lib/leases';
+import { isPreconditionError } from '@/lib/atomic';
+import { completionState } from '@/lib/run-completion';
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string; priority: string; projectId: string | null;
@@ -238,7 +241,13 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
 
   const runId = crypto.randomUUID();
   const startedAt = Date.now();
-  await db.batch([
+  const lease = await acquireLease(db, `task:${user.userId}:${task.id}`);
+  if (!lease) return { ok: false, status: 409, error: '이미 실행 중인 업무입니다. 현재 실행이 끝난 뒤 다시 시도하세요.' };
+  let leaseLost = false;
+  const heartbeat = setInterval(() => { renewLease(db, lease).catch(() => { leaseLost = true; }); }, 30_000);
+  try {
+  await leasedBatch(db, lease, [
+    db.prepare("UPDATE agent_runs SET status = 'failed', outcome = 'failed', completed_at = ? WHERE task_id = ? AND user_id = ? AND status = 'running'").bind(startedAt, task.id, user.userId),
     db.prepare('INSERT INTO agent_runs (id, task_id, user_id, agent_name, status, prompt, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(runId, task.id, user.userId, task.owner, 'running', prompt, startedAt),
     db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?')
@@ -265,6 +274,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
 
   try {
     const result = await runClaudeAgent({
+      beforeIteration: async () => { if (leaseLost) throw new LeaseLostError(); await renewLease(db, lease); },
       apiKey, model, system,
       messages: [{ role: 'user', content: prompt }],
       maxTokens: 8000,
@@ -276,6 +286,8 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
         COMPLETE_TOOL,
       ],
       async executeTool(name, input) {
+        if (leaseLost) throw new LeaseLostError();
+        await renewLease(db, lease);
         if (managerContext && MANAGER_TOOL_NAMES.has(name)) {
           return executeManagerTool(name, input, managerContext, managerLog);
         }
@@ -322,7 +334,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
 
     const completedAt = Date.now();
     const done = report.value;
-    const blocked = done?.status === 'blocked';
+    const { blocked, blockedReason } = completionState(done, result.stopReason);
     const truncated = result.stopReason === 'max_tokens';
     // 산출물 본문: complete_task 를 부른 턴의 텍스트가 실제 결과물입니다 (그 뒤 턴은 짧은 마무리 발화).
     // 없으면 가장 긴 턴을 쓰고, 마지막 턴이 별도 내용을 담고 있으면 뒤에 붙입니다.
@@ -332,7 +344,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     const closing = result.text && result.text !== mainText && result.text.length > 40 ? result.text : '';
     const outputBody = [mainText, closing].filter(Boolean).join('\n\n') || done?.summary || '';
     const output = [
-      blocked ? `⛔ 진행 불가: ${done?.blockedReason || '사유 미기재'}\n` : '',
+      blocked ? `⛔ 진행 불가: ${blockedReason}\n` : '',
       outputBody,
       truncated ? '\n\n---\n※ 출력 토큰 한도에 걸려 여기서 끊겼습니다. 더 긴 결과가 필요하면 app/api/agents/run/route.ts 의 maxTokens 를 올리세요.' : '',
       result.stopReason === 'max_iterations' ? '\n\n---\n※ 툴 호출 반복 상한에 도달해 중단했습니다.' : '',
@@ -343,7 +355,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     const outcome = blocked ? 'blocked' : 'completed';
     const metadata = JSON.stringify({
       nextActions: done?.nextActions ?? [],
-      blockedReason: done?.blockedReason ?? null,
+      blockedReason,
       iterations: result.iterations,
       stopReason: result.stopReason,
       toolCalls: result.toolCalls.map((call) => ({ name: call.name, ok: call.ok, query: typeof call.input.query === 'string' ? call.input.query : undefined })),
@@ -364,9 +376,8 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
       usagePerIteration: result.usagePerIteration.map((u) => ({ in: u.inputTokens, out: u.outputTokens, cacheWrite: u.cacheCreationTokens, cacheRead: u.cacheReadTokens })),
     });
     const nextStatus = blocked ? '대기' : '검토';
-    const blockedReason = blocked ? (done?.blockedReason || '사유 미기재') : null;
 
-    await db.batch([
+    await leasedBatch(db, lease, [
       db.prepare('UPDATE agent_runs SET status = ?, outcome = ?, output = ?, summary = ?, metadata = ?, response_id = ?, completed_at = ? WHERE id = ? AND user_id = ?')
         .bind('completed', outcome, output, summary, metadata, result.id, completedAt, runId, user.userId),
       db.prepare('UPDATE tasks SET status = ?, result = ?, summary = ?, blocked_reason = ?, updated_at = ? WHERE id = ? AND user_id = ?')
@@ -395,7 +406,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     }
     // 기억 리뷰 패스 — 응답을 막지 않고 백그라운드에서 저가 모델로 "남길 것이 있나"만 묻습니다.
     const { reviewModel } = getRuntimeConfig();
-    runInBackground(() => runMemoryReview({
+    if (!blocked) runInBackground(() => runMemoryReview({
       db, userId: user.userId, apiKey, model: reviewModel, system,
       transcript: [{ role: 'user', content: prompt }, { role: 'assistant', content: `${summary}\n\n${output}` }],
       projectId: task.projectId, agentId: agent?.id ?? null, agentName: task.owner, refId: runId,
@@ -410,7 +421,9 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : '에이전트 실행에 실패했습니다.';
-    await db.batch([
+    if (leaseLost || error instanceof LeaseLostError || isPreconditionError(error)) return { ok: false, status: 409, error: '실행 권한이 만료되어 결과를 저장하지 않았습니다. 현재 업무 상태를 확인하세요.' };
+    try {
+    await leasedBatch(db, lease, [
       db.prepare('UPDATE agent_runs SET status = ?, outcome = ?, output = ?, completed_at = ? WHERE id = ? AND user_id = ?')
         .bind('failed', 'failed', message, Date.now(), runId, user.userId),
       agentCommentInsert(db, { userId: user.userId, taskId: task.id, author: task.owner, createdAt: Date.now(), content: `⚠️ 실행 실패 — ${message}` }),
@@ -418,6 +431,9 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
       db.prepare('UPDATE tasks SET status = ?, blocked_reason = ?, updated_at = ? WHERE id = ? AND user_id = ?')
         .bind(task.status === '진행 중' ? '대기' : task.status, params.delegatedBy ? message : task.blockedReason, Date.now(), task.id, user.userId),
     ]);
-    return { ok: false, status: 502, error: message };
+    } catch (writeError) { if (!isPreconditionError(writeError)) throw writeError; }
+    const status = error instanceof Error && 'status' in error && typeof error.status === 'number' ? error.status : 502;
+    return { ok: false, status, error: message };
   }
+  } finally { clearInterval(heartbeat); await releaseLease(db, lease); }
 }

@@ -11,7 +11,8 @@
  */
 import { gateEventInsert } from './gates';
 import { recallDocUpsert } from './recall';
-import { upsertSkill } from './skills';
+import { prepareSkillWrite } from './skills';
+import { atomicBatch, isPreconditionError } from './atomic';
 
 export const ASK_TASKS_AFTER = 3;
 
@@ -62,24 +63,32 @@ export async function resolveApproval(db: D1Database, userId: string, id: string
 
   const now = Date.now();
   let result: Record<string, unknown> | undefined;
+  let statements: D1PreparedStatement[] = [];
   if (decision === 'approve') {
     const payload = safeJson(row.payload);
     try {
-      result = row.action === 'create_task' ? await applyCreateTask(db, userId, row, payload) : await applyGlobalSkill(db, userId, row, payload);
+      const prepared = row.action === 'create_task' ? await prepareCreateTask(db, userId, row, payload) : await prepareGlobalSkill(db, userId, row, payload);
+      result = prepared.result;
+      statements = prepared.statements;
     } catch (error) {
       return { ok: false, error: `승인 처리 실패: ${error instanceof Error ? error.message : String(error)}`, status: 502 };
     }
   }
-  await db.batch([
+  try {
+  await atomicBatch(db, "EXISTS (SELECT 1 FROM approvals WHERE id = ? AND user_id = ? AND status = 'pending')", [id, userId], [
+    ...statements,
     db.prepare('UPDATE approvals SET status = ?, reason = ?, resolved_at = ? WHERE id = ? AND user_id = ?')
       .bind(decision === 'approve' ? 'approved' : 'rejected', (reason ?? '').slice(0, 400) || null, now, id, userId),
     gateEventInsert(db, userId, { gate: 'approval', decision: decision === 'approve' ? 'allow' : 'block', projectId: row.projectId, taskId: row.taskId, detail: `${row.action} ${decision}: ${row.summary}` }),
   ]);
+  } catch (error) {
+    return { ok: false, status: isPreconditionError(error) ? 409 : 502, error: isPreconditionError(error) ? '다른 요청에서 이미 처리한 승인입니다.' : '승인 처리에 실패했습니다. 변경 사항은 취소되었으니 다시 시도하세요.' };
+  }
   const updated = await db.prepare(`${SELECT} WHERE id = ? AND user_id = ?`).bind(id, userId).first<ApprovalRow>();
   return { ok: true, row: updated ?? row, result };
 }
 
-async function applyCreateTask(db: D1Database, userId: string, row: ApprovalRow, payload: Record<string, unknown>) {
+async function prepareCreateTask(db: D1Database, userId: string, row: ApprovalRow, payload: Record<string, unknown>) {
   const title = typeof payload.title === 'string' ? payload.title.trim().slice(0, 100) : '';
   if (!title) throw new Error('payload 에 title 이 없습니다.');
   const requested = typeof payload.owner === 'string' && payload.owner.trim() ? payload.owner.trim() : null;
@@ -95,22 +104,22 @@ async function applyCreateTask(db: D1Database, userId: string, row: ApprovalRow,
   const id = crypto.randomUUID();
   const label = typeof payload.label === 'string' && payload.label.trim() ? payload.label.trim().slice(0, 20) : '신규';
   const description = typeof payload.description === 'string' ? payload.description.slice(0, 8000) : '';
-  await db.batch([
+  const statements = [
     db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, '대기', '중간', ?, ?, ?, ?, ?)`)
       .bind(id, userId, title, label, fallback.name, fallback.color, row.projectId, description, now, now),
     recallDocUpsert(db, { userId, kind: 'task', refId: id, projectId: row.projectId, agentName: fallback.name, title, content: `[${label}] ${title} — 담당 ${fallback.name} (${row.actor} 제안, 사람이 승인)\n${description}`, createdAt: now }),
-  ]);
-  return { taskId: id, owner: fallback.name };
+  ];
+  return { statements, result: { taskId: id, owner: fallback.name } };
 }
 
-async function applyGlobalSkill(db: D1Database, userId: string, row: ApprovalRow, payload: Record<string, unknown>) {
-  const outcome = await upsertSkill(db, {
+async function prepareGlobalSkill(db: D1Database, userId: string, row: ApprovalRow, payload: Record<string, unknown>) {
+  const outcome = await prepareSkillWrite(db, {
     userId, scope: 'global', projectId: null, actor: row.actor,
     name: text(payload.name), description: text(payload.description), body: text(payload.body),
   });
   if ('error' in outcome) throw new Error(outcome.error);
-  return { skillId: outcome.id, action: outcome.action };
+  return { statements: [outcome.statement], result: { skillId: outcome.id, action: outcome.action } };
 }
 
 /** 실행 한 번 동안 create_task 요청을 세어, 상한을 넘으면 승인 대기로 돌립니다. run 라우트가 executeTaskTool 앞에 끼웁니다. */

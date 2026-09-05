@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(), userId: text('user_id').notNull(), name: text('name').notNull(),
@@ -314,6 +314,7 @@ export const creditLedger = sqliteTable('credit_ledger', {
 }, (table) => [
   index('idx_credit_ledger_user').on(table.userId, table.createdAt),
   uniqueIndex('idx_credit_ledger_trial').on(table.userId).where(sql`kind = 'trial'`),
+  uniqueIndex('idx_credit_ledger_payment').on(table.userId, table.refType, table.refId, table.kind, table.bucket).where(sql`ref_type = 'payment'`),
 ]);
 
 /** 실행 중 가예약. 사용 가능 잔액 = 원장 합계 − open 상태 예약 합계. 정산되면 settled, 취소되면 released. */
@@ -341,3 +342,11 @@ export const payments = sqliteTable('payments', {
   raw: text('raw'),                              // 승인 응답 JSON
   createdAt: integer('created_at').notNull(), approvedAt: integer('approved_at'),
 }, (table) => [index('idx_payments_user').on(table.userId, table.createdAt)]);
+
+export const transactionGuards = sqliteTable('transaction_guards', {
+  id: text('id').primaryKey(), passed: integer('passed').notNull(),
+}, (table) => [check('transaction_guard_passed', sql`${table.passed} = 1`)]);
+
+export const runtimeLeases = sqliteTable('runtime_leases', {
+  resourceKey: text('resource_key').primaryKey(), token: text('token').notNull(), expiresAt: integer('expires_at').notNull(),
+});

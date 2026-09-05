@@ -20,6 +20,12 @@ const endTurn = { id: 'm2', model: 'claude-sonnet-5', stop_reason: 'end_turn', u
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('과금 핸들 (lib/claude.ts ClaudeBilling)', () => {
+  it('releases an acquired reservation if HTTP fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network failure')));
+    const afterCall = vi.fn();
+    await expect(callClaude({ apiKey: { apiKey: 'k', beforeCall: vi.fn(), afterCall }, model: 'm', system: 's', messages: [{ role: 'user', content: 'q' }], maxTokens: 10 })).rejects.toThrow('network failure');
+    expect(afterCall).toHaveBeenCalledOnce();
+  });
   it('문자열 키는 예전과 똑같이 동작', async () => {
     const { bodies } = fakeFetch([structuredClone(toolTurn), structuredClone(endTurn)]);
     const result = await runClaudeAgent({ apiKey: 'sk-ant-x', model: 'claude-sonnet-5', system: 's', messages: [{ role: 'user', content: 'q' }], maxTokens: 100, tools: [{ name: 'noop', description: '', input_schema: { type: 'object' } }], executeTool: async () => 'ok' });

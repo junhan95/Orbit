@@ -145,16 +145,16 @@ export async function executeSkillTool(name: string, input: ToolInput, ctx: Skil
 }
 
 /** 이름 기준 upsert (사용자 API 와 툴이 공유). 스코프별 개수 상한을 넘으면 거부. */
-export async function upsertSkill(db: D1Database, params: {
+export async function prepareSkillWrite(db: D1Database, params: {
   userId: string; scope: SkillScope; projectId: string | null; name: string; description: string; body: string; actor: string;
-}): Promise<{ id: string; action: 'created' | 'updated' } | { error: string }> {
+}): Promise<{ id: string; action: 'created' | 'updated'; statement: D1PreparedStatement } | { error: string }> {
   const now = Date.now();
   const existing = await db.prepare('SELECT id FROM skills WHERE user_id = ? AND scope = ? AND project_id IS ? AND name = ? LIMIT 1')
     .bind(params.userId, params.scope, params.projectId, params.name).first<{ id: string }>();
   if (existing) {
-    await db.prepare('UPDATE skills SET description = ?, body = ?, created_by = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-      .bind(params.description, params.body, params.actor, now, existing.id, params.userId).run();
-    return { id: existing.id, action: 'updated' };
+    const statement = db.prepare('UPDATE skills SET description = ?, body = ?, created_by = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+      .bind(params.description, params.body, params.actor, now, existing.id, params.userId);
+    return { id: existing.id, action: 'updated', statement };
   }
   const count = await db.prepare('SELECT COUNT(*) AS n FROM skills WHERE user_id = ? AND scope = ? AND project_id IS ?')
     .bind(params.userId, params.scope, params.projectId).first<{ n: number }>();
@@ -162,7 +162,14 @@ export async function upsertSkill(db: D1Database, params: {
     return { error: `이 범위의 스킬이 ${SKILL_LIMITS.perScope}개에 도달했습니다. 안 쓰는 스킬을 지운 뒤 저장하세요.` };
   }
   const id = crypto.randomUUID();
-  await db.prepare('INSERT INTO skills (id, user_id, scope, project_id, name, description, body, created_by, uses, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)')
-    .bind(id, params.userId, params.scope, params.projectId, params.name, params.description, params.body, params.actor, now, now).run();
-  return { id, action: 'created' };
+  const statement = db.prepare('INSERT INTO skills (id, user_id, scope, project_id, name, description, body, created_by, uses, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)')
+    .bind(id, params.userId, params.scope, params.projectId, params.name, params.description, params.body, params.actor, now, now);
+  return { id, action: 'created', statement };
+}
+
+export async function upsertSkill(db: D1Database, params: Parameters<typeof prepareSkillWrite>[1]): Promise<{ id: string; action: 'created' | 'updated' } | { error: string }> {
+  const prepared = await prepareSkillWrite(db, params);
+  if ('error' in prepared) return prepared;
+  await prepared.statement.run();
+  return { id: prepared.id, action: prepared.action };
 }
