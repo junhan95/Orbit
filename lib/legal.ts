@@ -39,6 +39,8 @@ export const CREDIT_TERMS = {
   priceNoticeDays: 30,
   pg: '토스페이먼츠',
   pgEn: 'Toss Payments',
+  /** 베타 운영(docs/pricing-credits.md §10) — 사용자당 월 충전 한도(크레딧). 원본은 lib/payments.ts DEFAULT_BETA_MONTHLY_CAP_CREDITS */
+  betaMonthlyCap: 5_000,
 } as const;
 
 export const LEGAL_LINKS = [

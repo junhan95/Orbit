@@ -4,7 +4,7 @@ import { billingMode, creditConfig, getBalance, grantTrialCredits, listLedger } 
 import {
   CHARGE_BONUS_ENABLED, CHARGE_TIERS, KRW_PER_CREDIT, TRIAL_ALLOWED_MODELS, creditRateTable, mcToKrw,
 } from '@/lib/credits-pricing';
-import { listPayments, paymentsEnabled, refundable } from '@/lib/payments';
+import { betaQuota, listPayments, paymentsEnabled, refundable } from '@/lib/payments';
 
 /**
  * 크레딧 잔액·내역·단가표 (docs/pricing-credits.md §5 "계정 > 크레딧").
@@ -24,7 +24,9 @@ export async function GET(request: Request) {
     : await grantTrialCredits(db, user.userId, config);
 
   const limit = Number(new URL(request.url).searchParams.get('limit')) || 50;
-  const [balance, ledger, payments] = await Promise.all([getBalance(db, user.userId), listLedger(db, user.userId, limit), listPayments(db, user.userId)]);
+  const [balance, ledger, payments, beta] = await Promise.all([
+    getBalance(db, user.userId), listLedger(db, user.userId, limit), listPayments(db, user.userId), betaQuota(db, user.userId),
+  ]);
 
   return Response.json({
     mode,
@@ -36,5 +38,7 @@ export async function GET(request: Request) {
     ledger,
     payments: payments.map((p) => ({ ...p, refundable: refundable(p, balance.paidMc) })),
     checkout: { enabled: paymentsEnabled() },
+    // 베타 운영(docs/pricing-credits.md §10): 테스트 키로 도는 동안 결제창은 열리지만 실청구 없음 + 월 충전 한도.
+    beta,
   });
 }

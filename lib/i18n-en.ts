@@ -690,4 +690,13 @@ export const EN: Record<string, string> = {
   '충전이 완료되었습니다 — {0} 크레딧이 들어왔습니다.': 'Top-up complete — {0} credits added.',
   '결제를 취소했습니다.': 'Payment canceled.',
   '결제에 실패했습니다.': 'Payment failed.',
+  // ── 베타 운영 안내 (docs/pricing-credits.md §10) ──
+  '베타 운영 기간에는 실제 과금이 진행되지 않습니다.': 'No real charges are made during the beta.',
+  '한 달에 {0} 크레딧까지 충전할 수 있고, 베타가 끝나면 남은 베타 크레딧은 소멸됩니다.': 'You can top up to {0} credits per month; leftover beta credits expire when the beta ends.',
+  '베타 테스트 결제(토스페이먼츠) — 카드 정보를 넣어도 청구되지 않습니다. 한 달에 {0} 크레딧까지 충전할 수 있고, 남은 베타 크레딧은 베타 종료 시 소멸됩니다. 본인 Claude API 키를 연결하면 한도 없이 그 키로 실행됩니다.': 'Beta test checkout (Toss Payments) — nothing is billed even if you enter a card. Top up to {0} credits per month; leftover beta credits expire when the beta ends. Connect your own Claude API key to run on it with no cap.',
+  '베타 테스트 결제(토스페이먼츠) — 카드 정보를 넣어도 청구되지 않습니다. 남은 베타 크레딧은 베타 종료 시 소멸됩니다. 본인 Claude API 키를 연결하면 그 키로 실행됩니다.': 'Beta test checkout (Toss Payments) — nothing is billed even if you enter a card. Leftover beta credits expire when the beta ends. Connect your own Claude API key to run on it instead.',
+  '이번 달 충전 {0} / {1} 크레딧': 'This month: {0} / {1} credits topped up',
+  '{0} 초기화': 'Resets {0}',
+  '이번 달 베타 충전 한도를 다 썼습니다. {0} 에 초기화되며, 그 전에는 본인 API 키를 연결해 쓸 수 있습니다.': 'You have used this month\u2019s beta top-up allowance. It resets on {0}; until then you can connect your own API key.',
+  '베타 충전': 'beta top-up',
 };

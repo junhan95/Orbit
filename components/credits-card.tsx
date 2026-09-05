@@ -50,6 +50,8 @@ type CreditsData = {
   ledger: { id: string; kind: LedgerKind; bucket: 'paid' | 'promo'; amountMc: number; refType: string | null; refId: string | null; meta: Record<string, unknown> | null; createdAt: number }[];
   payments: { id: string; amountKrw: number; creditsMc: number; bonusMc: number; status: 'done' | 'failed' | 'canceled' | 'refunded'; method: string | null; receiptUrl: string | null; approvedAt: number | null; createdAt: number; refundable: boolean }[];
   checkout: { enabled: boolean };
+  /** 베타 운영(docs/pricing-credits.md §10): 테스트 결제 = 실청구 없음, 월 충전 한도. */
+  beta: { enabled: boolean; capMc: number; usedMc: number; remainingMc: number; resetsAt: number };
 };
 
 const PAYMENT_STATUS_LABEL: Record<CreditsData['payments'][number]['status'], string> = {
@@ -133,10 +135,14 @@ export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: 
   if (error) return <section className="settings-card credits-card"><p className="credits-error">{error}</p></section>;
   if (!data) return <section className="settings-card credits-card"><div className="view-loading"><LoaderCircle className="spin" /><span>{t('크레딧을 불러오는 중')}</span></div></section>;
 
-  const { mode, balance, trial, tiers, rates, ledger, payments, checkout } = data;
+  const { mode, balance, trial, tiers, rates, ledger, payments, checkout, beta } = data;
   const available = balance.availableMc;
   const low = mode === 'credits' && available < LOW_BALANCE_CREDITS * 1000;
   const trialOnly = balance.paidMc <= 0;
+  const betaOn = beta?.enabled === true && mode !== 'local';
+  const betaCapped = betaOn && beta.capMc > 0;
+  const betaExhausted = betaCapped && beta.remainingMc <= 0;
+  const monthName = (ms: number) => new Intl.DateTimeFormat(locale(), { month: 'long', day: 'numeric' }).format(ms);
 
   const description = mode === 'local'
     ? t('로컬 모드 — .env 의 키로 실행되며 크레딧을 쓰지 않습니다.')
@@ -145,7 +151,14 @@ export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: 
       : t('연결된 키가 없어 크레딧으로 실행됩니다. 호출마다 실측 토큰만큼 차감됩니다.');
 
   return <section className="settings-card credits-card">
-    <div className="settings-title"><Coins size={16} /><div><strong>{t('크레딧')}</strong><p>{description}</p></div></div>
+    <div className="settings-title credits-title">
+      <Coins size={16} /><div><strong>{t('크레딧')}</strong><p>{description}</p></div>
+      {/* 베타 운영 기간에만 표시 (docs/pricing-credits.md §10) — 서버가 beta.enabled 를 줄 때만 */}
+      {betaOn ? <div className="credits-beta" role="note" title={betaCapped ? tf('한 달에 {0} 크레딧까지 충전할 수 있고, 베타가 끝나면 남은 베타 크레딧은 소멸됩니다.', formatCredits(beta.capMc)) : undefined}>
+        <span className="credits-beta-badge">BETA</span>
+        <span>{t('베타 운영 기간에는 실제 과금이 진행되지 않습니다.')}</span>
+      </div> : null}
+    </div>
 
     <div className="credits-balance">
       <div className="credits-amount">
@@ -167,15 +180,26 @@ export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: 
     <div className="credits-tiers">
       <p className="credits-label">{t('충전')}</p>
       <div className="credits-tier-row">
-        {tiers.map((tier) => <Button key={tier.krw} disabled={!checkout.enabled || busy !== null} onClick={() => void startCheckout(tier.krw)} size="sm" variant="outline">
+        {tiers.map((tier) => <Button key={tier.krw} disabled={!checkout.enabled || busy !== null || (betaCapped && tier.credits * 1000 > beta.remainingMc)} onClick={() => void startCheckout(tier.krw)} size="sm" variant="outline">
           {busy === `charge:${tier.krw}` ? <LoaderCircle className="spin" size={13} /> : null}
           {won(tier.krw)} <small>{tier.credits.toLocaleString(locale())}{tier.bonusPct ? ` +${tier.bonusPct}%` : ''}</small>
         </Button>)}
         {mode === 'credits' && onConnectKey ? <Button onClick={onConnectKey} size="sm" variant="ghost">{t('본인 키 연결 (무료)')}</Button> : null}
       </div>
-      <p className="credits-hint">{checkout.enabled
-        ? t('카드로 결제됩니다(토스페이먼츠). 미사용 유료 크레딧은 아래 결제 목록에서 전액 취소할 수 있고, 무료 · 보너스 크레딧은 환불되지 않습니다.')
-        : t('카드 · 계좌이체 결제는 준비 중입니다. 미사용 유료 크레딧은 환불되고, 무료 · 보너스 크레딧은 환불되지 않습니다.')}</p>
+      <p className="credits-hint">{betaOn
+        ? (betaExhausted
+          ? tf('이번 달 베타 충전 한도를 다 썼습니다. {0} 에 초기화되며, 그 전에는 본인 API 키를 연결해 쓸 수 있습니다.', monthName(beta.resetsAt))
+          : (betaCapped
+            ? tf('베타 테스트 결제(토스페이먼츠) — 카드 정보를 넣어도 청구되지 않습니다. 한 달에 {0} 크레딧까지 충전할 수 있고, 남은 베타 크레딧은 베타 종료 시 소멸됩니다. 본인 Claude API 키를 연결하면 한도 없이 그 키로 실행됩니다.', formatCredits(beta.capMc))
+            : t('베타 테스트 결제(토스페이먼츠) — 카드 정보를 넣어도 청구되지 않습니다. 남은 베타 크레딧은 베타 종료 시 소멸됩니다. 본인 Claude API 키를 연결하면 그 키로 실행됩니다.')))
+        : checkout.enabled
+          ? t('카드로 결제됩니다(토스페이먼츠). 미사용 유료 크레딧은 아래 결제 목록에서 전액 취소할 수 있고, 무료 · 보너스 크레딧은 환불되지 않습니다.')
+          : t('카드 · 계좌이체 결제는 준비 중입니다. 미사용 유료 크레딧은 환불되고, 무료 · 보너스 크레딧은 환불되지 않습니다.')}</p>
+      {betaCapped ? <p className="credits-beta-quota">
+        <span>{tf('이번 달 충전 {0} / {1} 크레딧', formatCredits(beta.usedMc), formatCredits(beta.capMc))}</span>
+        <i><b style={{ width: `${Math.min(100, Math.round((beta.usedMc / beta.capMc) * 100))}%` }} /></i>
+        <span>{tf('{0} 초기화', monthName(beta.resetsAt))}</span>
+      </p> : null}
     </div>
 
     <details className="credits-rates">
@@ -220,6 +244,7 @@ export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: 
             <span className="credits-desc">
               {model ?? (row.refType === 'signup' ? t('가입') : row.refType ?? '')}
               {webSearch ? <small> · {tf('웹 검색 {0}회', webSearch)}</small> : null}
+              {row.meta?.beta === true ? <small> · {t('베타 충전')}</small> : null}
             </span>
             <time dateTime={new Date(row.createdAt).toISOString()}>{new Intl.DateTimeFormat(locale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(row.createdAt)}</time>
             <span className={row.amountMc < 0 ? 'credits-amt neg' : 'credits-amt pos'}>{row.amountMc < 0 ? '−' : '+'}{formatCredits(Math.abs(row.amountMc))}</span>

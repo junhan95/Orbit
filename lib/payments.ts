@@ -49,6 +49,53 @@ export function paymentsEnabled(): boolean {
   return Boolean(env.TOSS_CLIENT_KEY && env.TOSS_SECRET_KEY);
 }
 
+/**
+ * 베타 과금 모드 (docs/pricing-credits.md §10) — 토스 테스트 키(test_ck_/test_sk_)로 도는 동안은 결제창이 열려도 실제 청구가 없습니다.
+ * 그래서 "베타 사용자는 과금 없이 충전" 이 되고, 대신 사용자당 월 충전 한도(CREDIT_BETA_MONTHLY_CAP, 기본 5,000 크레딧)를 둡니다.
+ * live 키로 바꾸는 순간 자동으로 꺼집니다 — 별도 플래그를 두지 않는 이유는 "테스트 키 = 무과금" 이라는 사실과 어긋날 수 없게 하기 위해서입니다.
+ */
+export function betaBilling(): boolean {
+  return paymentsEnabled() && (env.TOSS_CLIENT_KEY ?? '').startsWith('test_');
+}
+
+export const DEFAULT_BETA_MONTHLY_CAP_CREDITS = 5_000;
+
+/** 베타 월 한도(마이크로크레딧). 0 으로 설정하면 한도 없음. */
+export function betaMonthlyCapMc(): number {
+  const raw = env.CREDIT_BETA_MONTHLY_CAP;
+  const credits = raw !== undefined && raw !== '' && Number.isFinite(Number(raw)) ? Number(raw) : DEFAULT_BETA_MONTHLY_CAP_CREDITS;
+  return Math.max(0, Math.round(credits * 1000));
+}
+
+const KST_OFFSET = 9 * 3600 * 1000;
+
+/** 이번 달 시작 시각(ms) — 한국 시간(UTC+9) 기준 1일 0시. 원화 결제·한국 사용자 기준이라 서버 시간대와 무관하게 고정합니다. */
+export function monthStartKst(now = Date.now()): number {
+  const local = new Date(now + KST_OFFSET);
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - KST_OFFSET;
+}
+
+/** 다음 달 1일 0시(KST, ms) — 한도가 초기화되는 시각. */
+export function nextMonthStartKst(now = Date.now()): number {
+  const local = new Date(now + KST_OFFSET);
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 1) - KST_OFFSET;
+}
+
+export type BetaQuota = { enabled: boolean; capMc: number; usedMc: number; remainingMc: number; resetsAt: number };
+
+/** 이번 달 베타 충전 사용량 — 승인 완료(done)된 결제의 크레딧 합. 환불된 결제는 status 가 바뀌므로 한도에서 빠집니다. */
+export async function betaQuota(db: D1Database, userId: string, now = Date.now()): Promise<BetaQuota> {
+  const enabled = betaBilling();
+  const resetsAt = nextMonthStartKst(now);
+  if (!enabled) return { enabled, capMc: 0, usedMc: 0, remainingMc: 0, resetsAt };
+  const capMc = betaMonthlyCapMc();
+  const row = await db.prepare(
+    "SELECT COALESCE(SUM(credits_mc), 0) AS used FROM payments WHERE user_id = ? AND status = 'done' AND approved_at >= ?",
+  ).bind(userId, monthStartKst(now)).first<{ used: number }>();
+  const usedMc = Number(row?.used ?? 0);
+  return { enabled, capMc, usedMc, remainingMc: capMc > 0 ? Math.max(0, capMc - usedMc) : Number.MAX_SAFE_INTEGER, resetsAt };
+}
+
 function fromRow(r: DbRow): PaymentRow {
   return {
     id: r.id, userId: r.user_id, provider: r.provider, paymentKey: r.payment_key,
@@ -66,6 +113,15 @@ export async function createOrder(db: D1Database, userId: string, amountKrw: num
   const grant = chargeGrant(amountKrw);
   if (!grant) throw new PaymentError('지원하지 않는 충전 금액입니다.', 400, 'bad_amount');
   const now = Date.now();
+  if (betaBilling()) {
+    const quota = await betaQuota(db, userId, now);
+    if (quota.capMc > 0 && grant.creditsMc > quota.remainingMc) {
+      throw new PaymentError(
+        `베타 기간에는 한 달에 ${mcToCredits(quota.capMc).toLocaleString('ko-KR')} 크레딧까지 충전할 수 있습니다 (이번 달 남은 한도 ${mcToCredits(quota.remainingMc).toLocaleString('ko-KR')} 크레딧).`,
+        429, 'beta_quota_exceeded',
+      );
+    }
+  }
   const id = newOrderId();
   await db.prepare(
     'INSERT INTO payments (id, user_id, provider, amount_krw, credits_mc, bonus_mc, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -138,7 +194,8 @@ export async function confirmPayment(db: D1Database, userId: string, params: { p
   const statements = [
     db.prepare('UPDATE payments SET status = ?, payment_key = ?, method = ?, receipt_url = ?, raw = ?, approved_at = ? WHERE id = ? AND user_id = ? AND status = ?')
       .bind('done', payment.paymentKey, method, payment.receipt?.url ?? null, JSON.stringify(payment), approvedAt, order.id, userId, 'pending'),
-    ledgerInsert(db, { userId, kind: 'charge', bucket: 'paid', amountMc: order.creditsMc, refType: 'payment', refId: order.id, meta: { krw: order.amountKrw, method } }),
+    // beta:true — 테스트 키로 승인된(실청구 없는) 충전. 베타 종료 시 이 표시로 잔여분을 소멸 처리합니다 (docs/pricing-credits.md §10).
+    ledgerInsert(db, { userId, kind: 'charge', bucket: 'paid', amountMc: order.creditsMc, refType: 'payment', refId: order.id, meta: { krw: order.amountKrw, method, ...(betaBilling() ? { beta: true } : {}) } }),
   ];
   if (order.bonusMc > 0) {
     statements.push(ledgerInsert(db, { userId, kind: 'bonus', bucket: 'promo', amountMc: order.bonusMc, refType: 'payment', refId: order.id, meta: { krw: order.amountKrw } }));

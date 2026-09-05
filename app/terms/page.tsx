@@ -96,6 +96,7 @@ export default function TermsPage() {
             <p><b>Deduction.</b> Each agent call is deducted from measured tokens at the per-model rates published in the app (Anthropic&apos;s list price times a multiplier, VAT included). Free and bonus credits are spent first, then paid credits. Rates may change with {CREDIT_TERMS.priceNoticeDays} days&apos; notice; credits already purchased are unaffected until the effective date. If your balance runs out during a run, the run stops with the results so far — that is not a defect.</p>
             <p><b>Refunds.</b> Paid credits you have not used are refundable in full by cancelling the payment from the account screen. Trial and bonus credits are not refundable or transferable. Once part of a purchase has been used, the remaining paid balance can be refunded on request to {COMPANY.email}, less any payment fees. Credits expire {CREDIT_TERMS.validYears} years after purchase. We may reclaim credits obtained through abuse (e.g. duplicate accounts).</p>
             <p><b>Operator key.</b> Runs paid with credits are made with the company&apos;s own Anthropic API key. Your content is still sent to Anthropic only to generate the response you asked for (see the Privacy Policy).</p>
+            <p><b>Beta period.</b> While the Service is marked &quot;beta&quot;, top-ups go through a test checkout and no money is charged, even if you enter a card. Beta top-ups are limited to {CREDIT_TERMS.betaMonthlyCap.toLocaleString('en-US')} credits per user per month. Credits obtained during the beta have no cash value, are not refundable or transferable, and expire when the beta ends; the company will announce the end date at least {CREDIT_TERMS.priceNoticeDays} days in advance in the app and on this page. Usage during the beta is still measured and recorded.</p>
           </>
         }
       >
@@ -109,6 +110,7 @@ export default function TermsPage() {
           <li>크레딧의 유효기간은 충전일부터 {CREDIT_TERMS.validYears}년이며, 유효기간이 지난 크레딧은 소멸합니다. 회원 탈퇴 시 미사용 유료 크레딧은 위 환불 기준에 따라 환불하고 나머지는 소멸합니다.</li>
           <li>크레딧으로 실행되는 에이전트는 회사의 운영 키로 Anthropic API 를 호출합니다. 이 경우에도 이용자의 콘텐츠는 이용자가 요청한 응답을 생성하기 위해서만 Anthropic 에 전송됩니다(개인정보처리방침 참조).</li>
           <li>만 19세 미만 이용자의 크레딧 결제에는 법정대리인의 동의가 필요하며, 동의 없는 결제는 법정대리인이 취소할 수 있습니다.</li>
+          <li><b>베타 운영 기간</b>: 서비스가 &quot;베타&quot;로 표시되는 동안 크레딧 충전은 테스트 결제로 처리되며, 카드 정보를 입력하더라도 실제로 대금이 청구되지 않습니다. 베타 기간의 충전은 이용자당 월 {CREDIT_TERMS.betaMonthlyCap.toLocaleString('ko-KR')} 크레딧으로 제한됩니다. 베타 기간에 받은 크레딧은 금전적 가치가 없고 환불·양도되지 않으며, 베타 종료 시 소멸합니다. 회사는 베타 종료일을 최소 {CREDIT_TERMS.priceNoticeDays}일 전에 앱과 이 페이지에 공지합니다. 베타 기간에도 실행에 따른 사용량은 실측되어 내역에 기록됩니다.</li>
         </ul>
       </Clause>
 

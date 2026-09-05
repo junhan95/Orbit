@@ -45,6 +45,9 @@ type Span = 'lp-b-7' | 'lp-b-5' | 'lp-b-4' | 'lp-b-12';
 interface Dict {
   nav: { label: string; id: string }[];
   openApp: string;
+  /** 베타 배지 — 앱으로 들어가는 CTA 마다 붙습니다 (docs/pricing-credits.md §10) */
+  beta: string;
+  betaBanner: { t: string; d: string };
   menu: string;
   langLabel: string;
   eyebrow: string;
@@ -90,6 +93,11 @@ const KO: Dict = {
     { label: '시작하기', id: 'start' },
   ],
   openApp: '앱 열기',
+  beta: 'BETA',
+  betaBanner: {
+    t: '베타 운영 중 — 충전해도 청구되지 않습니다',
+    d: '베타 기간에는 결제창이 테스트 모드로 열려 카드 정보를 넣어도 실제로 결제되지 않습니다. 한 달에 5,000 크레딧까지 충전할 수 있고, 남은 베타 크레딧은 베타 종료 시 소멸됩니다. 본인 Claude API 키를 연결하면 한도 없이 그 키로 씁니다.',
+  },
   menu: '메뉴',
   langLabel: '언어',
   eyebrow: 'AI AGENT COMMAND CENTER',
@@ -193,8 +201,8 @@ const KO: Dict = {
       {
         name: '개인', price: '쓴 만큼만', unit: '1 크레딧 = 10원 · 5,000원부터 충전',
         d: '가입 즉시 300 크레딧이 들어옵니다. 매니저가 팀을 꾸려 일하는 장면을 몇 번 겪어 보고, 마음에 들면 충전하세요.',
-        perks: ['가입 즉시 300 크레딧 무료', '모델별 단가 공개 — 앱 안 단가표', '실측 토큰 · 크레딧 차감 내역', '미사용 유료 크레딧 환불'],
-        cta: '무료로 시작', href: '/login', tag: '지금 이용 가능', featured: true,
+        perks: ['가입 즉시 300 크레딧 무료', '베타 기간 충전 무료 — 월 5,000 크레딧까지', '모델별 단가 공개 — 앱 안 단가표', '실측 토큰 · 크레딧 차감 내역', '정식 출시 후 미사용 유료 크레딧 환불'],
+        cta: '무료로 시작', href: '/login', tag: '베타 · 충전 무료', featured: true,
       },
       {
         name: '팀', price: '준비 중', unit: '좌석당 · 가격 미정',
@@ -229,13 +237,14 @@ const KO: Dict = {
     steps: [
       { n: '1', t: 'Google 또는 GitHub 로 로그인', d: '계정을 새로 만들지 않습니다. 첫 로그인이면 300 크레딧이 지급되고 짧은 안내가 한 번 나옵니다.' },
       { n: '2', t: '프로젝트 이름과 작업 폴더', d: '이것만 정하면 매니저가 배정되고 첫 업무를 만들어 옵니다.' },
-      { n: '3', t: '더 쓰고 싶을 때 — 충전 또는 키 연결', d: '5,000원부터 충전하거나, Anthropic 계정의 API 키를 연결합니다. 키는 서버에서 암호화돼 저장되고 그 키로 나가는 호출은 과금되지 않습니다.' },
+      { n: '3', t: '더 쓰고 싶을 때 — 충전 또는 키 연결', d: '5,000원부터 충전하거나, Anthropic 계정의 API 키를 연결합니다. 베타 기간에는 충전이 테스트 결제로 처리돼 청구되지 않습니다(월 5,000 크레딧). 키는 서버에서 암호화돼 저장되고 그 키로 나가는 호출은 과금되지 않습니다.' },
     ],
   },
   faq: {
     eyebrow: 'FAQ',
     h: '자주 묻는 질문',
     items: [
+      { q: '베타 기간에는 무엇이 다른가요?', a: '지금은 베타입니다. 충전 버튼을 누르면 토스페이먼츠 결제창이 테스트 모드로 열리고, 카드 정보를 넣어도 실제로 청구되지 않습니다. 사용자당 한 달에 5,000 크레딧까지 충전할 수 있고, 베타가 끝나면 남은 베타 크레딧은 소멸됩니다(정식 전환 시 감사 크레딧을 따로 드립니다). 본인 Claude API 키를 연결하면 한도와 무관하게 그 키로 실행됩니다. 베타 중에도 실제 사용량은 실측되어 내역에 그대로 남습니다.' },
       { q: '얼마인가요?', a: '월 구독은 없습니다. 가입하면 300 크레딧(3,000원 상당)이 무료로 들어오고, 그 뒤로는 쓴 만큼 크레딧이 차감됩니다. 1 크레딧은 10원이고 5,000원부터 충전합니다. 본인 Claude API 키를 연결하면 orbitcrew 는 무료이고 AI 요금은 Anthropic 에 직접 냅니다.' },
       { q: '크레딧은 어떻게 계산되나요?', a: '모델별 단가는 Anthropic 공개 단가의 1.8배(부가세 포함)이고, 앱 안 단가표에 모두 공개돼 있습니다. 예를 들어 Sonnet 5 로 대화 한 턴은 약 3.5 크레딧, 매니저가 하위 에이전트를 여럿 돌리는 실행 한 번은 대략 45~180 크레딧입니다. 호출마다 실측 토큰으로 차감되고 내역을 바로 볼 수 있습니다.' },
       { q: '충전한 크레딧은 환불되나요?', a: '유료로 충전한 크레딧의 미사용분은 환불됩니다(결제 취소 방식). 가입 시 받은 무료 크레딧과 보너스는 환불·양도되지 않습니다. 사용은 무료·보너스 크레딧부터 차감됩니다.' },
@@ -253,7 +262,7 @@ const KO: Dict = {
     product: '제품',
     legal: '고지',
     contact: '문의',
-    legalLine: `${COMPANY.name} · 대표 ${COMPANY.ceo} · 사업자등록번호 ${COMPANY.registration}${COMPANY.mailOrderRegistration ? ` · 통신판매업 신고 ${COMPANY.mailOrderRegistration}` : ''} · ${COMPANY.address} · ${COMPANY.email}`,
+    legalLine: `${COMPANY.name} · 대표 ${COMPANY.ceo} · 사업자등록번호 ${COMPANY.registration} · ${COMPANY.address} · ${COMPANY.email}`,
     navLabel: '페이지',
     legalNavLabel: '법적 고지',
   },
@@ -294,6 +303,11 @@ const EN: Dict = {
     { label: 'Get started', id: 'start' },
   ],
   openApp: 'Open app',
+  beta: 'BETA',
+  betaBanner: {
+    t: 'In beta — top-ups are not billed',
+    d: 'During the beta the checkout opens in test mode, so nothing is charged even if you enter a card. You can top up to 5,000 credits per month; leftover beta credits expire when the beta ends. Connect your own Claude API key to run on it with no cap.',
+  },
   menu: 'Menu',
   langLabel: 'Language',
   eyebrow: 'AI AGENT COMMAND CENTER',
@@ -397,8 +411,8 @@ const EN: Dict = {
       {
         name: 'Personal', price: 'Pay as you go', unit: '1 credit = ₩10 · top up from ₩5,000',
         d: '300 credits land the moment you sign up. Watch the manager build a team a few times, then top up if you like it.',
-        perks: ['300 free credits on sign-up', 'Per-model rates published in the app', 'Measured tokens · credit ledger', 'Unused paid credits refundable'],
-        cta: 'Start free', href: '/login', tag: 'Available now', featured: true,
+        perks: ['300 free credits on sign-up', 'Free top-ups during beta — up to 5,000 credits/month', 'Per-model rates published in the app', 'Measured tokens · credit ledger', 'Unused paid credits refundable after launch'],
+        cta: 'Start free', href: '/login', tag: 'Beta · free top-ups', featured: true,
       },
       {
         name: 'Team', price: 'Coming soon', unit: 'per seat · pricing TBD',
@@ -433,13 +447,14 @@ const EN: Dict = {
     steps: [
       { n: '1', t: 'Sign in with Google or GitHub', d: 'No new account to create. Your first sign-in grants 300 credits and shows a short intro once.' },
       { n: '2', t: 'Name the project and pick a folder', d: 'That’s it — a manager is assigned and comes back with the first task.' },
-      { n: '3', t: 'When you want more — top up or connect a key', d: 'Top up from ₩5,000, or connect the API key from your Anthropic account. It’s encrypted server-side, and calls on your key are never charged to credits.' },
+      { n: '3', t: 'When you want more — top up or connect a key', d: 'Top up from ₩5,000, or connect the API key from your Anthropic account. It’s encrypted server-side, and calls on your key are never charged to credits. During the beta, top-ups go through a test checkout and are not billed (5,000 credits per month).' },
     ],
   },
   faq: {
     eyebrow: 'FAQ',
     h: 'Frequently asked questions',
     items: [
+      { q: 'What is different during the beta?', a: 'orbitcrew is in beta. Pressing top-up opens the Toss Payments checkout in test mode, so nothing is billed even if you enter a card. Each user can top up to 5,000 credits per month, and leftover beta credits expire when the beta ends (we grant thank-you credits at launch). Connect your own Claude API key and runs go out on it with no cap. Usage is still measured and recorded in your ledger during the beta.' },
       { q: 'How much does it cost?', a: 'There is no subscription. Sign-up grants 300 free credits (about ₩3,000), after which credits are deducted as you use AI. One credit is ₩10 and top-ups start at ₩5,000. Connect your own Claude API key and orbitcrew is free — Anthropic bills the AI usage to you directly.' },
       { q: 'How are credits calculated?', a: 'Per-model rates are 1.8× Anthropic’s list price (VAT included) and are published in the app. One Sonnet 5 chat turn is about 3.5 credits; a manager run that drives several agents is roughly 45–180 credits. Every call is deducted from measured tokens and shows up in your ledger.' },
       { q: 'Can I get a refund on credits?', a: 'Unused paid credits are refundable (as a payment cancellation). Free sign-up credits and bonuses are not refundable or transferable. Usage draws from free and bonus credits first.' },
@@ -457,7 +472,7 @@ const EN: Dict = {
     product: 'Product',
     legal: 'Legal',
     contact: 'Contact',
-    legalLine: `${COMPANY.nameEn} · CEO ${COMPANY.ceoEn} · Business reg. no. ${COMPANY.registration}${COMPANY.mailOrderRegistration ? ` · Mail-order business no. ${COMPANY.mailOrderRegistration}` : ''} · ${COMPANY.addressEn} · ${COMPANY.email}`,
+    legalLine: `${COMPANY.nameEn} · CEO ${COMPANY.ceoEn} · Business reg. no. ${COMPANY.registration} · ${COMPANY.addressEn} · ${COMPANY.email}`,
     navLabel: 'Pages',
     legalNavLabel: 'Legal',
   },
@@ -603,6 +618,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
         {/* oxlint-disable-next-line next/no-html-link-for-pages -- 랜딩→앱은 전체 로드가 맞습니다 */}
         <a className="lp-nav-cta" href="/login">
           {t.openApp}
+          <span className="lp-beta">{t.beta}</span>
           <ArrowIcon className="lp-nav-cta-arrow" />
         </a>
 
@@ -623,7 +639,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
             <a key={n.id} href={href(n.id)} onClick={() => setMenuOpen(false)}>{n.label}</a>
           ))}
           {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
-          <a href="/login" onClick={() => setMenuOpen(false)}>{t.openApp}</a>
+          <a href="/login" onClick={() => setMenuOpen(false)}>{t.openApp} <span className="lp-beta">{t.beta}</span></a>
           <LangToggle label={t.langLabel} />
         </div>
       </nav>
@@ -846,6 +862,10 @@ function LandingContent({ lang }: { lang: LandingLang }) {
           <h2 className="lp-h3">{t.pricing.h}</h2>
           <p className="lp-p">{t.pricing.p}</p>
         </header>
+        <div className="lp-beta-banner lp-reveal" role="note">
+          <span className="lp-beta lp-beta-lg">{t.beta}</span>
+          <div><strong>{t.betaBanner.t}</strong><p>{t.betaBanner.d}</p></div>
+        </div>
         <div className="lp-plans">
           {t.pricing.plans.map((plan, i) => (
             <article key={plan.name} className={`lp-plan lp-reveal${plan.featured ? ' lp-plan-featured' : ''}`} style={{ '--d': i } as CSSProperties}>
@@ -864,6 +884,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
               {/* oxlint-disable-next-line next/no-html-link-for-pages -- 정적 빌드에서 /login 은 앱 주소로 치환됩니다 */}
               <a className={`lp-btn${plan.featured ? '' : ' lp-btn-ghost'}`} href={plan.href}>
                 {plan.cta}
+                {plan.featured ? <span className="lp-beta lp-beta-on-cta">{t.beta}</span> : null}
                 {plan.featured ? <i className="lp-btn-line" /> : null}
               </a>
             </article>
@@ -944,6 +965,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
           {/* oxlint-disable-next-line next/no-html-link-for-pages -- 위와 같은 이유 */}
           <a className="lp-btn" href="/login">
             {t.cta.btn}
+            <span className="lp-beta lp-beta-on-cta">{t.beta}</span>
             <i className="lp-btn-line" />
           </a>
         </div>
@@ -1458,6 +1480,15 @@ const LP_CSS = `
   border-radius:var(--lp-r-full); box-shadow:0 0 24px -6px #ffd02f99; transition:background .2s ease,box-shadow .2s ease; }
 .lp .lp-nav-cta:hover{ background:var(--lp-brand-deep); box-shadow:0 0 32px -4px #ffd02fcc; }
 .lp-nav-cta-arrow{ transition:transform .2s ease; }
+/* 베타 배지 — 앱으로 들어가는 CTA 마다. 노랑 버튼 위에서는 남색 칩, 흰 버튼 위에서는 노랑 칩 */
+.lp-beta{ display:inline-flex; align-items:center; padding:2px 7px; border-radius:99px; background:#050038; color:#ffd02f; font-size:9.5px; font-weight:700; letter-spacing:.12em; line-height:1.4; vertical-align:middle; }
+.lp .lp-btn .lp-beta-on-cta{ background:#ffd02f; color:#050038; }
+.lp-beta-lg{ font-size:11px; padding:4px 10px; background:#ffd02f; color:#050038; }
+.lp-mobile-menu .lp-beta{ margin-left:4px; }
+.lp-beta-banner{ display:flex; align-items:flex-start; gap:14px; max-width:860px; margin:0 auto clamp(28px,4vw,44px); padding:16px 20px; border:1px solid #ffd02f4d; border-radius:var(--lp-r-lg);
+  background:linear-gradient(135deg,#ffd02f14,#a78bfa0f); box-shadow:0 0 40px -16px #ffd02f66; }
+.lp-beta-banner strong{ display:block; font-size:15px; font-weight:600; color:var(--lp-ink); margin-bottom:6px; }
+.lp-beta-banner p{ margin:0; font-size:13.5px; line-height:1.7; color:var(--lp-text); }
 .lp .lp-nav-cta:hover .lp-nav-cta-arrow{ transform:translateX(3px); }
 .lp-burger{ display:none; margin-left:auto; background:transparent; border:0; padding:8px; cursor:pointer; flex-direction:column; gap:5px; }
 .lp-burger span{ width:22px; height:2px; background:var(--lp-ink); display:block; }

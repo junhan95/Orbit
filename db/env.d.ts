@@ -29,5 +29,7 @@ declare namespace Cloudflare {
     TOSS_CLIENT_KEY?: string;
     /** 토스페이먼츠 시크릿 키 — 승인(confirm)·취소 API 전용, 서버에서만. 배포는 wrangler secret */
     TOSS_SECRET_KEY?: string;
+    /** 베타 운영: 사용자당 월 충전 한도(크레딧, 기본 5000). 토스 테스트 키(test_ck_)로 돌 때만 적용 — lib/payments.ts betaBilling */
+    CREDIT_BETA_MONTHLY_CAP?: string;
   }
 }
