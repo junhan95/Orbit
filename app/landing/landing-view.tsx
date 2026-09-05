@@ -14,7 +14,7 @@ import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
  * (앱 쪽 --c-* 토큰은 쓰지 않습니다 — 랜딩 전용 --lp-* 값만 씁니다).
  *
  * 섹션: 히어로(+앱 목업) → 신뢰 스트립 → 제품 노트 → 어바웃 → 기능(벤토) → 작동 방식
- *       → 크루(에이전트 팀) → 비교표 → 시작 안내(BYOK) → FAQ → CTA → 푸터
+ *       → 크루(에이전트 팀) → 비교표 → 시작 안내(무료 + Claude API 키) → FAQ → CTA → 푸터
  *
  * 스타일은 globals.css 를 건드리지 않도록 이 파일 안에 가둡니다(.lp 스코프).
  *
@@ -31,7 +31,7 @@ const NAV_LINKS = [
 ] as const;
 
 const TRUST = [
-  { icon: 'key', t: 'BYOK', d: '본인 Anthropic 키로 실행' },
+  { icon: 'key', t: '이용료 없음', d: 'Claude API 키만 있으면 됩니다' },
   { icon: 'lock', t: '암호화 저장', d: 'API 키는 서버에서 암호화' },
   { icon: 'login', t: 'Google · GitHub 로그인', d: '별도 가입 절차 없음' },
   { icon: 'code', t: '오픈소스', d: 'AGPL-3.0 · 저장소 공개' },
@@ -113,14 +113,22 @@ const COMPARE = {
 
 const START = [
   { n: '1', t: 'Google 또는 GitHub 로 로그인', d: '계정을 새로 만들지 않습니다. 첫 로그인이면 짧은 안내가 한 번 나옵니다.' },
-  { n: '2', t: 'Anthropic API 키 연결', d: '본인 키를 붙입니다. 키는 서버에서 암호화돼 저장되고, 대화는 그 키로 나갑니다.' },
+  { n: '2', t: 'Claude API 키 연결', d: 'Anthropic 계정에서 발급한 키를 붙입니다. 키는 서버에서 암호화돼 저장되고, 대화는 그 키로 나갑니다.' },
   { n: '3', t: '프로젝트 이름과 작업 폴더', d: '이것만 정하면 매니저가 배정되고 첫 업무를 만들어 옵니다.' },
 ];
 
 const FAQ = [
   {
+    q: '정말 무료인가요?',
+    a: '네. orbitcrew 자체 이용료는 없습니다. 다만 에이전트가 Claude 로 동작하므로 본인 Claude API 키가 필요하고, AI 사용 요금은 본인 Anthropic 계정으로 직접 냅니다. 앱의 사용량 화면에서 토큰과 추정 비용을 바로 확인할 수 있습니다.',
+  },
+  {
+    q: 'Claude API 키는 어디서 받나요?',
+    a: 'Anthropic 콘솔(console.anthropic.com)에서 발급합니다. claude.ai 유료 구독과는 별개로, API 사용량만큼 과금되는 계정입니다. 키를 orbitcrew 에 붙이면 바로 시작할 수 있습니다.',
+  },
+  {
     q: 'Claude 계정으로 바로 로그인할 수 있나요?',
-    a: '아니요. Anthropic 정책상 제3자 앱에서 Claude 계정 로그인은 제공되지 않습니다. 로그인은 Google · GitHub 로 하고, Claude 는 본인 Anthropic API 키(BYOK)로 연결합니다.',
+    a: '아니요. Anthropic 정책상 제3자 앱에서 Claude 계정 로그인은 제공되지 않습니다. 로그인은 Google · GitHub 로 하고, Claude 는 본인 API 키로 연결합니다.',
   },
   {
     q: 'API 키는 어디에 어떻게 저장되나요?',
@@ -459,17 +467,19 @@ export function LandingView() {
         </div>
       </section>
 
-      {/* ── Section 8 — Start / BYOK ───────────────────────── */}
+      {/* ── Section 8 — Start / 무료 + Claude API 키 ────────── */}
       <section className="lp-start" id="start">
         <div className="lp-start-left lp-reveal">
           <p className="lp-eyebrow">GET STARTED</p>
-          <h2 className="lp-h3">구독 대신 BYOK</h2>
+          <h2 className="lp-h3">orbitcrew 는 무료입니다</h2>
           <p className="lp-p">
-            orbitcrew 는 본인 Anthropic API 키로 동작합니다. 요금은 본인 Anthropic 계정에서 쓴 만큼만
-            나가고, 앱 안의 사용량 화면에서 토큰과 추정 비용을 바로 봅니다.
+            구독료도, 별도 결제도 없습니다. 다만 에이전트가 Claude 로 움직이기 때문에
+            <strong> 본인 Claude API 키(Anthropic 계정)</strong>가 필요합니다. AI 사용 요금은 그 계정으로
+            Anthropic 에 직접 내고, 얼마나 썼는지는 앱 안의 사용량 화면에서 바로 봅니다.
           </p>
           <ul className="lp-start-perks">
-            <li><Icon name="check" />본인 키 · 암호화 저장 · 언제든 교체</li>
+            <li><Icon name="check" />orbitcrew 이용료 0원 — 구독 · 결제 · 광고 없음</li>
+            <li><Icon name="check" />필요한 것은 Claude API 키 하나 — 암호화 저장, 언제든 교체</li>
             <li><Icon name="check" />에이전트별 모델 선택, 실측 토큰 + 비용 추정</li>
             <li><Icon name="check" />오픈소스(AGPL-3.0) — 직접 배포도 가능</li>
           </ul>
@@ -999,6 +1009,7 @@ const LP_CSS = `
 .lp-h3{ margin:0; font-size:clamp(26px,3.2vw,38px); font-weight:600; letter-spacing:-.02em; line-height:1.18; color:var(--lp-ink); }
 .lp-h3-inv{ color:var(--lp-ink); }
 .lp-p{ max-width:540px; font-size:clamp(14px,1.6vw,17px); line-height:1.75; color:var(--lp-muted); }
+.lp-p strong{ font-weight:600; color:var(--lp-ink); }
 .lp-sec-head{ max-width:640px; margin-bottom:clamp(36px,5vw,64px); }
 .lp-sec-head .lp-p{ margin:16px 0 0; }
 .lp-sec-head-center{ margin-left:auto; margin-right:auto; text-align:center; }
