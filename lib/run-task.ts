@@ -88,6 +88,7 @@ export type RunTaskSuccess = {
   ok: true; runId: string; taskId: string; status: string; output: string; summary: string;
   blocked: boolean; blockedReason: string | null; nextActions: string[]; proof: string[];
   iterations: number; toolCalls: string[];
+  skillSaves: { scope: string; pendingApproval: boolean; error?: string }[];
   createdTasks: unknown[]; createdFields: unknown[]; setFields: unknown[]; recruited: unknown[]; delegated: unknown[];
 };
 
@@ -251,6 +252,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
   const toolLog = createTaskToolLog();
   const managerLog = createManagerLog();
   const skillContext: SkillToolContext = { db, userId: user.userId, projectId: task.projectId, actor: task.owner, saves: { count: 0, names: [] }, taskId: task.id, runId };
+  const skillSaves: RunTaskSuccess['skillSaves'] = [];
   const createCounter = { created: 0 };
   const memoryFailures = { count: 0 };
   const counters = { recall: 0 };
@@ -278,7 +280,9 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
           return executeManagerTool(name, input, managerContext, managerLog);
         }
         if (name === 'use_skill' || name === 'save_skill') {
-          return executeSkillTool(name, input, skillContext);
+          const outcome = await executeSkillTool(name, input, skillContext);
+          if (name === 'save_skill') skillSaves.push({ scope: typeof input.scope === 'string' ? input.scope : '(missing)', pendingApproval: typeof outcome.pending_approval === 'string', ...(typeof outcome.error === 'string' ? { error: outcome.error } : {}) });
+          return outcome;
         }
         if (name === 'recall_history') {
           counters.recall += 1;
@@ -356,6 +360,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
       unverified: Boolean(done) && !blocked && !(done?.proof.length),
       skillsUsed: result.toolCalls.filter((call) => call.name === 'use_skill' && call.ok).map((call) => (typeof call.input.name === 'string' ? call.input.name : '')),
       skillsSaved: skillContext.saves.names,
+      skillSaves,
       usagePerIteration: result.usagePerIteration.map((u) => ({ in: u.inputTokens, out: u.outputTokens, cacheWrite: u.cacheCreationTokens, cacheRead: u.cacheReadTokens })),
     });
     const nextStatus = blocked ? '대기' : '검토';
@@ -399,7 +404,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     return {
       ok: true, runId, taskId: task.id, status: nextStatus, output, summary,
       blocked, blockedReason, nextActions: done?.nextActions ?? [], proof: done?.proof ?? [],
-      iterations: result.iterations, toolCalls: result.toolCalls.map((call) => call.name),
+      iterations: result.iterations, toolCalls: result.toolCalls.map((call) => call.name), skillSaves,
       createdTasks: toolLog.createdTasks, createdFields: toolLog.createdFields, setFields: toolLog.setFields,
       recruited: managerLog.recruited, delegated: managerLog.delegated,
     };

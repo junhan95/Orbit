@@ -27,7 +27,7 @@ for (const file of files) {
   const orphans = db.prepare("SELECT id, title, owner, status FROM tasks WHERE project_id IS NULL").all();
 
   console.log(`\n[${file}] 프로젝트 없는 업무 ${orphans.length}건`);
-  for (const task of orphans) console.log(`  - ${task.title} (${task.owner} / ${task.status})`);
+  for (const task of orphans) console.log(`  - ${String(task.title)} (${String(task.owner)} / ${String(task.status)})`);
 
   if (apply && orphans.length) {
     const ids = orphans.map((task) => task.id);
