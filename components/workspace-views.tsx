@@ -45,6 +45,7 @@ type FieldValueRow = { taskId: string; fieldId: string; value: string };
 type TaskCounts = { taskId: string; subtasks: number; doneSubtasks: number; comments: number };
 type Subtask = { id: string; title: string; done: number; owner: string | null; position: number };
 type TaskComment = { id: string; author: string; authorKind: string; content: string; createdAt: number };
+type ChatSummaryInfo = { id: string; content: string; messageCount: number; coversFrom: number; coversTo: number; updatedAt: number };
 type TaskRun = { id: string; outcome: string | null; summary: string | null; startedAt: number; completedAt: number | null };
 type TaskDetail = {
   task: ProjectTask & { description: string; summary: string | null };
@@ -1370,6 +1371,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
   // 업무 카드에서 '대화하기' 로 들어오면 그 업무의 담당자를 이름으로 먼저 잡아 둡니다 (에이전트 목록이 늦게 와도 안전).
   const [wantedAgent, setWantedAgent] = useState(initial?.agentName ?? '');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // 압축된 이전 대화 요약 (lib/compaction). 있으면 메시지 목록 위에 접힌 배너로 보여 줍니다.
+  const [summary, setSummary] = useState<ChatSummaryInfo | null>(null);
   const [draft, setDraft] = useState(initial?.draft ?? '');
   const [sending, setSending] = useState(false);
   const [streamText, setStreamText] = useState('');
@@ -1408,7 +1411,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
     };
   }, [loadBoardTasks]);
 
-  useEffect(() => { if (!projectId || !selectedAgentId) return; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[] }).then((data) => setMessages(data.messages || [])).catch(() => setMessages([])); }, [projectId, selectedAgentId]);
+  useEffect(() => { if (!projectId || !selectedAgentId) return; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[]; summary?: ChatSummaryInfo | null }).then((data) => { setMessages(data.messages || []); setSummary(data.summary ?? null); }).catch(() => { setMessages([]); setSummary(null); }); }, [projectId, selectedAgentId]);
 
   // 사용자가 위로 스크롤해 지난 대화를 보고 있으면 자동 스크롤을 멈춥니다.
   const handleScroll = useCallback(() => {
@@ -1540,7 +1543,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
       </div>
     </aside>
       <section className="conversation"><header><span style={{ background: selectedAgent?.color || 'var(--c-inverse)' }}>{selectedAgent?.name[0] || <Bot size={17} />}</span><div><strong>{selectedAgent?.name || t("에이전트를 선택하세요")}</strong><small>{selectedAgent ? t(selectedAgent.role) : t("프로젝트 참여 에이전트")}</small></div><em><i /> {t("대화 가능")}</em></header>
-        <div className="message-list" ref={listRef} onScroll={handleScroll}>{!messages.length && !streamText && <div className="chat-welcome"><Sparkles size={24} /><h2>{selectedAgent?.name || t("AI 에이전트")}{t("에게 무엇을 맡길까요?")}</h2><p>{selectedAgent?.isManager
+        <div className="message-list" ref={listRef} onScroll={handleScroll}>{summary && <details className="chat-summary"><summary><Sparkles size={13} /> {tf("이전 대화 {0}개 메시지가 요약으로 압축됨", summary.messageCount)}<em>{t("펼쳐서 보기")}</em></summary><div><Markdown text={summary.content} /><small>{t("세부 문구가 필요하면 에이전트에게 물어보세요 — recall_history 로 원문을 찾습니다.")}</small></div></details>}{!messages.length && !streamText && !summary && <div className="chat-welcome"><Sparkles size={24} /><h2>{selectedAgent?.name || t("AI 에이전트")}{t("에게 무엇을 맡길까요?")}</h2><p>{selectedAgent?.isManager
             ? t("목표와 원하는 결과물을 알려주면 필요한 에이전트를 합류시켜 맡기고, 결과를 검토해 보고합니다.")
             : t("목표, 배경, 원하는 결과물을 알려주면 프로젝트 맥락에 맞춰 답합니다.")}</p></div>}{messages.map((message) => <div className={`message ${message.role}`} key={message.id}><span>{message.role === 'assistant' ? selectedAgent?.name[0] : t("나")}</span>{message.role === 'assistant' ? <div className="bubble"><Markdown text={message.content} /></div> : <div className="bubble">{message.content}</div>}</div>)}{Boolean(steps.length) && <div className="manager-trace" aria-live="polite">
           <strong>{sending ? t("매니저가 일하는 중") : t("이번 답변에서 한 일")}</strong>

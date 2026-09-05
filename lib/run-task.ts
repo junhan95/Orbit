@@ -183,6 +183,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     '- 조사 한 건이면 충분한 일을 여러 명에게 쪼개 맡기지 마세요. 위임은 꼭 필요한 만큼만.',
     '- 정보가 좀 부족하다고 바로 blocked 로 끝내지 마세요. 합리적인 가정을 세워 진행 가능한 부분은 위임해 결과를 만들고, 세운 가정과 사용자에게 확인이 필요한 항목을 보고에 적으세요. 가정만으로는 아무것도 만들 수 없을 때만 blocked 입니다.',
     '- 최종 산출물은 사용자가 읽는 보고서입니다: 결론 → 담당자별 결과 요약 → 사용자가 결정할 것 순으로 한국어로 씁니다.',
+    "- 보고는 반드시 complete_task 로 끝내세요. summary 에 결론과 담당자별 결과, proof 에 팀원 보고·검증 근거(무엇을 확인했는지), next_actions 에 사용자가 결정할 항목을 넣습니다. 팀원이 blocked 였다면 그 사유를 summary 에 그대로 남기고, 위임 결과가 하나도 없으면 status='blocked' 입니다.",
   ];
   const workerRules = [
     '- 지금 업무의 범위를 벗어나는 후속 업무가 보이면 create_task 로 카드를 만들고 적임자를 owner 로 지정하세요. 범위 안의 일은 직접 끝내세요.',
@@ -202,7 +203,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     "- 핵심 정보가 없어 진행할 수 없으면 추측으로 채우지 말고 complete_task(status='blocked') 로 필요한 것을 밝히세요.",
     ...(isManager ? managerRules : workerRules),
     '- 이 업무를 추적하는 데 반복적으로 필요한 정보가 있으면 define_field 로 필드를 만들고 set_field 로 값을 채우세요. 한 번 쓰고 마는 메모는 요약에 적습니다.',
-    '- 마지막에는 반드시 complete_task 를 호출해 요약을 남기세요. 툴을 호출하지 않고 끝내면 보고가 남지 않습니다.',
+    '- 마지막에는 반드시 complete_task 를 호출해 요약을 남기세요. 툴을 호출하지 않고 끝내면 보고가 남지 않고, proof 가 비면 "검증 근거 없음" 으로 표시되어 검토 에이전트가 수정 요청을 냅니다.',
     '',
     MEMORY_GUIDANCE,
     '',

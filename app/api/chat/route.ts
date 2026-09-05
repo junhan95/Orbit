@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { MEMORY_REVIEW_EVERY, chatMessageIndex, prepareChatTurn, type ChatContext } from '@/lib/chat-agent';
-import { compactConversation, shouldCompact } from '@/lib/compaction';
+import { compactConversation, loadChatSummary, shouldCompact } from '@/lib/compaction';
 import { runInBackground, runMemoryReview } from '@/lib/memory-review';
 import { runClaudeAgent } from '@/lib/claude';
 import { resolveAgentModel } from '@/lib/models';
@@ -19,11 +19,14 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const projectId = url.searchParams.get('projectId');
   const agentId = url.searchParams.get('agentId');
-  if (!projectId || !agentId) return Response.json({ messages: [] });
-  const messages = await getDatabase()
-    .prepare('SELECT id, role, content, created_at AS createdAt FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? ORDER BY created_at ASC LIMIT 100')
-    .bind(user.userId, projectId, agentId).all<ChatRow>();
-  return Response.json({ messages: messages.results });
+  if (!projectId || !agentId) return Response.json({ messages: [], summary: null });
+  const db = getDatabase();
+  // 요약(chat_summaries)이 있으면 그 이후 메시지만 원문으로 보내고, 요약은 배너용으로 함께 돌려줍니다.
+  const summary = await loadChatSummary(db, user.userId, projectId, agentId);
+  const messages = await db
+    .prepare('SELECT id, role, content, created_at AS createdAt FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? AND created_at > ? ORDER BY created_at ASC LIMIT 200')
+    .bind(user.userId, projectId, agentId, summary?.coversTo ?? 0).all<ChatRow>();
+  return Response.json({ messages: messages.results, summary });
 }
 
 /** 비스트리밍 대화. 스트리밍은 /api/chat/stream 이 같은 lib/chat-agent 헬퍼로 처리합니다. */

@@ -624,3 +624,11 @@ p { color:var(--c-text); }
 .agent-profile-chat:hover:not(:disabled){background:var(--c-surface-soft);border-color:var(--c-line-mid)}
 .agent-profile-chat:disabled{opacity:.5;cursor:not-allowed}
 .agent-profile-actions .agent-profile-open{flex:1;display:flex;align-items:center;justify-content:space-between;border:0;background:none;padding:0;color:var(--c-ink);font-size:11px;font-weight:500;cursor:pointer}
+/* 대화 압축 요약 배너 (lib/compaction) */
+.chat-summary{margin:0 0 6px;border:1px dashed var(--c-line);border-radius:10px;background:var(--c-surface-soft);font-size:12px}
+.chat-summary>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:9px 12px;color:var(--c-text-muted)}
+.chat-summary>summary::-webkit-details-marker{display:none}
+.chat-summary>summary em{margin-left:auto;font-style:normal;font-size:10px;color:var(--c-link)}
+.chat-summary[open]>summary em{display:none}
+.chat-summary>div{padding:0 12px 12px;color:var(--c-text);line-height:1.6;border-top:1px solid var(--c-line-soft)}
+.chat-summary>div small{display:block;margin-top:8px;color:var(--c-text-muted);font-size:10px}
