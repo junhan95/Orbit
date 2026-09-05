@@ -147,7 +147,7 @@ export function LandingView() {
         <div className="lp-about-left">
           <h2 className="lp-h2">
             <span>ABOUT</span>
-            <span className="lp-in2 lp-accent">ORBIT</span>
+            <span className="lp-in2 lp-accent">ORBITCREW</span>
           </h2>
           <p className="lp-p">
             Orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을
