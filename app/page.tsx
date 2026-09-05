@@ -4,21 +4,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, ArrowUpRight, Bot, ChartColumn, Check, ChevronRight, Clock3, Command, Gauge, LayoutDashboard, ListChecks, LoaderCircle, MessageSquareText, Play, Plus, Search, Settings, Sparkles, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Markdown } from '@/components/markdown';
 import { UsageView } from '@/components/usage-view';
 import { WorkspaceView, type WorkspaceSection } from '@/components/workspace-views';
 import { TASK_STATUSES, type TaskStatus, formatDue, isOverdue, toDueTimestamp } from '@/lib/due';
+import { agentState } from '@/lib/agent-state';
+import { buildProjectFolderContext } from '@/lib/folder-access';
 
 type Task = {
   id: string; title: string; label: string; owner: string; status: TaskStatus;
   due: number | null; accent: string; result?: string | null; projectId?: string | null;
 };
 type StatsAgent = { id: string; name: string; role: string; color: string; runningCount: number; activeTasks: number; lastRunAt: number | null };
+type StatsProject = {
+  id: string; name: string; description: string; color: string; status: string;
+  taskCount: number; waitingCount: number; doingCount: number; reviewCount: number; progress: number; nextDue: number | null;
+};
 type Stats = {
   tasks: { total: number; waiting: number; doing: number; review: number; completionRate: number };
   runs: { total: number; completed: number; failed: number; running: number; lastHour: number; avgSeconds: number | null; histogram: number[] };
-  focus: { id: string; name: string; description: string; color: string; taskCount: number; reviewCount: number; progress: number; nextDue: number | null } | null;
+  projects: StatsProject[];
+  focus: StatsProject | null;
   agents: StatsAgent[];
 };
+
+/** 프로젝트 선택기의 '전체' 값. 개별 프로젝트는 id 를 그대로 씁니다. */
+const ALL_PROJECTS = 'all';
 
 const NAV_ITEMS = [['대쉬보드', LayoutDashboard], ['프로젝트', ListChecks], ['에이전트', Bot], ['대화', MessageSquareText], ['사용량', ChartColumn]] as const;
 
@@ -59,17 +70,18 @@ export default function Home() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [activeNav, setActiveNav] = useState<NavSection>('대쉬보드');
   const [ownerFilter, setOwnerFilter] = useState('전체');
+  const [projectFilter, setProjectFilter] = useState('');
   const [query, setQuery] = useState('');
   const [newTitle, setNewTitle] = useState('');
-  const [newOwner, setNewOwner] = useState('');
+  const [newProject, setNewProject] = useState('');
   const [newDue, setNewDue] = useState('');
   const [notice, setNotice] = useState('');
   const [displayName, setDisplayName] = useState('사용자');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [selectedResult, setSelectedResult] = useState<Task | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [clock, setClock] = useState({ today: '', hello: '안녕하세요' });
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +96,15 @@ export default function Home() {
       if (!response.ok) return;
       setStats(await response.json() as Stats);
     } catch { /* 통계는 보조 정보라 실패해도 화면을 막지 않습니다. */ }
+  }, []);
+
+  const refreshTasks = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tasks');
+      if (!response.ok) return;
+      const data = await response.json() as { tasks: Task[] };
+      setTasks(data.tasks);
+    } catch { /* 목록 새로고침 실패는 조용히 넘기고 기존 화면을 유지합니다. */ }
   }, []);
 
   useEffect(() => {
@@ -112,6 +133,15 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, [flash]);
 
+  // 다른 화면(프로젝트·에이전트)에서 만들고 돌아왔을 수 있으니 대쉬보드로 올 때마다 다시 읽습니다.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return; }
+    if (activeNav !== '대쉬보드') return;
+    void refreshStats();
+    void refreshTasks();
+  }, [activeNav, refreshStats, refreshTasks]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -125,30 +155,73 @@ export default function Home() {
   }, []);
 
   const agents = stats?.agents ?? [];
+  const projects = useMemo(() => stats?.projects ?? [], [stats]);
   const histogramMax = Math.max(1, ...(stats?.runs.histogram ?? [0]));
+
+  // 고른 프로젝트가 없거나(첫 렌더) 삭제되어 사라졌으면 '지금 집중할 프로젝트'(= 가장 최근 프로젝트)로 봅니다.
+  const activeProjectId = useMemo(() => {
+    if (projectFilter === ALL_PROJECTS) return ALL_PROJECTS;
+    if (projectFilter && projects.some((project) => project.id === projectFilter)) return projectFilter;
+    return projects[0]?.id ?? ALL_PROJECTS;
+  }, [projectFilter, projects]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === activeProjectId) ?? null,
+    [activeProjectId, projects],
+  );
+
+  // 대쉬보드는 프로젝트에 속한 업무만 다룹니다. 프로젝트를 고르면 그 프로젝트의 업무로 좁힙니다.
+  const projectTasks = useMemo(
+    () => tasks.filter((task) => Boolean(task.projectId) && (activeProjectId === ALL_PROJECTS || task.projectId === activeProjectId)),
+    [activeProjectId, tasks],
+  );
 
   const visibleTasks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    return tasks.filter((task) => {
+    return projectTasks.filter((task) => {
       if (ownerFilter !== '전체' && task.owner !== ownerFilter) return false;
       if (!keyword) return true;
       return `${task.title} ${task.owner} ${task.label}`.toLowerCase().includes(keyword);
     });
-  }, [ownerFilter, query, tasks]);
+  }, [ownerFilter, projectTasks, query]);
+
+  // 통계 카드도 선택한 범위를 따릅니다. (실행 기록은 워크스페이스 전체 기준)
+  const scoped = useMemo(() => {
+    const waiting = projectTasks.filter((task) => task.status === '대기').length;
+    const doing = projectTasks.filter((task) => task.status === '진행 중').length;
+    const review = projectTasks.filter((task) => task.status === '검토').length;
+    const total = projectTasks.length;
+    return { total, waiting, doing, review, completionRate: total ? Math.round((review / total) * 100) : 0 };
+  }, [projectTasks]);
+
+  const scopeLabel = selectedProject ? selectedProject.name : '전체 프로젝트';
+  const nextDue = useMemo(() => {
+    const dues = projectTasks.filter((task) => task.status !== '검토' && task.due).map((task) => task.due as number);
+    return dues.length ? Math.min(...dues) : null;
+  }, [projectTasks]);
 
   async function createTask() {
     const title = newTitle.trim();
     if (!title) return;
+    // 업무는 프로젝트 안에서만 삽니다. 다이얼로그에서 고른 프로젝트 → 현재 보고 있는 프로젝트 → 첫 프로젝트 순으로 정합니다.
+    const targetProjectId = newProject || (activeProjectId !== ALL_PROJECTS ? activeProjectId : projects[0]?.id);
+    if (!targetProjectId) {
+      flash('먼저 프로젝트를 만들어 주세요.');
+      return;
+    }
     try {
       const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, owner: newOwner || undefined, due: newDue ? toDueTimestamp(newDue) : null }),
+        // 담당은 보내지 않습니다 — 서버가 그 프로젝트의 매니저에게 배정합니다.
+        body: JSON.stringify({ title, projectId: targetProjectId, due: newDue ? toDueTimestamp(newDue) : null }),
       });
       const data = await response.json() as { task?: Task; error?: string };
       if (!response.ok || !data.task) throw new Error(data.error || '업무를 만들지 못했습니다.');
       setTasks((current) => [...current, data.task as Task]);
       setNewTitle(''); setNewDue('');
+      // 다른 프로젝트에 만들었으면 그 프로젝트로 화면을 옮겨 새 업무가 바로 보이게 합니다.
+      if (activeProjectId !== ALL_PROJECTS && targetProjectId !== activeProjectId) setProjectFilter(targetProjectId);
       flash(`새 업무가 ${data.task.owner}에게 배정되었습니다.`);
       void refreshStats();
     } catch (error) { flash(error instanceof Error ? error.message : '업무를 만들지 못했습니다.'); }
@@ -158,8 +231,10 @@ export default function Home() {
     setRunningId(task.id);
     setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status: '진행 중' } : item));
     try {
+      // 업무가 속한 프로젝트에 폴더가 연결돼 있으면 브라우저에서 읽어 함께 보냅니다.
+      const folderContext = await buildProjectFolderContext(task.projectId);
       const response = await fetch('/api/agents/run', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId: task.id, folderContext }),
       });
       const data = await response.json() as { output?: string; error?: string };
       if (!response.ok || !data.output) throw new Error(data.error || '에이전트 실행에 실패했습니다.');
@@ -174,24 +249,6 @@ export default function Home() {
       setRunningId(null);
       void refreshStats();
     }
-  }
-
-  async function changeStatus(task: Task, status: TaskStatus) {
-    if (status === task.status) return;
-    setPendingId(task.id);
-    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status } : item));
-    try {
-      const response = await fetch(`/api/tasks/${task.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
-      });
-      const data = await response.json() as { task?: Task; error?: string };
-      if (!response.ok || !data.task) throw new Error(data.error || '상태를 바꾸지 못했습니다.');
-      setTasks((current) => current.map((item) => item.id === task.id ? data.task as Task : item));
-      void refreshStats();
-    } catch (error) {
-      setTasks((current) => current.map((item) => item.id === task.id ? task : item));
-      flash(error instanceof Error ? error.message : '상태를 바꾸지 못했습니다.');
-    } finally { setPendingId(null); }
   }
 
   async function deleteTask(task: Task) {
@@ -242,23 +299,29 @@ export default function Home() {
             <kbd>⌘ K</kbd>
           </label>
           <div className="top-actions">
-            <Dialog>
+            <Dialog open={createOpen} onOpenChange={(open) => {
+              if (open) setNewProject(activeProjectId !== ALL_PROJECTS ? activeProjectId : projects[0]?.id ?? '');
+              setCreateOpen(open);
+            }}>
               <DialogTrigger render={<Button className="create-button" />}><Plus size={16} /> 업무 만들기</DialogTrigger>
               <DialogContent className="task-dialog">
-                <DialogHeader><DialogTitle>새 업무 만들기</DialogTitle><DialogDescription>담당 에이전트와 마감일을 지정하면 바로 보드에 올라갑니다.</DialogDescription></DialogHeader>
-                <label className="dialog-field"><span>업무 이름</span><input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" /></label>
-                <div className="dialog-row">
-                  <label className="dialog-field"><span>담당 에이전트</span>
-                    <select value={newOwner} onChange={(event) => setNewOwner(event.target.value)}>
-                      <option value="">자동 배정</option>
-                      {agents.map((agent) => <option key={agent.id} value={agent.name}>{agent.name} · {agent.role}</option>)}
-                    </select>
-                  </label>
-                  <label className="dialog-field"><span>마감일</span><input type="date" value={newDue} onChange={(event) => setNewDue(event.target.value)} /></label>
-                </div>
+                <DialogHeader><DialogTitle>새 업무 만들기</DialogTitle><DialogDescription>업무는 프로젝트의 매니저에게 배정됩니다. 매니저가 필요한 에이전트를 합류시켜 나눠 맡깁니다.</DialogDescription></DialogHeader>
+                {projects.length
+                  ? <>
+                      <label className="dialog-field"><span>업무 이름</span><input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" /></label>
+                      <label className="dialog-field"><span>프로젝트</span>
+                        <select value={newProject} onChange={(event) => setNewProject(event.target.value)}>
+                          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="dialog-field"><span>마감일</span><input type="date" value={newDue} onChange={(event) => setNewDue(event.target.value)} /></label>
+                    </>
+                  : <p className="dialog-hint">아직 프로젝트가 없어요. 프로젝트를 먼저 만들면 그 안에 업무를 배정할 수 있습니다.</p>}
                 <DialogFooter>
                   <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
-                  <DialogClose render={<Button onClick={createTask} disabled={!newTitle.trim()} />}>업무 배정</DialogClose>
+                  {projects.length
+                    ? <DialogClose render={<Button onClick={createTask} disabled={!newTitle.trim()} />}>업무 배정</DialogClose>
+                    : <DialogClose render={<Button onClick={() => setActiveNav('프로젝트')} />}>프로젝트 만들러 가기</DialogClose>}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -271,7 +334,11 @@ export default function Home() {
             <div>
               <p className="eyebrow">{clock.today}</p>
               <h1>{clock.hello}, {displayName}님.</h1>
-              <p>{loading ? '워크스페이스를 불러오는 중이에요.' : `${agents.length}명의 에이전트가 ${stats?.tasks.total ?? tasks.length}개 업무에서 협업하고 있어요.`}</p>
+              <p>{loading
+                ? '워크스페이스를 불러오는 중이에요.'
+                : projects.length
+                  ? `${scopeLabel} · ${agents.length}명의 에이전트가 ${scoped.total}개 업무에서 협업하고 있어요.`
+                  : '아직 프로젝트가 없어요. 프로젝트를 만들면 여기에 진행 상황이 모입니다.'}</p>
             </div>
             <fieldset className="view-switch" aria-label="담당 에이전트 필터">
               <button className={ownerFilter === '전체' ? 'selected' : ''} onClick={() => setOwnerFilter('전체')}>전체</button>
@@ -283,15 +350,25 @@ export default function Home() {
 
           <section className="overview-grid" aria-label="오늘의 현황">
             <article className="focus-card">
-              <div className="focus-topline"><span><Zap size={14} fill="currentColor" /> 지금 집중할 프로젝트</span></div>
-              {stats?.focus ? <>
-                <h2>{stats.focus.name}</h2>
-                <p>{stats.focus.description || '프로젝트 설명이 아직 없습니다.'}</p>
-                <div className="progress-row"><span>검토 단계 도달률</span><strong>{stats.focus.progress}%</strong></div>
-                <div className="progress-track"><span style={{ width: `${stats.focus.progress}%` }} /></div>
+              <div className="focus-topline">
+                <span><Zap size={14} fill="currentColor" /> 지금 집중할 프로젝트</span>
+                {projects.length > 0 && (
+                  <select className="focus-project-select" aria-label="프로젝트 선택" value={activeProjectId} onChange={(event) => setProjectFilter(event.target.value)}>
+                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                    <option value={ALL_PROJECTS}>전체 프로젝트</option>
+                  </select>
+                )}
+              </div>
+              {projects.length ? <>
+                <h2>{scopeLabel}</h2>
+                <p>{selectedProject
+                  ? selectedProject.description || '프로젝트 설명이 아직 없습니다.'
+                  : `${projects.length}개 프로젝트의 진행 상황을 합쳐서 보고 있어요.`}</p>
+                <div className="progress-row"><span>검토 단계 도달률</span><strong>{scoped.completionRate}%</strong></div>
+                <div className="progress-track"><span style={{ width: `${scoped.completionRate}%` }} /></div>
                 <div className="focus-footer">
                   <div className="mini-team">{agents.slice(0, 3).map((agent) => <span key={agent.id}>{agent.name[0]}</span>)}</div>
-                  <span><Clock3 size={14} /> {stats.focus.nextDue ? `가장 이른 마감 ${formatDue(stats.focus.nextDue)}` : '마감 지정 없음'}</span>
+                  <span><Clock3 size={14} /> {nextDue ? `가장 이른 마감 ${formatDue(nextDue)}` : '마감 지정 없음'}</span>
                   <button onClick={() => setActiveNav('프로젝트')}>프로젝트 열기 <ArrowUpRight size={14} /></button>
                 </div>
               </> : <>
@@ -317,13 +394,13 @@ export default function Home() {
 
             <article className="stat-card">
               <span className="icon-tile orange"><ListChecks size={18} /></span>
-              <div><strong>{stats?.tasks.total ?? tasks.length}</strong><span>전체 업무</span></div>
-              <em>대기 {stats?.tasks.waiting ?? 0} · 진행 {stats?.tasks.doing ?? 0}</em>
+              <div><strong>{scoped.total}</strong><span>{selectedProject ? '이 프로젝트 업무' : '전체 업무'}</span></div>
+              <em>대기 {scoped.waiting} · 진행 {scoped.doing}</em>
             </article>
             <article className="stat-card">
               <span className="icon-tile mint"><Check size={18} /></span>
-              <div><strong>{stats?.tasks.completionRate ?? 0}%</strong><span>검토 도달률</span></div>
-              <em>검토 {stats?.tasks.review ?? 0} / {stats?.tasks.total ?? 0}</em>
+              <div><strong>{scoped.completionRate}%</strong><span>검토 도달률</span></div>
+              <em>검토 {scoped.review} / {scoped.total}</em>
             </article>
             <article className="stat-card">
               <span className="icon-tile blue"><Gauge size={18} /></span>
@@ -335,10 +412,24 @@ export default function Home() {
           <section className="main-grid">
             <div className="board-panel">
               <div className="section-header">
-                <div><span className="section-kicker">업무 흐름</span><h2>에이전트 보드</h2></div>
-                <span className="board-count">{visibleTasks.length}건 표시 중</span>
+                <div><span className="section-kicker">에이전트 상태</span><h2>에이전트 보드</h2><p className="section-note">{scopeLabel}의 업무와 에이전트 실행 상태가 자동으로 반영됩니다.</p></div>
+                <span className="board-count">{projectTasks.length ? `${visibleTasks.length}건 표시 중` : '표시할 업무 없음'}</span>
               </div>
-              <div className="kanban-board">
+              {!loading && !projects.length
+                ? <div className="board-empty">
+                    <ListChecks size={26} />
+                    <strong>아직 프로젝트가 없어요</strong>
+                    <p>보드는 프로젝트의 진행 상황을 그대로 보여줍니다. 프로젝트를 만들면 그 안의 업무가 대기 → 진행 중 → 검토 순서로 여기에 표시됩니다.</p>
+                    <Button className="board-empty-cta" onClick={() => setActiveNav('프로젝트')}><Plus size={16} /> 프로젝트 만들기</Button>
+                  </div>
+                : !loading && !projectTasks.length
+                ? <div className="board-empty">
+                    <ListChecks size={26} />
+                    <strong>{selectedProject ? `'${selectedProject.name}'에 아직 업무가 없어요` : '아직 등록된 업무가 없어요'}</strong>
+                    <p>에이전트에게 맡길 업무를 만들면 이 보드에 대기 → 진행 중 → 검토 순서로 표시됩니다.</p>
+                    <Button className="board-empty-cta" onClick={() => setCreateOpen(true)}><Plus size={16} /> 첫 업무 만들기</Button>
+                  </div>
+                : <div className="kanban-board">
                 {TASK_STATUSES.map((column) => {
                   const columnTasks = visibleTasks.filter((task) => task.status === column);
                   return <div className="kanban-column" key={column}>
@@ -356,9 +447,13 @@ export default function Home() {
                           <span className={isOverdue(task.due, task.status) ? 'task-due overdue' : 'task-due'}><Clock3 size={13} /> {formatDue(task.due)}</span>
                         </div>
                         <div className="task-actions">
-                          <select className="task-status" aria-label={`${task.title} 상태`} value={task.status} disabled={pendingId === task.id} onChange={(event) => changeStatus(task, event.target.value as TaskStatus)}>
-                            {TASK_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-                          </select>
+                          {(() => {
+                            const state = agentState(task, runningId === task.id);
+                            return <span className={`agent-state ${state.key}`} title={state.hint} aria-label={`${task.owner} 상태: ${state.label}`}>
+                              {state.key === 'running' ? <LoaderCircle className="spin" size={12} /> : <i className="agent-state-dot" />}
+                              {state.label}
+                            </span>;
+                          })()}
                           {task.result
                             ? <button className="run-task result" onClick={() => setSelectedResult(task)}><Check size={13} /> 결과</button>
                             : <button className="run-task" disabled={runningId === task.id} onClick={() => runAgent(task)}>
@@ -370,7 +465,7 @@ export default function Home() {
                     </div>
                   </div>;
                 })}
-              </div>
+              </div>}
             </div>
 
             <aside className="agent-panel">
@@ -401,7 +496,7 @@ export default function Home() {
       <Dialog open={Boolean(selectedResult)} onOpenChange={(open) => !open && setSelectedResult(null)}>
         <DialogContent className="result-dialog">
           <DialogHeader><DialogTitle>{selectedResult?.owner}의 실행 결과</DialogTitle><DialogDescription>{selectedResult?.title}</DialogDescription></DialogHeader>
-          <div className="agent-result">{selectedResult?.result}</div>
+          <div className="agent-result"><Markdown text={selectedResult?.result || ''} /></div>
           <DialogFooter showCloseButton />
         </DialogContent>
       </Dialog>

@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Coins, Cpu, Globe, LoaderCircle, MessageSquareText, Send } from 'lucide-react';
 
 /**
- * 시리즈 색은 앱 브랜드 팔레트에서 고른 뒤 dataviz 검증기로 확인한 값입니다.
- * (light / surface #fff — 명도대역·채도·CVD 분리 PASS, 최악 인접쌍 ΔE 29.8 protan)
- * 대비 경고가 있는 주황 계열은 아래 일별 표(표 뷰)가 완화 채널 역할을 합니다.
+ * 시리즈 색은 DESIGN-airtable.md 팔레트에서 고른 값입니다.
+ * ink(#181d26) / signature-coral(#aa2d00) — 흰 캔버스 위 명도·색상 분리 모두 확보.
+ * 대비가 약한 구간은 아래 일별 표(표 뷰)가 완화 채널 역할을 합니다.
  */
-const SERIES_INPUT = '#6651f2';
-const SERIES_OUTPUT = '#ff7557';
+const SERIES_INPUT = '#181d26';
+const SERIES_OUTPUT = '#aa2d00';
 const RANGES = [7, 30, 90] as const;
 
 type Bucket = {

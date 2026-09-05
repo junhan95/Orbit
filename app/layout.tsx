@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist_Mono, Inter } from 'next/font/google';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Haas Grotesk 대체 — DESIGN-airtable.md 'Note on Font Substitutes'
+const inter = Inter({
+  variable: '--font-app-sans',
   subsets: ['latin'],
 });
 
@@ -26,9 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>
