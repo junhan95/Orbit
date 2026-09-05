@@ -6,6 +6,14 @@ import {
   isTrialAllowedModel, usageToMc, type CreditConfig,
 } from '@/lib/credits-pricing';
 import { ApiKeyMissingError, apiKeyMissingResponse, loadUserKey } from '@/lib/user-keys';
+import { atomicBatch } from '@/lib/atomic';
+
+// A model HTTP request is bounded to 180 seconds; crashed reservations expire conservatively.
+export const CREDIT_HOLD_TTL_MS = 5 * 60_000;
+export class BillingBusyError extends Error {
+  status = 409;
+  constructor() { super('다른 AI 호출 또는 환불이 크레딧을 정산하고 있습니다. 잠시 후 다시 시도하세요.'); }
+}
 
 /**
  * 크레딧 원장·잔액 (서버 전용). 단가 계산은 lib/credits-pricing.ts, 설계는 docs/pricing-credits.md.
@@ -62,7 +70,7 @@ export function creditConfig(): CreditRuntimeConfig {
 export async function getBalance(db: D1Database, userId: string): Promise<CreditBalance> {
   const [buckets, holds] = await db.batch([
     db.prepare('SELECT bucket, COALESCE(SUM(amount_mc), 0) AS total FROM credit_ledger WHERE user_id = ? GROUP BY bucket').bind(userId),
-    db.prepare("SELECT COALESCE(SUM(amount_mc), 0) AS total FROM credit_holds WHERE user_id = ? AND status = 'open'").bind(userId),
+    db.prepare("SELECT COALESCE(SUM(amount_mc), 0) AS total FROM credit_holds WHERE user_id = ? AND (status = 'refund' OR (status = 'open' AND updated_at > ?))").bind(userId, Date.now() - CREDIT_HOLD_TTL_MS),
   ]);
   let paidMc = 0; let promoMc = 0;
   for (const row of (buckets.results ?? []) as Array<{ bucket: string; total: number }>) {
@@ -142,6 +150,7 @@ export async function billingMode(db: D1Database, userId: string): Promise<Billi
 
 /** 크레딧이 없어 Claude 를 부를 수 없을 때. 라우트는 402 { code: 'insufficient_credits' } 로 바꿉니다. */
 export class InsufficientCreditsError extends Error {
+  status = 402;
   code = 'insufficient_credits' as const;
   constructor(public availableMc: number) {
     super(`크레딧 잔액이 부족합니다 (남은 크레딧 ${formatCredits(Math.max(0, availableMc))}). 충전하거나 본인 Anthropic API 키를 연결해 주세요.`);
@@ -156,6 +165,7 @@ export function insufficientCreditsResponse(availableMc: number, extra: Record<s
 export function credentialErrorResponse(error: unknown, extra: Record<string, unknown> = {}): Response | null {
   if (error instanceof ApiKeyMissingError) return apiKeyMissingResponse(extra);
   if (error instanceof InsufficientCreditsError) return insufficientCreditsResponse(error.availableMc, extra);
+  if (error instanceof BillingBusyError) return Response.json({ error: error.message, code: 'billing_busy', ...extra }, { status: 409 });
   return null;
 }
 
@@ -165,14 +175,16 @@ const TRIAL_FALLBACK_MODEL: string = TRIAL_ALLOWED_MODELS[1];
 /**
  * 크레딧 경로의 과금 핸들 — lib/claude.ts 가 apiKey 자리에서 받아 호출마다 onUsage 를 부릅니다.
  *
- *   - 잔액 스냅샷은 만들 때 한 번 읽고, 이 핸들을 거친 호출의 실측 차감을 누적해 비교합니다.
- *     같은 요청 안의 매니저 → 하위 에이전트 호출은 모두 같은 핸들을 공유하므로 합산이 맞습니다.
- *   - 호출이 끝날 때마다 원장에 usage 행을 바로 씁니다 (호출 단위, ref = 메시지 id). 실행 도중 죽어도 쓴 만큼은 남습니다.
+ *   - 호출 직전에 사용자 잔액을 원자적으로 예약합니다. 같은 핸들의 호출은 순서대로 실행합니다.
+ *   - 응답 사용량을 무료·유료로 분할 정산합니다 (ref = 호출 예약 id). 오류 시 예약을 반납합니다.
  *   - 유료 잔액이 없으면(체험만) fable/opus 요청을 허용 모델로 바꿉니다 — 사용량 기록에는 실제 모델이 남습니다.
  */
 export class CreditBilling implements ClaudeBilling {
   readonly mode = 'credits' as const;
   usedMc = 0;
+  private holdId: string | null = null;
+  private turn = Promise.resolve();
+  private releaseTurn: (() => void) | null = null;
 
   constructor(
     readonly apiKey: string,
@@ -189,23 +201,65 @@ export class CreditBilling implements ClaudeBilling {
     return this.trialOnly && !isTrialAllowedModel(model) ? TRIAL_FALLBACK_MODEL : model;
   }
 
-  beforeCall(): void {
-    if (this.availableMc <= 0) throw new InsufficientCreditsError(this.availableMc);
+  async beforeCall(): Promise<void> {
+    // Reviews/delegated calls sharing this handle queue locally; separate requests compete in D1.
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => { release = resolve; });
+    const previous = this.turn;
+    this.turn = previous.then(() => next);
+    await previous;
+    this.releaseTurn = release;
+    try {
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      const held = await this.db.prepare(`INSERT INTO credit_holds (id, user_id, run_id, amount_mc, status, created_at, updated_at)
+        SELECT ?, ?, ?, SUM(amount_mc), 'open', ?, ? FROM credit_ledger WHERE user_id = ?
+        HAVING SUM(amount_mc) > 0 AND NOT EXISTS (SELECT 1 FROM credit_holds WHERE user_id = ? AND (status = 'refund' OR (status = 'open' AND updated_at > ?)))
+        RETURNING amount_mc`).bind(id, this.userId, id, now, now, this.userId, this.userId, now - CREDIT_HOLD_TTL_MS).first<{ amount_mc: number }>();
+      if (!held) {
+        const balance = await getBalance(this.db, this.userId);
+        if (balance.balanceMc <= 0) throw new InsufficientCreditsError(balance.availableMc);
+        throw new BillingBusyError();
+      }
+      this.holdId = id;
+      this.balance = await getBalance(this.db, this.userId);
+      this.balance.availableMc = held.amount_mc;
+      this.usedMc = 0;
+    } catch (error) { await this.afterCall(); throw error; }
   }
 
   async onUsage(model: string, usage: ClaudeUsage): Promise<{ stop: boolean }> {
     const mc = usageToMc(model, usage, this.config);
-    this.usedMc += mc;
-    if (mc > 0) {
-      await ledgerInsert(this.db, {
-        userId: this.userId, kind: 'usage', bucket: this.balance.promoMc - this.usedMc >= 0 ? 'promo' : 'paid', amountMc: -mc,
-        refType: 'call', meta: {
+    const holdId = this.holdId;
+    if (!holdId) throw new Error('크레딧 예약 없이 정산할 수 없습니다.');
+    const balance = await getBalance(this.db, this.userId);
+    const promo = Math.min(mc, Math.max(0, balance.promoMc));
+    const paid = mc - promo;
+    const meta = {
           model, in: usage.inputTokens, out: usage.outputTokens, cacheWrite: usage.cacheCreationTokens, cacheRead: usage.cacheReadTokens,
           webSearch: usage.webSearchRequests, markup: this.config.markup, fxRate: this.config.fxRate,
-        },
-      }).run();
-    }
+    };
+    const statements = [
+      ...([['promo', promo], ['paid', paid]] as const).filter(([, amount]) => amount > 0).map(([bucket, amount]) => ledgerInsert(this.db, { userId: this.userId, kind: 'usage', bucket, amountMc: -amount, refType: 'call', refId: holdId, meta })),
+      this.db.prepare("UPDATE credit_holds SET status = 'settled', updated_at = ? WHERE id = ?").bind(Date.now(), holdId),
+    ];
+    await atomicBatch(this.db, "EXISTS (SELECT 1 FROM credit_holds WHERE id = ? AND status = 'open' AND updated_at > ?)", [holdId, Date.now() - CREDIT_HOLD_TTL_MS], statements);
+    this.holdId = null;
+    this.balance = balance;
+    this.balance.availableMc = balance.balanceMc;
+    this.usedMc = mc;
     return { stop: this.availableMc <= 0 };
+  }
+
+  /** Called in finally even after HTTP errors or interrupted streams. Never release another call's hold. */
+  async afterCall(): Promise<void> {
+    const id = this.holdId;
+    try {
+      if (id) await this.db.prepare("UPDATE credit_holds SET status = 'released', updated_at = ? WHERE id = ? AND status = 'open'").bind(Date.now(), id).run();
+    } finally {
+      this.holdId = null;
+      const release = this.releaseTurn; this.releaseTurn = null; release?.();
+    }
   }
 
   /** 다시 읽은 잔액으로 스냅샷을 갱신 (백그라운드 작업이 뒤늦게 이 핸들을 쓸 때). */
@@ -231,6 +285,7 @@ export async function resolveCredential(db: D1Database, userId: string): Promise
   const config = creditConfig();
   await grantTrialCredits(db, userId, config);
   const balance = await getBalance(db, userId);
-  if (balance.availableMc <= 0) throw new InsufficientCreditsError(balance.availableMc);
+  if (balance.balanceMc <= 0) throw new InsufficientCreditsError(balance.availableMc);
+  if (balance.heldMc > 0) throw new BillingBusyError();
   return new CreditBilling(operatorKey, db, userId, balance, config);
 }

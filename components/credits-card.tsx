@@ -48,14 +48,14 @@ type CreditsData = {
   tiers: { krw: number; credits: number; bonusPct: number }[];
   rates: { models: { model: string; input: number; output: number; cacheWrite: number; cacheRead: number }[]; webSearchPerCall: number; config: { markup: number; fxRate: number } };
   ledger: { id: string; kind: LedgerKind; bucket: 'paid' | 'promo'; amountMc: number; refType: string | null; refId: string | null; meta: Record<string, unknown> | null; createdAt: number }[];
-  payments: { id: string; amountKrw: number; creditsMc: number; bonusMc: number; status: 'done' | 'failed' | 'canceled' | 'refunded'; method: string | null; receiptUrl: string | null; approvedAt: number | null; createdAt: number; refundable: boolean }[];
+  payments: { id: string; amountKrw: number; creditsMc: number; bonusMc: number; status: 'done' | 'failed' | 'canceled' | 'refunded' | 'confirming' | 'refund_pending'; method: string | null; receiptUrl: string | null; approvedAt: number | null; createdAt: number; refundable: boolean }[];
   checkout: { enabled: boolean };
   /** 베타 운영(docs/pricing-credits.md §10): 테스트 결제 = 실청구 없음, 월 충전 한도. */
   beta: { enabled: boolean; capMc: number; usedMc: number; remainingMc: number; resetsAt: number };
 };
 
 const PAYMENT_STATUS_LABEL: Record<CreditsData['payments'][number]['status'], string> = {
-  done: '완료', failed: '실패', canceled: '취소', refunded: '환불됨',
+  done: '완료', failed: '실패', canceled: '취소', refunded: '환불됨', confirming: '결제 확인 중', refund_pending: '환불 확인 중',
 };
 
 /** 잔액이 이보다 적으면 경고 (크레딧) */
@@ -127,9 +127,19 @@ export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: 
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error || t('환불하지 못했습니다.'));
       onNotice(t('환불이 완료되었습니다. 카드사 처리에는 며칠이 걸릴 수 있습니다.'));
-      reload();
     } catch (err) { onNotice(err instanceof Error ? err.message : t('환불하지 못했습니다.')); }
-    finally { setBusy(null); }
+    finally { setBusy(null); reload(); }
+  }
+
+  async function reconcile(paymentId: string, isRefund: boolean) {
+    setBusy(paymentId);
+    try {
+      const response = await fetch(isRefund ? '/api/credits/refund' : '/api/credits/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentId }) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || t('처리 결과를 확인하지 못했습니다.'));
+      onNotice(t('처리 결과를 확인했습니다.'));
+    } catch (err) { onNotice(err instanceof Error ? err.message : t('처리 결과를 확인하지 못했습니다.')); }
+    finally { setBusy(null); reload(); }
   }
 
   if (error) return <section className="settings-card credits-card"><p className="credits-error">{error}</p></section>;
@@ -228,6 +238,7 @@ export function CreditsCard({ onNotice, onConnectKey, refreshKey }: { onNotice: 
           <span className="credits-pay-actions">
             {p.receiptUrl ? <a href={p.receiptUrl} rel="noreferrer" target="_blank">{t('영수증')} <ExternalLink size={11} /></a> : null}
             {p.refundable ? <Button disabled={busy !== null} onClick={() => void refund(p.id)} size="sm" variant="ghost">{busy === `refund:${p.id}` ? <LoaderCircle className="spin" size={13} /> : t('환불')}</Button> : null}
+            {p.status === 'confirming' || p.status === 'refund_pending' ? <Button disabled={busy !== null} onClick={() => void reconcile(p.id, p.status === 'refund_pending')} size="sm" variant="ghost">{busy === p.id ? <LoaderCircle className="spin" size={13} /> : t('처리 결과 확인')}</Button> : null}
           </span>
         </li>)}
       </ul>

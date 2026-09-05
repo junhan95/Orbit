@@ -11,7 +11,7 @@ function setup() {
   const sqlite = new DatabaseSync(':memory:');
   databases.push(sqlite);
   sqlite.exec("CREATE TABLE projects (id TEXT PRIMARY KEY); INSERT INTO projects VALUES ('p');");
-  for (const migration of ['0012_skills', '0016_gate_events', '0017_approvals']) {
+  for (const migration of ['0012_skills', '0016_gate_events', '0017_approvals', '0021_credits', '0022_runtime_safety']) {
     sqlite.exec(readFileSync(new URL(`../drizzle/${migration}.sql`, import.meta.url), 'utf8'));
   }
   function prepare(sql: string) {
