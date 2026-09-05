@@ -26,8 +26,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# local environment
+# local environment (.env.example 는 추적)
 .env*
+!.env.example
 
 # deployment and generated files
 .vercel

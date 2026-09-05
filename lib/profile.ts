@@ -94,7 +94,7 @@ export async function saveProfile(db: D1Database, userId: string, patch: Partial
   return next;
 }
 
-/** 소속을 한 줄로. "Frankonia · 영업팀 · 부장" 처럼 있는 것만 이어 붙입니다. */
+/** 소속을 한 줄로. "Acme · 영업팀 · 부장" 처럼 있는 것만 이어 붙입니다. */
 export function affiliationLine(profile: UserProfile): string {
   return [profile.company, profile.department, profile.title].filter(Boolean).join(' · ');
 }

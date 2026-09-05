@@ -1763,11 +1763,11 @@ function SettingsView({ onNotice }: { onNotice: (message: string) => void }) {
 
 /** 프로필 편집 폼의 자유 입력 항목. 상한은 서버(lib/profile.ts)와 같은 값을 씁니다. */
 const PROFILE_FORM: { key: ProfileField; label: string; placeholder: string; area?: boolean }[] = [
-  { key: 'displayName', label: '이름', placeholder: '예: 박준한' },
+  { key: 'displayName', label: '이름', placeholder: '예: 홍길동' },
   { key: 'title', label: '직급', placeholder: '예: 부장' },
-  { key: 'company', label: '회사', placeholder: '예: WISEQUERY' },
+  { key: 'company', label: '회사', placeholder: '예: Acme' },
   { key: 'department', label: '소속', placeholder: '예: 기술영업팀' },
-  { key: 'email', label: '이메일', placeholder: '예: junhan@example.com' },
+  { key: 'email', label: '이메일', placeholder: '예: you@example.com' },
   { key: 'phone', label: '연락처', placeholder: '예: 010-0000-0000' },
   { key: 'bio', label: '한 줄 소개', placeholder: '에이전트가 참고할 한 줄. 예: EMC 챔버 견적·규격 검토를 주로 합니다.', area: true },
 ];
