@@ -71,9 +71,12 @@ const server = await createServer({
 });
 
 let body;
+let enhance = '';
 try {
   const mod = await server.ssrLoadModule('/app/landing/landing-view.tsx');
   body = renderToStaticMarkup(createElement(mod.LandingView));
+  // 스크롤 등장·네브바 그림자 — React 의 useEffect 와 같은 함수를 문자열로 박아 넣습니다 (import·JSX 없는 순수 DOM 코드).
+  if (typeof mod.enhanceLanding === 'function') enhance = mod.enhanceLanding.toString();
 } finally {
   await server.close();
 }
@@ -113,6 +116,7 @@ ${body}
   b.addEventListener('click',function(){var open=m.hidden;m.hidden=!open;b.setAttribute('aria-expanded',String(open));});
   m.addEventListener('click',function(e){if(e.target.tagName==='A'){m.hidden=true;b.setAttribute('aria-expanded','false');}});
 })();
+${enhance ? `(${enhance})(document.querySelector('.lp'));` : ''}
 </script>
 </body>
 </html>
