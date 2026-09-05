@@ -89,11 +89,11 @@ export function LandingView() {
 
           {/* oxlint-disable-next-line next/no-html-link-for-pages -- 랜딩→앱은 전체 로드가 맞습니다 */}
           <a className="lp-nav-cta" href="/login">
-            <svg width="17" height="13" viewBox="0 0 17 13" fill="none" aria-hidden="true">
-              <rect x="0.7" y="0.7" width="15.6" height="11.6" stroke="currentColor" strokeWidth="1.4" />
-              <path d="M1 1.6L8.5 7.2L16 1.6" stroke="currentColor" strokeWidth="1.4" />
-            </svg>
             앱 열기
+            <svg className="lp-nav-cta-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2.5 8H13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              <path d="M8.5 3.5L13 8L8.5 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </a>
 
           <button
@@ -389,10 +389,12 @@ const LP_CSS = `
 .lp-nav-links{ display:flex; gap:34px; }
 .lp-nav-links a{ font-weight:700; font-size:clamp(12px,2.4vw,15px); letter-spacing:.06em; color:var(--lp-text); white-space:nowrap; }
 .lp-nav-links a:hover{ color:var(--lp-ink); }
-.lp .lp-nav-cta{ margin-left:auto; display:inline-flex; align-items:center; gap:9px; background:transparent; border:0;
+.lp .lp-nav-cta{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; background:transparent; border:0;
   color:var(--lp-ink); font-size:14px; font-weight:500; padding:12px 24px; cursor:pointer;
   border-radius:var(--lp-r-full); box-shadow:inset 0 0 0 1px var(--lp-line-strong); transition:background .2s ease; }
-.lp .lp-nav-cta:hover{ background:color-mix(in srgb,var(--lp-ink) 8%,transparent); }
+.lp .lp-nav-cta:hover{ background:var(--lp-ink); color:var(--lp-on-inverse); box-shadow:inset 0 0 0 1px var(--lp-ink); }
+.lp-nav-cta-arrow{ transition:transform .2s ease; }
+.lp .lp-nav-cta:hover .lp-nav-cta-arrow{ transform:translateX(3px); }
 .lp-burger{ display:none; margin-left:auto; background:transparent; border:0; padding:8px; cursor:pointer; flex-direction:column; gap:5px; }
 .lp-burger span{ width:22px; height:2px; background:var(--lp-ink); display:block; }
 .lp-mobile-menu{ flex-basis:100%; display:flex; flex-direction:column; gap:18px; padding:22px 0 4px; }
