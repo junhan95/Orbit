@@ -10,8 +10,8 @@
 import type { ToolDefinition } from '@/lib/claude';
 import { FIELD_TYPES, isFieldType, normalizeFieldValue, parseFieldRow, type ProjectField } from '@/lib/fields';
 import { recallDocUpsert } from '@/lib/recall';
+import { toPriority } from '@/lib/priority';
 
-const DAY = 86_400_000;
 export const MAX_CREATED_TASKS = 5;
 export const MAX_CREATED_FIELDS = 5;
 
@@ -32,7 +32,7 @@ export const CREATE_TASK_TOOL: ToolDefinition = {
       description: { type: 'string', description: '맡을 사람이 이것만 읽고 시작할 수 있는 배경과 완료 조건' },
       owner: { type: 'string', description: '담당 에이전트 이름. 모르면 생략하면 기본 에이전트에게 갑니다.' },
       label: { type: 'string', description: "분류 태그 (예: '리서치', '개발', 'QA')" },
-      due_in_days: { type: 'number', description: '오늘부터 며칠 뒤가 마감인지. 정하기 어려우면 생략하세요.' },
+      priority: { type: 'string', enum: ['높음', '중간', '낮음'], description: "중요도. 먼저 처리해야 할수록 '높음'. 생략하면 '중간'." },
     },
     required: ['title'],
   },
@@ -150,7 +150,6 @@ export async function executeTaskTool(
       };
     }
 
-    const dueDays = typeof input.due_in_days === 'number' && Number.isFinite(input.due_in_days) ? Math.trunc(input.due_in_days) : null;
     const task = {
       id: crypto.randomUUID(),
       title,
@@ -158,13 +157,13 @@ export async function executeTaskTool(
       label: typeof input.label === 'string' && input.label.trim() ? input.label.trim().slice(0, 20) : '신규',
       owner: agent.name,
       accent: agent.color,
-      due: dueDays === null ? null : now + dueDays * DAY,
+      priority: toPriority(input.priority),
     };
 
     await db.batch([
-      db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, description, created_at, updated_at)
+      db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(task.id, userId, task.title, task.label, task.owner, '대기', task.due, task.accent, projectId, task.description, now, now),
+        .bind(task.id, userId, task.title, task.label, task.owner, '대기', task.priority, task.accent, projectId, task.description, now, now),
       recallDocUpsert(db, {
         userId, kind: 'task', refId: task.id, projectId, agentName: task.owner, title: task.title,
         content: `[${task.label}] ${task.title} — 담당 ${task.owner} (${agentName} 이(가) 실행 중 생성)\n${task.description}`, createdAt: now,

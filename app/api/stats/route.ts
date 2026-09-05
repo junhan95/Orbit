@@ -10,7 +10,7 @@ type RunSummaryRow = { total: number | null; running: number | null; completed: 
 type RunTickRow = { startedAt: number };
 type ProjectRow = {
   id: string; name: string; description: string; color: string; status: string;
-  taskCount: number; waitingCount: number; doingCount: number; reviewCount: number; nextDue: number | null;
+  taskCount: number; waitingCount: number; doingCount: number; reviewCount: number; highCount: number;
 };
 type AgentRow = { id: string; name: string; role: string; color: string; runningCount: number; activeTasks: number; lastRunAt: number | null };
 
@@ -39,7 +39,7 @@ export async function GET() {
         SUM(CASE WHEN t.status = '대기' THEN 1 ELSE 0 END) AS waitingCount,
         SUM(CASE WHEN t.status = '진행 중' THEN 1 ELSE 0 END) AS doingCount,
         SUM(CASE WHEN t.status = '검토' THEN 1 ELSE 0 END) AS reviewCount,
-        MIN(CASE WHEN t.status != '검토' THEN t.due END) AS nextDue
+        SUM(CASE WHEN t.priority = '높음' AND t.status != '검토' THEN 1 ELSE 0 END) AS highCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.user_id = p.user_id
       WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC`).bind(user.userId).all<ProjectRow>(),
     db.prepare(`SELECT a.id, a.name, a.role, a.color,
@@ -74,7 +74,8 @@ export async function GET() {
       doingCount: Number(project.doingCount) || 0,
       reviewCount,
       progress: taskCount ? Math.round((reviewCount / taskCount) * 100) : 0,
-      nextDue: project.nextDue ?? null,
+      // 아직 끝나지 않은 '높음' 중요도 업무 수 — 대쉬보드가 "지금 먼저 봐야 할 일"로 보여줍니다.
+      highCount: Number(project.highCount) || 0,
     };
   });
 

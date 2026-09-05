@@ -11,6 +11,7 @@
 import { AGENT_CATALOG, findCatalogRole, renderCatalog, uniqueAgentName } from '@/lib/agent-catalog';
 import { runClaudeAgent, type ToolDefinition } from '@/lib/claude';
 import { resolveAgentModel } from '@/lib/models';
+import { PRIORITY_HINT, type Priority, toPriority } from '@/lib/priority';
 import { RECALL_TOOL, executeRecallTool, recallDocUpsert } from '@/lib/recall';
 import { agentCommentInsert, formatRunComment } from '@/lib/run-loop';
 import { usageInsert } from '@/lib/usage';
@@ -57,6 +58,7 @@ export const DELEGATE_TOOL: ToolDefinition = {
       title: { type: 'string', description: '업무 제목 (1~100자)' },
       brief: { type: 'string', description: '배경, 해야 할 일, 완료 조건' },
       label: { type: 'string', description: "분류 태그 (예: '리서치', '마케팅')" },
+      priority: { type: 'string', enum: ['높음', '중간', '낮음'], description: "중요도. 목표 달성에 먼저 필요한 일일수록 '높음'. 생략하면 '중간'." },
     },
     required: ['agent_name', 'title', 'brief'],
   },
@@ -145,14 +147,14 @@ const WORKER_COMPLETE_TOOL: ToolDefinition = {
  * 하위 에이전트 한 명을 실제로 실행합니다.
  * 카드 생성 → 실행 → 카드/실행기록/댓글/사용량/회상 저장까지 끝내고 매니저에게 줄 보고를 돌려줍니다.
  */
-async function runWorker(context: ManagerContext, member: MemberRow, params: { title: string; brief: string; label: string }) {
+async function runWorker(context: ManagerContext, member: MemberRow, params: { title: string; brief: string; label: string; priority: Priority }) {
   const { db, userId } = context;
   const now = Date.now();
   const taskId = crypto.randomUUID();
 
-  await db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, description, created_at, updated_at)
+  await db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(taskId, userId, params.title, params.label, member.name, '진행 중', null, member.color, context.projectId, params.brief, now, now).run();
+    .bind(taskId, userId, params.title, params.label, member.name, '진행 중', params.priority, member.color, context.projectId, params.brief, now, now).run();
 
   const runId = crypto.randomUUID();
   await db.prepare('INSERT INTO agent_runs (id, task_id, user_id, agent_name, status, prompt, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -164,6 +166,7 @@ async function runWorker(context: ManagerContext, member: MemberRow, params: { t
     '',
     '## 작업 규칙',
     `- '${context.managerName}'(프로젝트 매니저)가 맡긴 업무입니다. 지시 범위 안에서 끝까지 수행하고 결과를 보고하세요.`,
+    `- 이 업무의 중요도는 '${params.priority}' 입니다. ${PRIORITY_HINT[params.priority]}`,
     '- 과거 논의가 있었을 법하면 recall_history 로 먼저 확인하세요.',
     '- 최신 정보가 필요하면 웹 검색을 쓰고, 사실과 추측을 구분해 표시하세요.',
     "- 지시가 불충분하면 추측으로 채우지 말고 complete_task(status='blocked') 로 필요한 것을 구체적으로 적으세요.",
@@ -311,9 +314,10 @@ export async function executeManagerTool(
     }
 
     const label = typeof input.label === 'string' && input.label.trim() ? input.label.trim().slice(0, 20) : member.role.slice(0, 20);
+    const priority = toPriority(input.priority);
     // 하위 실행은 수십 초가 걸립니다 — 시작을 먼저 알려 화면이 멈춘 것처럼 보이지 않게 합니다.
     context.onEvent?.({ kind: 'delegate_start', agent: member.name, role: member.role, title });
-    const result = await runWorker(context, member, { title, brief: brief.slice(0, 8000), label });
+    const result = await runWorker(context, member, { title, brief: brief.slice(0, 8000), label, priority });
     const outcome = result.blocked ? 'blocked' as const : 'completed' as const;
     log.delegated.push({ taskId: result.taskId, title, agent: member.name, outcome, summary: result.summary });
     context.onEvent?.({

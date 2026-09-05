@@ -1,24 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowUpRight, Bot, ChartColumn, Check, ChevronRight, Clock3, Command, Gauge, LayoutDashboard, ListChecks, LoaderCircle, MessageSquareText, Play, Plus, Search, Settings, Sparkles, Trash2, Zap } from 'lucide-react';
+import { Activity, ArrowUpRight, Bot, ChartColumn, Check, ChevronRight, Command, Flag, Gauge, LayoutDashboard, ListChecks, LoaderCircle, MessageSquareText, Play, Plus, Search, Settings, Sparkles, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Markdown } from '@/components/markdown';
 import { UsageView } from '@/components/usage-view';
 import { WorkspaceView, type WorkspaceSection } from '@/components/workspace-views';
-import { TASK_STATUSES, type TaskStatus, formatDue, isOverdue, toDueTimestamp } from '@/lib/due';
+import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
+import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
 import { agentState } from '@/lib/agent-state';
 import { buildProjectFolderContext } from '@/lib/folder-access';
 
 type Task = {
   id: string; title: string; label: string; owner: string; status: TaskStatus;
-  due: number | null; accent: string; result?: string | null; projectId?: string | null;
+  priority: string; accent: string; result?: string | null; projectId?: string | null;
 };
 type StatsAgent = { id: string; name: string; role: string; color: string; runningCount: number; activeTasks: number; lastRunAt: number | null };
 type StatsProject = {
   id: string; name: string; description: string; color: string; status: string;
-  taskCount: number; waitingCount: number; doingCount: number; reviewCount: number; progress: number; nextDue: number | null;
+  taskCount: number; waitingCount: number; doingCount: number; reviewCount: number; progress: number; highCount: number;
 };
 type Stats = {
   tasks: { total: number; waiting: number; doing: number; review: number; completionRate: number };
@@ -27,6 +28,9 @@ type Stats = {
   focus: StatsProject | null;
   agents: StatsAgent[];
 };
+
+/** 중요도 배지 색. 높음만 눈에 띄게 하고 나머지는 조용하게 둡니다. */
+const PRIORITY_CLASS: Record<Priority, string> = { 높음: 'high', 중간: 'mid', 낮음: 'low' };
 
 /** 프로젝트 선택기의 '전체' 값. 개별 프로젝트는 id 를 그대로 씁니다. */
 const ALL_PROJECTS = 'all';
@@ -74,7 +78,7 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newProject, setNewProject] = useState('');
-  const [newDue, setNewDue] = useState('');
+  const [newPriority, setNewPriority] = useState<Priority>('중간');
   const [notice, setNotice] = useState('');
   const [displayName, setDisplayName] = useState('사용자');
   const [email, setEmail] = useState('');
@@ -133,14 +137,11 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, [flash]);
 
-  // 다른 화면(프로젝트·에이전트)에서 만들고 돌아왔을 수 있으니 대쉬보드로 올 때마다 다시 읽습니다.
-  const firstRender = useRef(true);
-  useEffect(() => {
-    if (firstRender.current) { firstRender.current = false; return; }
-    if (activeNav !== '대쉬보드') return;
-    void refreshStats();
-    void refreshTasks();
-  }, [activeNav, refreshStats, refreshTasks]);
+  /** 화면 이동. 대쉬보드로 돌아올 때는 다른 화면에서 만든 프로젝트·업무가 바로 보이도록 다시 읽습니다. */
+  const goTo = useCallback((section: NavSection) => {
+    setActiveNav(section);
+    if (section === '대쉬보드') { void refreshStats(); void refreshTasks(); }
+  }, [refreshStats, refreshTasks]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -195,10 +196,11 @@ export default function Home() {
   }, [projectTasks]);
 
   const scopeLabel = selectedProject ? selectedProject.name : '전체 프로젝트';
-  const nextDue = useMemo(() => {
-    const dues = projectTasks.filter((task) => task.status !== '검토' && task.due).map((task) => task.due as number);
-    return dues.length ? Math.min(...dues) : null;
-  }, [projectTasks]);
+  // 아직 끝나지 않은 '높음' 중요도 업무 — 지금 먼저 봐야 할 일입니다.
+  const highCount = useMemo(
+    () => projectTasks.filter((task) => task.status !== '검토' && toPriority(task.priority) === '높음').length,
+    [projectTasks],
+  );
 
   async function createTask() {
     const title = newTitle.trim();
@@ -214,12 +216,12 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // 담당은 보내지 않습니다 — 서버가 그 프로젝트의 매니저에게 배정합니다.
-        body: JSON.stringify({ title, projectId: targetProjectId, due: newDue ? toDueTimestamp(newDue) : null }),
+        body: JSON.stringify({ title, projectId: targetProjectId, priority: newPriority }),
       });
       const data = await response.json() as { task?: Task; error?: string };
       if (!response.ok || !data.task) throw new Error(data.error || '업무를 만들지 못했습니다.');
       setTasks((current) => [...current, data.task as Task]);
-      setNewTitle(''); setNewDue('');
+      setNewTitle(''); setNewPriority('중간');
       // 다른 프로젝트에 만들었으면 그 프로젝트로 화면을 옮겨 새 업무가 바로 보이게 합니다.
       if (activeProjectId !== ALL_PROJECTS && targetProjectId !== activeProjectId) setProjectFilter(targetProjectId);
       flash(`새 업무가 ${data.task.owner}에게 배정되었습니다.`);
@@ -274,14 +276,14 @@ export default function Home() {
         <div className="brand-mark" aria-label="Orbit 홈"><Command size={20} strokeWidth={2.5} /></div>
         <nav className="primary-nav" aria-label="주 메뉴">
           {NAV_ITEMS.map(([label, Icon]) => (
-            <button className={activeNav === label ? 'nav-button active' : 'nav-button'} key={label} onClick={() => setActiveNav(label)} aria-label={label} title={label}>
+            <button className={activeNav === label ? 'nav-button active' : 'nav-button'} key={label} onClick={() => goTo(label)} aria-label={label} title={label}>
               <Icon size={20} /><span>{label}</span>
             </button>
           ))}
         </nav>
         <div className="sidebar-spacer" />
-        <button className={activeNav === '설정' ? 'nav-button active' : 'nav-button'} onClick={() => setActiveNav('설정')} aria-label="설정" title="설정"><Settings size={20} /><span>설정</span></button>
-        <button className={activeNav === '계정' ? 'user-avatar active' : 'user-avatar'} onClick={() => setActiveNav('계정')} aria-label="계정" title="계정">{displayName.slice(0, 2).toUpperCase()}</button>
+        <button className={activeNav === '설정' ? 'nav-button active' : 'nav-button'} onClick={() => goTo('설정')} aria-label="설정" title="설정"><Settings size={20} /><span>설정</span></button>
+        <button className={activeNav === '계정' ? 'user-avatar active' : 'user-avatar'} onClick={() => goTo('계정')} aria-label="계정" title="계정">{displayName.slice(0, 2).toUpperCase()}</button>
       </aside>
 
       <section className="workspace">
@@ -290,7 +292,7 @@ export default function Home() {
             <span className="project-logo">O</span>
             <div>
               <span className="eyebrow">워크스페이스</span>
-              <button onClick={() => setActiveNav('프로젝트')} title="프로젝트 목록으로 이동">{stats?.focus?.name ?? 'Orbit 워크스페이스'} <ChevronRight size={14} /></button>
+              <button onClick={() => goTo('프로젝트')} title="프로젝트 목록으로 이동">{stats?.focus?.name ?? 'Orbit 워크스페이스'} <ChevronRight size={14} /></button>
             </div>
           </div>
           <label className="search-box">
@@ -305,7 +307,7 @@ export default function Home() {
             }}>
               <DialogTrigger render={<Button className="create-button" />}><Plus size={16} /> 업무 만들기</DialogTrigger>
               <DialogContent className="task-dialog">
-                <DialogHeader><DialogTitle>새 업무 만들기</DialogTitle><DialogDescription>업무는 프로젝트의 매니저에게 배정됩니다. 매니저가 필요한 에이전트를 합류시켜 나눠 맡깁니다.</DialogDescription></DialogHeader>
+                <DialogHeader><DialogTitle>새 업무 만들기</DialogTitle><DialogDescription>업무는 프로젝트의 매니저에게 배정됩니다. 중요도가 높을수록 보드 위쪽에 놓이고 에이전트도 먼저 처리합니다.</DialogDescription></DialogHeader>
                 {projects.length
                   ? <>
                       <label className="dialog-field"><span>업무 이름</span><input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" /></label>
@@ -314,14 +316,18 @@ export default function Home() {
                           {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                         </select>
                       </label>
-                      <label className="dialog-field"><span>마감일</span><input type="date" value={newDue} onChange={(event) => setNewDue(event.target.value)} /></label>
+                      <label className="dialog-field"><span>중요도</span>
+                        <select value={newPriority} onChange={(event) => setNewPriority(event.target.value as Priority)}>
+                          {PRIORITIES.map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </label>
                     </>
                   : <p className="dialog-hint">아직 프로젝트가 없어요. 프로젝트를 먼저 만들면 그 안에 업무를 배정할 수 있습니다.</p>}
                 <DialogFooter>
                   <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
                   {projects.length
                     ? <DialogClose render={<Button onClick={createTask} disabled={!newTitle.trim()} />}>업무 배정</DialogClose>
-                    : <DialogClose render={<Button onClick={() => setActiveNav('프로젝트')} />}>프로젝트 만들러 가기</DialogClose>}
+                    : <DialogClose render={<Button onClick={() => goTo('프로젝트')} />}>프로젝트 만들러 가기</DialogClose>}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -368,13 +374,13 @@ export default function Home() {
                 <div className="progress-track"><span style={{ width: `${scoped.completionRate}%` }} /></div>
                 <div className="focus-footer">
                   <div className="mini-team">{agents.slice(0, 3).map((agent) => <span key={agent.id}>{agent.name[0]}</span>)}</div>
-                  <span><Clock3 size={14} /> {nextDue ? `가장 이른 마감 ${formatDue(nextDue)}` : '마감 지정 없음'}</span>
-                  <button onClick={() => setActiveNav('프로젝트')}>프로젝트 열기 <ArrowUpRight size={14} /></button>
+                  <span><Flag size={14} /> {highCount ? `먼저 볼 업무 ${highCount}건 (중요도 높음)` : '중요도 높음 업무 없음'}</span>
+                  <button onClick={() => goTo('프로젝트')}>프로젝트 열기 <ArrowUpRight size={14} /></button>
                 </div>
               </> : <>
                 <h2>아직 프로젝트가 없어요</h2>
                 <p>프로젝트를 만들면 진행 상황이 여기에 요약됩니다.</p>
-                <div className="focus-footer"><button onClick={() => setActiveNav('프로젝트')}>프로젝트 만들기 <ArrowUpRight size={14} /></button></div>
+                <div className="focus-footer"><button onClick={() => goTo('프로젝트')}>프로젝트 만들기 <ArrowUpRight size={14} /></button></div>
               </>}
             </article>
 
@@ -420,7 +426,7 @@ export default function Home() {
                     <ListChecks size={26} />
                     <strong>아직 프로젝트가 없어요</strong>
                     <p>보드는 프로젝트의 진행 상황을 그대로 보여줍니다. 프로젝트를 만들면 그 안의 업무가 대기 → 진행 중 → 검토 순서로 여기에 표시됩니다.</p>
-                    <Button className="board-empty-cta" onClick={() => setActiveNav('프로젝트')}><Plus size={16} /> 프로젝트 만들기</Button>
+                    <Button className="board-empty-cta" onClick={() => goTo('프로젝트')}><Plus size={16} /> 프로젝트 만들기</Button>
                   </div>
                 : !loading && !projectTasks.length
                 ? <div className="board-empty">
@@ -431,7 +437,7 @@ export default function Home() {
                   </div>
                 : <div className="kanban-board">
                 {TASK_STATUSES.map((column) => {
-                  const columnTasks = visibleTasks.filter((task) => task.status === column);
+                  const columnTasks = byPriority(visibleTasks.filter((task) => task.status === column));
                   return <div className="kanban-column" key={column}>
                     <div className="column-heading"><span className={`status-dot ${column === '진행 중' ? 'doing' : column === '검토' ? 'review' : ''}`} /><strong>{column}</strong><span>{columnTasks.length}</span></div>
                     <div className="task-stack">
@@ -444,7 +450,7 @@ export default function Home() {
                         <div className="task-meta">
                           <span className="mini-avatar" style={{ background: task.accent }}>{task.owner[0]}</span>
                           <span>{task.owner}</span>
-                          <span className={isOverdue(task.due, task.status) ? 'task-due overdue' : 'task-due'}><Clock3 size={13} /> {formatDue(task.due)}</span>
+                          <span className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`} title={`중요도 ${toPriority(task.priority)}`}><Flag size={11} /> {toPriority(task.priority)}</span>
                         </div>
                         <div className="task-actions">
                           {(() => {
@@ -471,18 +477,18 @@ export default function Home() {
             <aside className="agent-panel">
               <div className="section-header">
                 <div><span className="section-kicker">팀</span><h2>에이전트</h2></div>
-                <button className="icon-button small" aria-label="에이전트 추가" title="에이전트 추가" onClick={() => setActiveNav('에이전트')}><Plus size={16} /></button>
+                <button className="icon-button small" aria-label="에이전트 추가" title="에이전트 추가" onClick={() => goTo('에이전트')}><Plus size={16} /></button>
               </div>
               <div className="agent-orbit" aria-hidden="true"><span /><span /><i /></div>
               <div className="agent-list">
-                {agents.map((agent) => <button className="agent-row" key={agent.id} onClick={() => setActiveNav('에이전트')}>
+                {agents.map((agent) => <button className="agent-row" key={agent.id} onClick={() => goTo('에이전트')}>
                   <span className="agent-avatar" style={{ background: agent.color }}>{agent.name[0]}<i className={agent.runningCount > 0 || agent.activeTasks > 0 ? '' : 'idle'} /></span>
                   <span className="agent-copy"><strong>{agent.name}<em>{agent.role}</em></strong><small>{agentActivity(agent)}</small></span>
                   <ChevronRight size={17} />
                 </button>)}
                 {!loading && !agents.length && <div className="empty-column">아직 에이전트가 없어요.</div>}
               </div>
-              <button className="agent-cta" onClick={() => setActiveNav('대화')}><Sparkles size={16} /> 에이전트와 대화하기</button>
+              <button className="agent-cta" onClick={() => goTo('대화')}><Sparkles size={16} /> 에이전트와 대화하기</button>
             </aside>
           </section>
           </> : activeNav === '사용량'

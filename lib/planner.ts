@@ -5,6 +5,7 @@
  */
 import { runClaudeAgent, type ToolDefinition } from './claude';
 import { loadMemoryScopes, renderMemorySection } from './memory';
+import { type Priority, toPriority } from './priority';
 
 export const PLAN_MAX_TASKS = 10;
 export const PLAN_DEFAULT_TASKS = 6;
@@ -16,7 +17,7 @@ export type PlannedTask = {
   description: string;
   owner: string;
   label: string;
-  dueInDays: number | null;
+  priority: Priority;
   subtasks: string[];
 };
 
@@ -43,7 +44,7 @@ const PLAN_TOOL: ToolDefinition = {
             description: { type: 'string', description: '맡은 에이전트가 이것만 읽고 시작할 수 있는 배경·입력·완료 조건. 선행 카드가 있으면 "선행: <제목>" 으로 명시.' },
             owner: { type: 'string', description: '담당 에이전트 이름 (주어진 목록 중 하나)' },
             label: { type: 'string', description: "분류 (예: '리서치', '설계', '개발', 'QA', '문서')" },
-            due_in_days: { type: 'number', description: '오늘부터 며칠 뒤 마감. 정하기 어려우면 생략' },
+            priority: { type: 'string', enum: ['높음', '중간', '낮음'], description: "중요도. 목표 달성의 병목이거나 선행 카드일수록 '높음'. 생략하면 '중간'." },
             subtasks: { type: 'array', items: { type: 'string' }, description: '체크리스트 (0~6개). 완료 조건을 쪼갠 것' },
           },
           required: ['title', 'description', 'owner'],
@@ -144,13 +145,12 @@ function parseProposal(input: Record<string, unknown>, agentNames: Set<string>, 
     if (!title || seen.has(title)) continue;
     seen.add(title);
     const owner = typeof raw.owner === 'string' && agentNames.has(raw.owner.trim()) ? raw.owner.trim() : defaultOwner;
-    const dueInDays = typeof raw.due_in_days === 'number' && Number.isFinite(raw.due_in_days) ? Math.max(0, Math.trunc(raw.due_in_days)) : null;
     tasks.push({
       title,
       description: typeof raw.description === 'string' ? raw.description.trim().slice(0, 8000) : '',
       owner,
       label: typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim().slice(0, 20) : '신규',
-      dueInDays,
+      priority: toPriority(raw.priority),
       subtasks: Array.isArray(raw.subtasks)
         ? raw.subtasks.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim().slice(0, 200)).slice(0, 6)
         : [],

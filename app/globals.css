@@ -433,3 +433,23 @@ p { color:var(--at-body); }
 .manager-trace li.blocked{color:#aa2d00}
 .manager-trace li.blocked>svg{color:#aa2d00}
 @media(max-width:760px){.manager-trace{max-width:100%;margin-left:0}}
+
+
+/* --- 업무 중요도 (마감일 대체) --- */
+.priority-badge{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:3px 7px;font-size:10px;font-weight:600;line-height:1;white-space:nowrap}
+.priority-badge.high{color:#aa2d00;background:#f7e6df}
+.priority-badge.mid{color:#41454d;background:#eef0f3}
+.priority-badge.low{color:#6b7078;background:#f5f6f8}
+.board-card-meta .priority-badge,.task-meta .priority-badge{margin-left:auto}
+
+
+/* --- 프로젝트 카드/행 전체를 눌러 열기 ---
+   카드·행 전체를 덮는 투명 버튼(.open-overlay)이 클릭을 받습니다.
+   키보드 경로는 그대로 '열기' 버튼이고, 덮개는 tabIndex=-1 이라 탭 순서에 끼어들지 않습니다. */
+.project-card.is-clickable,.project-row.is-clickable{position:relative;cursor:pointer}
+.open-overlay{position:absolute;inset:0;width:100%;height:100%;padding:0;margin:0;border:0;background:transparent;border-radius:inherit;cursor:pointer}
+/* 조작부(상태 배지 · ⋮ 메뉴 · 열기 버튼)는 덮개보다 위에 둬서 따로 눌립니다. */
+.project-card.is-clickable .project-card-tools,.project-card.is-clickable .project-card-open,
+.project-row.is-clickable .project-row-tools{position:relative;z-index:1}
+.project-card.is-clickable{transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.project-card.is-clickable:hover{border-color:#c9ccd1;box-shadow:0 2px 10px #181d260f;transform:translateY(-1px)}

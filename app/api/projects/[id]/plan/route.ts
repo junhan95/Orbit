@@ -1,13 +1,12 @@
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase, getRuntimeConfig } from '@/db';
 import { PLAN_DEFAULT_TASKS, PLAN_MAX_TASKS, proposePlan, type PlannedTask } from '@/lib/planner';
+import { toPriority } from '@/lib/priority';
 import { recallDocUpsert } from '@/lib/recall';
 import { usageInsert } from '@/lib/usage';
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 type ProjectRow = { id: string; name: string; description: string };
-
-const DAY = 86_400_000;
 
 /**
  * POST /api/projects/:id/plan
@@ -59,12 +58,11 @@ async function applyPlan(db: D1Database, userId: string, project: ProjectRow, ra
   const statements: D1PreparedStatement[] = [];
   const created: { id: string; title: string; owner: string }[] = [];
 
-  rawTasks.forEach((raw: Partial<PlannedTask> & { due_in_days?: number }, index: number) => {
+  rawTasks.forEach((raw: Partial<PlannedTask>, index: number) => {
     if (!raw || typeof raw !== 'object') return;
     const title = typeof raw.title === 'string' ? raw.title.trim().slice(0, 100) : '';
     if (!title) return;
     const agent = (typeof raw.owner === 'string' && byName.get(raw.owner.trim())) || fallback;
-    const dueDays = typeof raw.dueInDays === 'number' ? raw.dueInDays : typeof raw.due_in_days === 'number' ? raw.due_in_days : null;
     const task = {
       id: crypto.randomUUID(),
       title,
@@ -72,14 +70,14 @@ async function applyPlan(db: D1Database, userId: string, project: ProjectRow, ra
       label: typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim().slice(0, 20) : '신규',
       owner: agent.name,
       accent: agent.color,
-      due: dueDays !== null && Number.isFinite(dueDays) ? now + Math.max(0, Math.trunc(dueDays)) * DAY : null,
+      priority: toPriority(raw.priority),
       // 같은 순간에 만들어도 보드 순서가 계획 순서와 같도록 created_at 을 1ms 씩 띄웁니다.
       createdAt: now + index,
     };
     statements.push(
-      db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, due, accent, project_id, description, created_at, updated_at)
+      db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(task.id, userId, task.title, task.label, task.owner, '대기', task.due, task.accent, project.id, task.description, task.createdAt, task.createdAt),
+        .bind(task.id, userId, task.title, task.label, task.owner, '대기', task.priority, task.accent, project.id, task.description, task.createdAt, task.createdAt),
       recallDocUpsert(db, {
         userId, kind: 'task', refId: task.id, projectId: project.id, agentName: task.owner, title: task.title,
         content: `[${task.label}] ${task.title} — 담당 ${task.owner} (계획 분해로 생성)\n${task.description}`, createdAt: task.createdAt,

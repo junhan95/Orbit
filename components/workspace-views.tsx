@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FolderKanban, LayoutGrid, List, ListChecks, LoaderCircle, MessageSquare, Pencil, Play, Plus, Send, Settings2, ShieldCheck, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, Flag, FolderKanban, LayoutGrid, List, ListChecks, LoaderCircle, MessageSquare, Pencil, Play, Plus, Send, Settings2, ShieldCheck, Sparkles, Trash2, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -9,7 +9,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
 import { Markdown } from '@/components/markdown';
-import { TASK_STATUSES, type TaskStatus, formatDue, isOverdue, toDueInputValue, toDueTimestamp } from '@/lib/due';
+import { PRIORITIES, type Priority, byPriority, toPriority } from '@/lib/priority';
+import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
 import { FIELD_TYPES, FIELD_TYPE_LABELS, type FieldType, type ProjectField } from '@/lib/fields';
 import {
   type FolderLinkState, type FsDirHandle, type ProjectFolder,
@@ -19,6 +20,9 @@ import {
 import { AGENT_MODELS, agentModelLabel } from '@/lib/models';
 
 export type WorkspaceSection = '프로젝트' | '에이전트' | '대화' | '설정' | '계정';
+
+/** 중요도 배지 색. 높음만 눈에 띄게 하고 나머지는 조용하게 둡니다. */
+const PRIORITY_CLASS: Record<Priority, string> = { 높음: 'high', 중간: 'mid', 낮음: 'low' };
 type Project = { id: string; name: string; description: string; color: string; status: string; taskCount: number; agentCount: number; folderCount?: number };
 type Agent = {
   id: string; name: string; role: string; description: string; instructions: string; model: string | null; color: string; isDefault: number;
@@ -26,7 +30,7 @@ type Agent = {
   projectId?: string | null; isManager?: number; roleKey?: string | null;
 };
 type Assignment = { projectId: string; agentId: string };
-type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; due: number | null; accent: string; result: string | null; description?: string; projectId: string | null };
+type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null };
 type FieldValueRow = { taskId: string; fieldId: string; value: string };
 type TaskCounts = { taskId: string; subtasks: number; doneSubtasks: number; comments: number };
 type Subtask = { id: string; title: string; done: number; owner: string | null; position: number };
@@ -367,15 +371,16 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice }: { 
   </>;
   return <div className="workspace-view"><ViewHeading eyebrow="Projects" title="프로젝트" description="진행 중인 프로젝트와 참여 에이전트를 관리합니다." action={action} />
     {projects.length > 0 && (layout === 'card'
-      ? <div className="project-grid">{projects.map((project) => <article className="project-card" key={project.id}><div className="project-card-top"><span className="project-symbol" style={{ background: project.color }}><FolderKanban size={20} /></span><span className="project-card-tools"><span className="project-status"><i />{project.status}</span>{projectMenu(project)}</span></div><h2>{project.name}</h2><p>{project.description || '프로젝트 설명이 없습니다.'}</p><div className="project-stats"><span><BriefcaseBusiness size={14} />업무 {project.taskCount}</span><span><Users size={14} />에이전트 {project.agentCount}</span>{Boolean(project.folderCount) && <span><FolderKanban size={14} />폴더 {project.folderCount}</span>}</div><button onClick={() => setOpenedId(project.id)}>프로젝트 열기 <ChevronRight size={15} /></button></article>)}</div>
+      ? <div className="project-grid">{projects.map((project) => <article className="project-card is-clickable" key={project.id}><button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} /><div className="project-card-top"><span className="project-symbol" style={{ background: project.color }}><FolderKanban size={20} /></span><span className="project-card-tools"><span className="project-status"><i />{project.status}</span>{projectMenu(project)}</span></div><h2>{project.name}</h2><p>{project.description || '프로젝트 설명이 없습니다.'}</p><div className="project-stats"><span><BriefcaseBusiness size={14} />업무 {project.taskCount}</span><span><Users size={14} />에이전트 {project.agentCount}</span>{Boolean(project.folderCount) && <span><FolderKanban size={14} />폴더 {project.folderCount}</span>}</div><button className="project-card-open" onClick={() => setOpenedId(project.id)} aria-label={`${project.name} 프로젝트 열기`}>프로젝트 열기 <ChevronRight size={15} /></button></article>)}</div>
       : <div className="project-table" role="table" aria-label="프로젝트 목록">
           <div className="project-row head" role="row"><span role="columnheader">프로젝트</span><span role="columnheader">상태</span><span role="columnheader">업무</span><span role="columnheader">에이전트</span><span role="columnheader" /></div>
-          {projects.map((project) => <div className="project-row" role="row" key={project.id}>
+          {projects.map((project) => <div className="project-row is-clickable" role="row" key={project.id}>
+            <button className="open-overlay" tabIndex={-1} aria-hidden="true" onClick={() => setOpenedId(project.id)} />
             <span className="project-row-main" role="cell"><i className="project-dot" style={{ background: project.color }}><FolderKanban size={15} /></i><b>{project.name}</b><small>{project.description || '프로젝트 설명이 없습니다.'}</small></span>
             <span role="cell"><em className="project-status"><i />{project.status}</em></span>
             <span className="project-row-metric" role="cell"><BriefcaseBusiness size={14} />{project.taskCount}</span>
             <span className="project-row-metric" role="cell"><Users size={14} />{project.agentCount}</span>
-            <span className="project-row-tools" role="cell"><button className="project-row-open" onClick={() => setOpenedId(project.id)}>열기 <ChevronRight size={15} /></button>{projectMenu(project)}</span>
+            <span className="project-row-tools" role="cell"><button className="project-row-open" onClick={() => setOpenedId(project.id)} aria-label={`${project.name} 프로젝트 열기`}>열기 <ChevronRight size={15} /></button>{projectMenu(project)}</span>
           </div>)}
         </div>)}
     {!projects.length && <div className="entity-empty"><CirclePlus size={30} /><h2>첫 프로젝트를 만들어 보세요</h2><p>목표와 에이전트를 한곳에서 관리할 수 있어요.</p></div>}
@@ -414,7 +419,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
   const [title, setTitle] = useState('');
   const [owner, setOwner] = useState('');
   const [label, setLabel] = useState('');
-  const [due, setDue] = useState('');
+  const [priority, setPriority] = useState<Priority>('중간');
   const [createStatus, setCreateStatus] = useState<TaskStatus>('대기');
   const [saving, setSaving] = useState(false);
 
@@ -467,7 +472,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
   function openCreate(presetOwner?: string, presetLabel?: string, presetStatus?: TaskStatus) {
     setOwner(presetOwner ?? '');
     setLabel(presetLabel ?? '');
-    setTitle(''); setDue('');
+    setTitle(''); setPriority('중간');
     setCreateStatus(presetStatus ?? '대기');
     setCreateOpen(true);
   }
@@ -479,12 +484,12 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     try {
       const response = await fetch('/api/tasks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: trimmed, owner: owner || undefined, label: label.trim() || undefined, status: createStatus, due: due ? toDueTimestamp(due) : null, projectId: project.id }),
+        body: JSON.stringify({ title: trimmed, owner: owner || undefined, label: label.trim() || undefined, status: createStatus, priority, projectId: project.id }),
       });
       const data = await response.json() as { task?: ProjectTask; error?: string };
       if (!response.ok || !data.task) throw new Error(data.error || '업무를 만들지 못했습니다.');
       setTasks((current) => [...current, data.task as ProjectTask]);
-      setTitle(''); setLabel(''); setDue('');
+      setTitle(''); setLabel(''); setPriority('중간');
       onNotice(`새 업무가 ${data.task.owner}에게 배정되었습니다.`);
     } catch (error) { onNotice(error instanceof Error ? error.message : '업무를 만들지 못했습니다.'); }
     finally { setSaving(false); }
@@ -558,20 +563,20 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
   // 그룹 기준에 따라 컬럼을 만듭니다. 담당자 기준일 때는 업무가 없는 참여 에이전트도 빈 열로 보입니다.
   const columns = useMemo<BoardColumn[]>(() => {
     if (group === '상태') {
-      return TASK_STATUSES.map((status) => ({ key: status, title: status, status, tasks: tasks.filter((task) => task.status === status) }));
+      return TASK_STATUSES.map((status) => ({ key: status, title: status, status, tasks: byPriority(tasks.filter((task) => task.status === status)) }));
     }
     if (group === '분류') {
       const labels = Array.from(new Set(tasks.map((task) => task.label))).sort((a, b) => a.localeCompare(b, 'ko'));
-      return labels.map((item) => ({ key: item, title: item, label: item, tasks: tasks.filter((task) => task.label === item) }));
+      return labels.map((item) => ({ key: item, title: item, label: item, tasks: byPriority(tasks.filter((task) => task.label === item)) }));
     }
     const roster = members.length ? members : agents;
     const known = new Set(roster.map((agent) => agent.name));
     const columnList: BoardColumn[] = roster.map((agent) => ({
       key: agent.id, title: agent.name, subtitle: agent.role, color: agent.color, owner: agent.name,
-      tasks: tasks.filter((task) => task.owner === agent.name),
+      tasks: byPriority(tasks.filter((task) => task.owner === agent.name)),
     }));
     const orphans = tasks.filter((task) => !known.has(task.owner));
-    if (orphans.length) columnList.push({ key: UNASSIGNED, title: '미배정', subtitle: '프로젝트에 없는 담당자', tasks: orphans });
+    if (orphans.length) columnList.push({ key: UNASSIGNED, title: '미배정', subtitle: '프로젝트에 없는 담당자', tasks: byPriority(orphans) });
     return columnList;
   }, [group, tasks, members, agents]);
 
@@ -580,7 +585,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
   const createDialog = <Dialog open={createOpen} onOpenChange={setCreateOpen}>
     <DialogTrigger render={<Button className="view-primary" onClick={() => openCreate()} />}><Plus size={16} /> 업무 추가</DialogTrigger>
     <DialogContent className="create-entity-dialog">
-      <DialogHeader><DialogTitle>{project.name} · 새 업무</DialogTitle><DialogDescription>담당을 비워 두면 프로젝트 매니저가 받아 필요한 에이전트를 합류시키고 나눠 맡깁니다.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{project.name} · 새 업무</DialogTitle><DialogDescription>담당을 비워 두면 프로젝트 매니저가 받아 필요한 에이전트를 합류시키고 나눠 맡깁니다. 중요도가 높을수록 보드 위쪽에 놓이고 에이전트도 먼저 처리합니다.</DialogDescription></DialogHeader>
       <label className="entity-field"><span>업무 이름</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="예: 결제 플로우 엣지 케이스 정리" /></label>
       <div className="entity-row">
         <label className="entity-field"><span>담당 에이전트</span>
@@ -590,7 +595,11 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
           </NativeSelect>
         </label>
         <label className="entity-field"><span>분류</span><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="예: 리서치" /></label>
-        <label className="entity-field"><span>마감일</span><input type="date" value={due} onChange={(event) => setDue(event.target.value)} /></label>
+        <label className="entity-field"><span>중요도</span>
+          <NativeSelect value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>
+            {PRIORITIES.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+          </NativeSelect>
+        </label>
       </div>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>취소</DialogClose>
@@ -716,7 +725,7 @@ function BoardCard({ task, fields, values, counts, running, pending, onOpen, onS
       <div className="board-card-meta">
         <span className="mini-avatar" style={{ background: task.accent }}>{task.owner.slice(0, 1)}</span>
         <span>{task.owner}</span>
-        <span className={isOverdue(task.due, task.status) ? 'task-due overdue' : 'task-due'}><Clock3 size={12} /> {formatDue(task.due)}</span>
+        <span className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`} title={`중요도 ${toPriority(task.priority)}`}><Flag size={11} /> {toPriority(task.priority)}</span>
       </div>
       {Boolean(counts && (counts.subtasks || counts.comments)) && <div className="board-card-counts">
         {Boolean(counts?.subtasks) && <span><ListChecks size={12} /> {counts?.doneSubtasks}/{counts?.subtasks}</span>}
@@ -873,9 +882,10 @@ function TaskDetailDialog({ task, project, agents, fields, values, running, relo
               {agents.map((agent) => <NativeSelectOption key={agent.id} value={agent.name}>{agent.name} · {agent.role}</NativeSelectOption>)}
             </NativeSelect>
           </dd></div>
-          <div><dt><Clock3 size={13} /> 마감일</dt><dd>
-            <input className="task-field-input" type="date" value={toDueInputValue(task.due)}
-              onChange={(event) => void onPatch({ due: event.target.value ? toDueTimestamp(event.target.value) : null })} />
+          <div><dt><Flag size={13} /> 중요도</dt><dd>
+            <NativeSelect value={toPriority(task.priority)} onChange={(event) => void onPatch({ priority: event.target.value })}>
+              {PRIORITIES.map((option) => <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>)}
+            </NativeSelect>
           </dd></div>
           <div><dt><ShieldCheck size={13} /> 상태</dt><dd>
             <NativeSelect value={task.status} onChange={(event) => void onPatch({ status: event.target.value })}>
