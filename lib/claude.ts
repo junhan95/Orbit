@@ -6,6 +6,8 @@
  * - runClaudeAgent(): tool_use 루프 — 클라이언트 툴을 실행해 tool_result 를 돌려주며
  *   end_turn 까지 반복합니다. Hermes 의 에이전트 루프에서 필요한 최소 골격만 옮겼습니다.
  */
+import { providerFetch } from './provider-fetch';
+import { traceEvent } from './telemetry';
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const WEB_SEARCH_TOOL = 'web_search_20250305';
@@ -83,6 +85,7 @@ async function billedRequest<T extends MessagesResponse>(billing: ClaudeBilling 
   await billing?.beforeCall?.();
   try {
     const data = await invoke();
+    traceEvent('model.finished', { model: data.model || model, stopReason: data.stop_reason, inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens });
     const verdict = await billing?.onUsage?.(data.model || model, readUsage(data.usage));
     return { data, verdict };
   } finally { await billing?.afterCall?.(); }
@@ -92,6 +95,7 @@ type ApiMessage = { role: 'user' | 'assistant'; content: string | unknown[] };
 type RequestOptions = {
   apiKey: string; model: string; system: string; maxTokens: number;
   tools?: unknown[];
+  toolChoice?: string;
 };
 
 const CACHE_CONTROL = { type: 'ephemeral' } as const;
@@ -139,6 +143,7 @@ function buildPayload(options: RequestOptions, messages: ApiMessage[], stream: b
     messages: withCacheBreakpoints(messages),
   };
   if (options.tools?.length) payload.tools = options.tools;
+  if (options.toolChoice) payload.tool_choice = { type: 'tool', name: options.toolChoice, disable_parallel_tool_use: true };
   if (stream) payload.stream = true;
   return payload;
 }
@@ -146,7 +151,7 @@ function buildPayload(options: RequestOptions, messages: ApiMessage[], stream: b
 async function requestMessages(options: RequestOptions, messages: ApiMessage[]): Promise<MessagesResponse> {
   const payload = buildPayload(options, messages, false);
 
-  const response = await fetch(ANTHROPIC_ENDPOINT, {
+  const response = await providerFetch('anthropic', 'messages', ANTHROPIC_ENDPOINT, {
     signal: AbortSignal.timeout(180_000),
     method: 'POST',
     headers: {
@@ -156,7 +161,7 @@ async function requestMessages(options: RequestOptions, messages: ApiMessage[]):
     },
     body: JSON.stringify(payload),
   });
-  const data = await response.json() as MessagesResponse;
+  const data = await response.json().catch(() => ({})) as MessagesResponse;
   if (!response.ok) {
     throw new Error(data.error?.message || `Claude API 호출에 실패했습니다. (HTTP ${response.status})`);
   }
@@ -235,6 +240,7 @@ export async function runClaudeAgent(options: {
   maxIterations?: number;
   webSearchMaxUses?: number;
   beforeIteration?: () => Promise<void>;
+  toolChoice?: string;
 }): Promise<AgentRunResult> {
   const initial = normalizeMessages(options.messages);
   if (!initial.length) throw new Error('Claude에 보낼 메시지가 없습니다.');
@@ -242,7 +248,7 @@ export async function runClaudeAgent(options: {
   const conversation: ApiMessage[] = initial.map((message) => ({ role: message.role, content: message.content }));
   const tools = [...webSearchTool(options.webSearchMaxUses), ...(options.tools ?? [])];
   const billing = billingOf(options.apiKey);
-  const request: RequestOptions = { apiKey: credentialKey(options.apiKey), model: billing?.resolveModel?.(options.model) ?? options.model, system: options.system, maxTokens: options.maxTokens, tools };
+  const request: RequestOptions = { apiKey: credentialKey(options.apiKey), model: billing?.resolveModel?.(options.model) ?? options.model, system: options.system, maxTokens: options.maxTokens, tools, toolChoice: options.toolChoice };
   const maxIterations = Math.max(1, options.maxIterations ?? 8);
 
   let usage: ClaudeUsage = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, webSearchRequests: 0 };
@@ -333,7 +339,7 @@ type StreamEvent = {
 async function streamOnce(request: RequestOptions, messages: ApiMessage[], onDelta: (text: string) => void): Promise<MessagesResponse & { content: ContentBlock[] }> {
   const payload = buildPayload(request, messages, true);
 
-  const response = await fetch(ANTHROPIC_ENDPOINT, {
+  const response = await providerFetch('anthropic', 'stream', ANTHROPIC_ENDPOINT, {
     signal: AbortSignal.timeout(180_000),
     method: 'POST',
     headers: { 'x-api-key': request.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'content-type': 'application/json', accept: 'text/event-stream' },

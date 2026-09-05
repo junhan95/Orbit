@@ -3,6 +3,8 @@ import { CREDIT_HOLD_TTL_MS, getBalance, ledgerInsert } from '@/lib/credits';
 import { atomicBatch, isPreconditionError } from '@/lib/atomic';
 import { acquireLease, leasedBatch, releaseLease } from '@/lib/leases';
 import { chargeGrant, mcToCredits } from '@/lib/credits-pricing';
+import { providerFetch } from './provider-fetch';
+import { withTrace, traceEvent, traceError } from './telemetry';
 
 /**
  * 크레딧 충전 결제 — 토스페이먼츠 결제창(주문서형·결제창형 키) 일반결제 (docs/pricing-credits.md §2.3).
@@ -154,7 +156,7 @@ type TossPayment = {
 type TossError = { code?: string; message?: string };
 
 async function tossRequest<T>(path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
-  const response = await fetch(`${TOSS_API}${path}`, {
+  const response = await providerFetch('toss', body ? path.endsWith('/cancel') ? 'cancel' : 'confirm' : 'lookup', `${TOSS_API}${path}`, {
     method: body ? 'POST' : 'GET',
     signal: AbortSignal.timeout(30_000),
     headers: { Authorization: tossAuth(), 'Content-Type': 'application/json', ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
@@ -184,6 +186,13 @@ function methodLabel(payment: TossPayment): string {
  * 이미 done 이면 그대로 돌려줍니다(새로고침·중복 호출).
  */
 export async function confirmPayment(db: D1Database, userId: string, params: { paymentKey: string; orderId: string; amount: number }): Promise<PaymentRow> {
+  return withTrace({ paymentId: params.orderId, operation: 'payment.confirm' }, async () => {
+    traceEvent('payment.started');
+    try { const result = await confirmPaymentInternal(db, userId, params); traceEvent('payment.finished', { status: result.status }); return result; }
+    catch (error) { traceError('payment.failed', error); throw error; }
+  });
+}
+async function confirmPaymentInternal(db: D1Database, userId: string, params: { paymentKey: string; orderId: string; amount: number }): Promise<PaymentRow> {
   const lease = await acquireLease(db, `payment:${userId}:${params.orderId}`);
   if (!lease) throw new PaymentError('결제 확인 중입니다. 잠시 후 다시 확인하세요.', 409, 'payment_busy');
   try {
@@ -257,6 +266,13 @@ export async function markFailed(db: D1Database, userId: string, orderId: string
  * 보너스는 회수하지 않고 별도 음수 행으로 되돌립니다(약관: 보너스는 환불 대상 아님, 다만 결제가 취소되면 같이 회수).
  */
 export async function refundPayment(db: D1Database, userId: string, id: string, reason = '사용자 요청'): Promise<PaymentRow> {
+  return withTrace({ paymentId: id, operation: 'payment.refund' }, async () => {
+    traceEvent('payment.started');
+    try { const result = await refundPaymentInternal(db, userId, id, reason); traceEvent('payment.finished', { status: result.status }); return result; }
+    catch (error) { traceError('payment.failed', error); throw error; }
+  });
+}
+async function refundPaymentInternal(db: D1Database, userId: string, id: string, reason: string): Promise<PaymentRow> {
   const lease = await acquireLease(db, `payment:${userId}:${id}`);
   if (!lease) throw new PaymentError('환불 확인 중입니다. 잠시 후 다시 확인하세요.', 409, 'payment_busy');
   try {

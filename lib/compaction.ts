@@ -11,6 +11,8 @@
 import { runClaudeAgent, type ClaudeCredential, type ClaudeMessage } from './claude';
 import { recallDocUpsert } from './recall';
 import { usageInsert } from './usage';
+import { atomicBatch, isPreconditionError } from './atomic';
+import { traceEvent } from './telemetry';
 
 /** 요약 이후 메시지가 이 개수를 넘으면 압축을 돌립니다 (사용자+어시스턴트 합산) */
 export const COMPACT_TRIGGER = 24;
@@ -114,7 +116,11 @@ export async function compactConversation(params: CompactParams): Promise<{ comp
   const coversTo = batch[batch.length - 1].createdAt;
   const messageCount = (previous?.messageCount ?? 0) + batch.length;
 
-  await db.batch([
+  await usageInsert(db, { userId, kind: 'compaction', result, refId: summaryId, projectId, agentName: params.agentName }).run();
+  try {
+  await atomicBatch(db, `(? IS NULL OR EXISTS (SELECT 1 FROM projects WHERE id = ? AND user_id = ?))
+    AND (? IS NULL OR EXISTS (SELECT 1 FROM agents WHERE id = ? AND user_id = ?))`,
+  [projectId, projectId, userId, agentId, agentId, userId], [
     db.prepare(`INSERT INTO chat_summaries (id, user_id, project_id, agent_id, content, message_count, covers_from, covers_to, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, project_id, agent_id) DO UPDATE SET
@@ -128,8 +134,12 @@ export async function compactConversation(params: CompactParams): Promise<{ comp
       userId, kind: 'summary', refId: summaryId, projectId, agentName: params.agentName, role: 'assistant',
       title: `${params.agentName} 와의 대화 요약`, content, createdAt: coversTo,
     }),
-    usageInsert(db, { userId, kind: 'compaction', result, refId: summaryId, projectId, agentName: params.agentName }),
   ]);
+  } catch (error) {
+    if (!isPreconditionError(error)) throw error;
+    traceEvent('compaction.skipped', { reason: 'target_deleted' });
+    return { skipped: '요약 대상이 삭제됨' };
+  }
   return { compacted: batch.length };
 }
 

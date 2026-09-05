@@ -1,10 +1,11 @@
+import { traceRequest } from '@/lib/telemetry';
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 import { appOrigin } from '@/lib/auth';
 import { markFailed } from '@/lib/payments';
 
 /** 토스 failUrl — 사용자가 결제창을 닫았거나 인증에 실패했을 때. 주문만 failed 로 두고 앱으로 돌려보냅니다. */
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const user = await getCurrentUser();
   const url = new URL(request.url);
   const origin = appOrigin(request);
@@ -15,3 +16,5 @@ export async function GET(request: Request) {
   const canceled = code === 'PAY_PROCESS_CANCELED' || code === 'USER_CANCEL';
   return Response.redirect(`${origin}/?${new URLSearchParams({ credits: canceled ? 'canceled' : 'error', message }).toString()}`, 303);
 }
+
+export const GET = traceRequest('/api/credits/fail', handleGET);

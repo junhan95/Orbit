@@ -1,9 +1,10 @@
+import { traceRequest } from '@/lib/telemetry';
 import { getCurrentUser } from '@/app/auth';
 import { getDatabase } from '@/db';
 import { confirmPayment, getPayment, PaymentError } from '@/lib/payments';
 
 /** Recheck a stored uncertain payment; the client cannot replace its key or amount. */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const user = await getCurrentUser();
   const body = await request.json().catch(() => null) as { paymentId?: unknown } | null;
   if (typeof body?.paymentId !== 'string') return Response.json({ error: '결제 id가 필요합니다.' }, { status: 400 });
@@ -18,3 +19,5 @@ export async function POST(request: Request) {
     throw error;
   }
 }
+
+export const POST = traceRequest('/api/credits/reconcile', handlePOST);

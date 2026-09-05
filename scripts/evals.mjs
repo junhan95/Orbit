@@ -22,6 +22,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { evalRequest } from './eval-http.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CASES_DIR = join(ROOT, 'evals', 'cases');
@@ -42,14 +43,11 @@ const AGENTS = [
 ];
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
+let transportEvidence = [];
 async function api(method, path, body) {
-  const init = { method };
-  if (body !== undefined && method !== 'GET') { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body); }
-  const response = await fetch(`${BASE}${path}`, init);
-  const text = await response.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-  return { status: response.status, data };
+  const result = await evalRequest(BASE, method, path, body);
+  transportEvidence.push(result.transport);
+  return result;
 }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -231,6 +229,7 @@ async function main() {
   const report = { startedAt: new Date().toISOString(), base: BASE, projectId: env.projectId, cases: [] };
   let failed = 0; let warned = 0;
   for (const kase of cases) {
+    transportEvidence = [];
     const started = Date.now();
     process.stdout.write(`▶ ${kase.id} — ${kase.title}\n`);
     let outcome;
@@ -251,6 +250,7 @@ async function main() {
       id: kase.id, title: kase.title, pass: !hard.length, warn: Boolean(soft.length), seconds: Math.round((Date.now() - started) / 1000),
       // 검사 임계값과 action을 보존해 케이스 변경 전후의 결과를 구분할 수 있게 합니다.
       checks: outcome.results,
+      transport: transportEvidence,
       evidence: { status: outcome.ctx.run?.status, toolCalls: outcome.ctx.run?.toolCalls, summary: outcome.ctx.run?.summary, reviewVerdict: outcome.ctx.detail?.task?.reviewVerdict, taskId: outcome.ctx.taskId,
         skillSaves: outcome.ctx.run?.skillSaves,
         approvals: outcome.ctx.approvals?.map(({ action, status, taskId, runId }) => ({ action, status, taskId, runId })),

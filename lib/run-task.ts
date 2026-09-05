@@ -18,6 +18,7 @@ import { runInBackground, runMemoryReview } from '@/lib/memory-review';
 import { resolveAgentModel } from '@/lib/models';
 import { RECALL_TOOL, executeRecallTool, recallDocUpsert } from '@/lib/recall';
 import { runTaskReview } from '@/lib/reviewer';
+import { addTrace, traceEvent, traceError, withTrace } from '@/lib/telemetry';
 import { agentCommentInsert, checkCircuitBreaker, describeTaskCard, formatRunComment } from '@/lib/run-loop';
 import { SAVE_SKILL_TOOL, SKILL_GUIDANCE, USE_SKILL_TOOL, executeSkillTool, listSkills, renderSkillIndex, type SkillToolContext } from '@/lib/skills';
 import { TASK_TOOLS, TASK_TOOL_NAMES, createTaskToolLog, describeFields, executeTaskTool, type TaskToolContext } from '@/lib/task-tools';
@@ -96,6 +97,10 @@ export type RunTaskSuccess = {
 };
 
 export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | RunTaskSuccess> {
+  return withTrace({ taskId: params.taskId, operation: 'task.run' }, () => runTaskInternal(params));
+}
+
+async function runTaskInternal(params: RunTaskParams): Promise<RunTaskFailure | RunTaskSuccess> {
   const { db, apiKey, fallbackModel } = params;
   const user = { userId: params.userId };
   const body = { force: params.force === true };
@@ -240,6 +245,8 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
   const model = resolveAgentModel(agent?.model, fallbackModel);
 
   const runId = crypto.randomUUID();
+  addTrace({ runId, projectId: task.projectId });
+  traceEvent('run.started');
   const startedAt = Date.now();
   const lease = await acquireLease(db, `task:${user.userId}:${task.id}`);
   if (!lease) return { ok: false, status: 409, error: '이미 실행 중인 업무입니다. 현재 실행이 끝난 뒤 다시 시도하세요.' };
@@ -399,10 +406,10 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
     ]);
 
     // 관제 밴드 — 실패율·근거 없음·검토 수정 요청·게이트 차단·비용을 기준선과 비교, 이탈하면 매니저에게 진단 카드 (시간당 1회).
-    runInBackground(() => maybeRunHealthCheck(db, user.userId));
+    runInBackground(() => maybeRunHealthCheck(db, user.userId), 'health.review');
     // 결과 검토 — 작성자가 아닌 다른 에이전트가 세 패스(버그·스펙·정책·근거)로 검토해 댓글과 판정을 남깁니다 (백그라운드).
     if (!blocked) {
-      runInBackground(() => runTaskReview({ db, userId: user.userId, apiKey, model: fallbackModel, taskId: task.id, runId }));
+      runInBackground(() => runTaskReview({ db, userId: user.userId, apiKey, model: fallbackModel, taskId: task.id, runId }), 'task.review');
     }
     // 기억 리뷰 패스 — 응답을 막지 않고 백그라운드에서 저가 모델로 "남길 것이 있나"만 묻습니다.
     const { reviewModel } = getRuntimeConfig();
@@ -410,8 +417,9 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
       db, userId: user.userId, apiKey, model: reviewModel, system,
       transcript: [{ role: 'user', content: prompt }, { role: 'assistant', content: `${summary}\n\n${output}` }],
       projectId: task.projectId, agentId: agent?.id ?? null, agentName: task.owner, refId: runId,
-    }));
+    }), 'memory.review');
 
+    traceEvent('run.finished', { blocked, stopReason: result.stopReason, iterations: result.iterations });
     return {
       ok: true, runId, taskId: task.id, status: nextStatus, output, summary,
       blocked, blockedReason, nextActions: done?.nextActions ?? [], proof: done?.proof ?? [],
@@ -420,6 +428,7 @@ export async function runTask(params: RunTaskParams): Promise<RunTaskFailure | R
       recruited: managerLog.recruited, delegated: managerLog.delegated,
     };
   } catch (error) {
+    traceError('run.failed', error);
     const message = error instanceof Error ? error.message : '에이전트 실행에 실패했습니다.';
     if (leaseLost || error instanceof LeaseLostError || isPreconditionError(error)) return { ok: false, status: 409, error: '실행 권한이 만료되어 결과를 저장하지 않았습니다. 현재 업무 상태를 확인하세요.' };
     try {
