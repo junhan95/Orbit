@@ -459,9 +459,6 @@ button:not(:where([class*='group/button'])) { color:inherit; }
 .dialog-field select{height:42px;border-radius:var(--r-sm);border:1px solid var(--c-line);padding:0 10px;outline:none;font-size:13px;background:var(--c-surface-card);cursor:pointer}
 .dialog-field select:focus{border-color:var(--c-focus);box-shadow:0 0 0 3px var(--c-focus-ring)}
 
-/* --- 계정 화면(로컬 모드) --- */
-.account-note{margin:14px 2px 0;color:var(--c-text-muted);font-size:11px;line-height:1.7}
-.account-note code{background:var(--c-surface-soft);border-radius:var(--r-sm);padding:2px 5px;font-family:var(--font-geist-mono),monospace;font-size:10px;color:var(--c-text)}
 
 @media(max-width:480px){.dialog-row{grid-template-columns:1fr}}
 
@@ -877,7 +874,7 @@ p { color:var(--c-text); }
 .search-box:focus-within{box-shadow:0 0 0 1px var(--c-focus),0 0 0 4px var(--c-focus-ring)}
 
 /* 링크는 브랜드 블루 */
-.account-note a,.md a,.entity-hint a{color:var(--c-link)}
+.md a,.entity-hint a{color:var(--c-link)}
 
 /* 사이드바 활성 표시는 캐너리 옐로 (Miro 는 노랑을 강조 표식으로만 씁니다) */
 .nav-button.active{box-shadow:inset 3px 0 var(--c-brand)}

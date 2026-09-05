@@ -10,6 +10,9 @@ import { MODEL_PRICES } from './pricing';
 
 export type AgentModelOption = { id: string; label: string; hint: string };
 
+/** 서버가 기본 모델을 알려주기 전(첫 로딩)에 화면이 쓸 값. db/index.ts 의 DEFAULT_CLAUDE_MODEL 과 맞춰 둡니다. */
+export const DEFAULT_MODEL_FALLBACK = 'claude-sonnet-5';
+
 export const AGENT_MODELS: AgentModelOption[] = [
   { id: 'claude-opus-5', label: 'Opus 5', hint: '가장 깊은 추론 · 느리고 비쌉니다' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5', hint: '성능과 비용의 균형 · 기본 권장' },

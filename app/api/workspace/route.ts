@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/app/auth';
-import { getDatabase } from '@/db';
+import { getDatabase, getRuntimeConfig } from '@/db';
 
 // 기본 에이전트 시드는 두지 않습니다.
 // 프로젝트를 만들면 그 프로젝트 전용 매니저가 함께 생기고(app/api/projects/route.ts),
@@ -23,5 +23,7 @@ export async function GET() {
 
   const assignments = await db.prepare('SELECT project_id AS projectId, agent_id AS agentId FROM project_agents WHERE user_id = ?')
     .bind(user.userId).all();
-  return Response.json({ projects: projects.results, agents: agents.results, assignments: assignments.results });
+  // 에이전트에 모델을 따로 고르지 않았을 때 실제로 쓰이는 모델(.env 의 ANTHROPIC_MODEL, 없으면 기본값)을 화면에 그대로 보여주려고 함께 내려줍니다.
+  const { model: defaultModel } = getRuntimeConfig();
+  return Response.json({ projects: projects.results, agents: agents.results, assignments: assignments.results, defaultModel });
 }
