@@ -388,6 +388,7 @@ export const EN: Record<string, string> = {
   '결과': 'Result',
   '대화하기': 'Open chat',
 '매니저와 대화하기': 'Chat with manager',
+'프로젝트 바로가기': 'Go to project',
 '{0} 업무 접기': 'Collapse tasks of {0}',
 '{0} 업무 펼치기': 'Expand tasks of {0}',
 '아직 맡은 업무가 없습니다.': 'No tasks assigned yet.',
