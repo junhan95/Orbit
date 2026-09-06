@@ -488,7 +488,7 @@ type BoardGroup = (typeof BOARD_GROUPS)[number];
 const BOARD_GROUP_KEY = 'cowork.board.group';
 const UNASSIGNED = '__none__';
 
-type BoardColumn = { key: string; title: string; subtitle?: string; color?: string; owner?: string; status?: TaskStatus; label?: string; tasks: ProjectTask[] };
+type BoardColumn = { key: string; title: string; subtitle?: string; color?: string; owner?: string; isManager?: boolean; status?: TaskStatus; label?: string; tasks: ProjectTask[] };
 
 function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRename, onDelete, onOpenChat }: { project: Project; agents: Agent[]; assignments: Assignment[]; onBack: () => void; onNotice: (message: string) => void; onRename: () => void; onDelete: () => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -612,6 +612,11 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     }
   }, [onNotice]);
 
+  /** 보드의 매니저 컬럼에서 '매니저와 대화하기' — 빈 입력란으로 매니저 대화 화면을 엽니다. */
+  const openManagerChat = useCallback((agentName: string) => {
+    onOpenChat?.({ projectId: project.id, agentName, draft: '' });
+  }, [onOpenChat, project.id]);
+
   /** 업무 카드에서 '대화하기' — 담당 에이전트와의 대화 화면으로 그 업무를 들고 넘어갑니다. */
   const openTaskChat = useCallback((task: ProjectTask) => {
     onOpenChat?.({
@@ -653,7 +658,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     const roster = members.length ? members : agents;
     const known = new Set(roster.map((agent) => agent.name));
     const columnList: BoardColumn[] = roster.map((agent) => ({
-      key: agent.id, title: agent.name, subtitle: t(agent.role), color: agent.color, owner: agent.name,
+      key: agent.id, title: agent.name, subtitle: t(agent.role), color: agent.color, owner: agent.name, isManager: Boolean(agent.isManager),
       tasks: byPriority(tasks.filter((task) => task.owner === agent.name)),
     }));
     const orphans = tasks.filter((task) => !known.has(task.owner));
@@ -740,7 +745,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
           ? <div className="board-columns">{columns.map((column) => <section className="board-column" key={column.key}>
               <header className="board-column-head">
                 {column.color
-                  ? <span className="board-column-avatar" style={{ background: column.color }}>{t(column.title).slice(0, 1)}</span>
+                  ? <span className="board-column-avatar" style={{ background: column.color }}>{column.isManager ? <Bot size={15} aria-hidden="true" /> : t(column.title).slice(0, 1)}</span>
                   : <span className="board-column-mark" />}
                 <div><b>{t(column.title)}</b>{column.subtitle && <small>{t(column.subtitle)}</small>}</div>
                 <em>{column.tasks.length}</em>
@@ -751,6 +756,9 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
                   onOpen={() => setOpenTaskId(task.id)}
                   onChat={() => openTaskChat(task)}
                 />)}
+                {column.isManager && column.owner && <button className="board-chat" onClick={() => openManagerChat(column.owner as string)}>
+                  <MessageSquare size={13} /> {t("매니저와 대화하기")}
+                </button>}
                 <button className="board-add" onClick={() => openCreate(column.owner, column.label, column.status)}>
                   <Plus size={13} /> {t("작업 추가")}
                 </button>

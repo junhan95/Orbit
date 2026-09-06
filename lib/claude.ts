@@ -13,6 +13,8 @@ const ANTHROPIC_VERSION = '2023-06-01';
 const WEB_SEARCH_TOOL = 'web_search_20250305';
 /** tool_result 로 되돌려 주는 문자열 상한. 검색 결과가 컨텍스트를 삼키지 않게 합니다. */
 const TOOL_RESULT_MAX_CHARS = 12_000;
+/** 한 번의 모델 호출 상한. 스트림으로 받으므로 긴 출력(최대 32k 토큰)도 여기 안에 들어옵니다. */
+const REQUEST_TIMEOUT_MS = 600_000;
 
 /** content 가 배열이면 Anthropic 콘텐츠 블록(text·image·document)을 그대로 보냅니다 — 대화 첨부에 씁니다. */
 export type ClaudeMessage = { role: 'user' | 'assistant'; content: string | unknown[] };
@@ -148,24 +150,14 @@ function buildPayload(options: RequestOptions, messages: ApiMessage[], stream: b
   return payload;
 }
 
+/**
+ * "비스트리밍" 호출도 서버 안에서는 SSE 로 받아 완성본을 조립합니다.
+ * 긴 출력(수천 토큰의 코드)을 JSON 한 방으로 기다리면 API 앞단이 100초 근처에서 524 로 끊어 버립니다 —
+ * 하위 에이전트가 index.html 을 통째로 쓰다가 "524 타임아웃" 으로 죽던 원인입니다.
+ * 스트림은 바이트가 계속 흐르므로 그 제한에 걸리지 않습니다. 응답이 JSON 이면(테스트·프록시) 그대로 파싱합니다.
+ */
 async function requestMessages(options: RequestOptions, messages: ApiMessage[]): Promise<MessagesResponse> {
-  const payload = buildPayload(options, messages, false);
-
-  const response = await providerFetch('anthropic', 'messages', ANTHROPIC_ENDPOINT, {
-    signal: AbortSignal.timeout(180_000),
-    method: 'POST',
-    headers: {
-      'x-api-key': options.apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({})) as MessagesResponse;
-  if (!response.ok) {
-    throw new Error(data.error?.message || `Claude API 호출에 실패했습니다. (HTTP ${response.status})`);
-  }
-  return data;
+  return streamOnce(options, messages, () => {}, 'messages');
 }
 
 function textOf(blocks: ContentBlock[] | undefined): string {
@@ -349,11 +341,11 @@ type StreamEvent = {
   error?: { message?: string };
 };
 
-async function streamOnce(request: RequestOptions, messages: ApiMessage[], onDelta: (text: string) => void): Promise<MessagesResponse & { content: ContentBlock[] }> {
+async function streamOnce(request: RequestOptions, messages: ApiMessage[], onDelta: (text: string) => void, operation: 'stream' | 'messages' = 'stream'): Promise<MessagesResponse & { content: ContentBlock[] }> {
   const payload = buildPayload(request, messages, true);
 
-  const response = await providerFetch('anthropic', 'stream', ANTHROPIC_ENDPOINT, {
-    signal: AbortSignal.timeout(180_000),
+  const response = await providerFetch('anthropic', operation, ANTHROPIC_ENDPOINT, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     method: 'POST',
     headers: { 'x-api-key': request.apiKey, 'anthropic-version': ANTHROPIC_VERSION, 'content-type': 'application/json', accept: 'text/event-stream' },
     body: JSON.stringify(payload),
@@ -361,6 +353,11 @@ async function streamOnce(request: RequestOptions, messages: ApiMessage[], onDel
   if (!response.ok || !response.body) {
     const data = await response.json().catch(() => ({})) as MessagesResponse;
     throw new Error(data.error?.message || `Claude API 호출에 실패했습니다. (HTTP ${response.status})`);
+  }
+  // 스트림 대신 완성 JSON 이 오면 그대로 씁니다 (fetch 모킹·중간 프록시).
+  if ((response.headers.get('content-type') ?? '').includes('application/json')) {
+    const data = await response.json() as MessagesResponse;
+    return { ...data, content: data.content ?? [] };
   }
 
   const blocks: (ContentBlock & Record<string, unknown>)[] = [];

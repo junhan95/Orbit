@@ -387,6 +387,7 @@ export const EN: Record<string, string> = {
   '첫 업무 만들기': 'Create your first task',
   '결과': 'Result',
   '대화하기': 'Open chat',
+'매니저와 대화하기': 'Chat with manager',
   "'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.":
     "Please move the '{0}' task forward. Tell me where it stands and what's next, and keep going if you can handle it now.",
   '조건에 맞는 업무가 없어요.': 'No tasks match your search.',
