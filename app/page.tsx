@@ -58,6 +58,8 @@ function weekdayLabel(timestamp: number) {
   return new Intl.DateTimeFormat(locale(), { weekday: 'short' }).format(new Date(timestamp));
 }
 
+/** 대쉬보드 업무 보드는 요약만 — 열당 이 개수까지만 보여 주고 나머지는 '+N건 더' 로 접습니다. */
+const DASHBOARD_BOARD_ROWS = 3;
 const NAV_ITEMS = [['대쉬보드', LayoutDashboard], ['프로젝트', ListChecks], ['대화', MessageSquareText], ['에이전트', Bot], ['승인함', Inbox], ['기억', Brain], ['스킬', BookOpen], ['사용량', ChartColumn]] as const;
 
 type NavSection = '대쉬보드' | '사용량' | '승인함' | '기억' | '스킬' | WorkspaceSection;
@@ -656,39 +658,30 @@ export default function Home() {
                   const columnTasks = byPriority(visibleTasks.filter((task) => task.status === column));
                   return <div className="kanban-column" key={column}>
                     <div className="column-heading"><span className={`status-dot ${column === '진행 중' ? 'doing' : column === '검토' ? 'review' : ''}`} /><strong>{t(column)}</strong><span>{columnTasks.length}</span></div>
-                    <div className="task-stack">
-                      {columnTasks.map((task) => <article className="task-card" key={task.id}>
-                        <div className="task-card-head">
-                          <span className="task-label" style={{ color: task.accent, backgroundColor: `${task.accent}14` }}>{task.label}</span>
-                          <button className="task-remove" onClick={() => deleteTask(task)} aria-label={tf('{0} 삭제', task.title)} title={t("업무 삭제")}><Trash2 size={13} /></button>
-                        </div>
-                        <strong>{task.title}</strong>
-                        <div className="task-meta">
+                    <ul className="task-brief-list">
+                      {columnTasks.slice(0, DASHBOARD_BOARD_ROWS).map((task) => {
+                        const state = agentState(task, false);
+                        return <li className="task-brief" key={task.id}>
                           <span className="mini-avatar" style={{ background: task.accent }}>{task.owner[0]}</span>
-                          <span>{task.owner}</span>
-                          <span className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`} title={tf('중요도 {0}', t(toPriority(task.priority)))}><Flag size={11} /> {t(toPriority(task.priority))}</span>
-                        </div>
-                        <div className="task-actions">
-                          {(() => {
-                            const state = agentState(task, false);
-                            return <span className={`agent-state ${state.key}`} title={state.hint} aria-label={tf('{0} 상태: {1}', task.owner, t(state.label))}>
-                              <i className="agent-state-dot" />
-                              {t(state.label)}
-                            </span>;
-                          })()}
-                          {task.result
-                            ? <button className="run-task result" onClick={() => setSelectedResult(task)}><Check size={13} /> {t("결과")}</button>
-                            : <button className="run-task chat" onClick={() => openChat({
-                                projectId: task.projectId ?? '',
-                                agentName: task.owner,
-                                draft: tf(`'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.`, task.title),
-                              })}><MessageSquareText size={13} /> {t("대화하기")}</button>}
-                        </div>
-                      </article>)}
-                      {!loading && columnTasks.length === 0 && <div className="empty-column">{query.trim() ? t('조건에 맞는 업무가 없어요.') : t('이 단계의 업무가 없어요.')}</div>}
-                    </div>
+                          <button className="task-brief-title" title={task.title} onClick={() => task.result ? setSelectedResult(task) : openChat({
+                            projectId: task.projectId ?? '',
+                            agentName: task.owner,
+                            draft: tf(`'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.`, task.title),
+                          })}>{task.title}</button>
+                          <span className={`agent-state ${state.key}`} title={t(state.label)} aria-label={tf('{0} 상태: {1}', task.owner, t(state.label))}><i className="agent-state-dot" /></span>
+                          <span className={`priority-badge ${PRIORITY_CLASS[toPriority(task.priority)]}`} title={tf('중요도 {0}', t(toPriority(task.priority)))}><Flag size={10} /></span>
+                          {task.result && <span className="task-brief-done" title={t("결과")}><Check size={12} /></span>}
+                          <button className="task-remove" onClick={() => deleteTask(task)} aria-label={tf('{0} 삭제', task.title)} title={t("업무 삭제")}><Trash2 size={12} /></button>
+                        </li>;
+                      })}
+                      {columnTasks.length > DASHBOARD_BOARD_ROWS && <li className="task-brief-more">{tf('+{0}건 더', columnTasks.length - DASHBOARD_BOARD_ROWS)}</li>}
+                      {!loading && columnTasks.length === 0 && <li className="empty-column">{query.trim() ? t('조건에 맞는 업무가 없어요.') : t('이 단계의 업무가 없어요.')}</li>}
+                    </ul>
                   </div>;
                 })}
+              </div>}
+              {Boolean(selectedProject && projectTasks.length) && <div className="board-footer">
+                <button onClick={() => openProject(selectedProject!.id)}>{t("보드 전체 보기")} <ArrowUpRight size={14} /></button>
               </div>}
             </div>
 

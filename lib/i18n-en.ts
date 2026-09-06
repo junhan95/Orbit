@@ -389,6 +389,8 @@ export const EN: Record<string, string> = {
   '대화하기': 'Open chat',
 '매니저와 대화하기': 'Chat with manager',
 '프로젝트 바로가기': 'Go to project',
+'+{0}건 더': '+{0} more',
+'보드 전체 보기': 'Open full board',
 '전송 대기': 'Queued',
 '업무 {0}건 위임 — 팀원이 작업 중': '{0} task(s) delegated — teammates are working',
 '팀원 실행에 실패했습니다.': 'Teammate run failed.',
