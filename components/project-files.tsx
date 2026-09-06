@@ -3,14 +3,14 @@
  * 프로젝트 상세 머리의 '결과보기' · '폴더열기'.
  * - 결과보기: 에이전트가 이 브라우저에서 저장한 최신 산출물(lib/project-artifacts)을 새 탭에서 바로 실행합니다 — 목록 창 없이 결과 화면이 뜹니다.
  *   HTML·이미지·PDF 가 아니면(예: research.md) 텍스트 미리보기 창으로 보여 줍니다.
- * - 폴더열기: 프로젝트를 만들 때 브라우저에 허용한 작업 폴더를 그 권한 그대로 엽니다 (LocalFileWorkspace — 파일 목록·열기·편집·저장).
+ * - 폴더열기: 프로젝트를 만들 때 허용한 작업 폴더를 운영체제의 파일 열기 창으로 엽니다 ('폴더 추가' 와 같은 창, 그 폴더에서 시작).
+ *   창에서 파일을 고르면 HTML·이미지·PDF 는 새 탭, 텍스트는 미리보기로 엽니다.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { LoaderCircle, Sparkles } from 'lucide-react';
+import { FolderOpen, LoaderCircle, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { LocalFileWorkspace } from '@/components/local-file-workspace';
-import { ensureReadPermission, fetchProjectFolders, getHandle, type FsDirHandle } from '@/lib/folder-access';
+import { ensureReadPermission, fetchProjectFolders, getHandle, openFolderDialog, type FsDirHandle } from '@/lib/folder-access';
 import { fileSegments, readLocalFile } from '@/lib/local-files';
 import { isBrowserViewable, mimeOf, readArtifacts, subscribeArtifacts, type ProjectArtifact } from '@/lib/project-artifacts';
 import { t } from '@/lib/i18n';
@@ -54,7 +54,7 @@ type Preview = { path: string; text: string };
 
 export function ProjectFileButtons({ projectId, onNotice }: { projectId: string; onNotice: (message: string) => void }) {
   const artifacts = useProjectArtifacts(projectId);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'results' | 'folder' | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
 
   const fail = useCallback((error: unknown, fallback: string) => {
@@ -64,7 +64,7 @@ export function ProjectFileButtons({ projectId, onNotice }: { projectId: string;
   /** 결과보기 — 가장 최근 산출물을 바로 띄웁니다. */
   async function showResult() {
     if (busy) return;
-    setBusy(true);
+    setBusy('results');
     try {
       const linked = await fetchProjectFolders(projectId);
       const latest = artifacts.find(item => linked.some(folder => folder.id === item.folderId));
@@ -73,15 +73,43 @@ export function ProjectFileButtons({ projectId, onNotice }: { projectId: string;
       const text = await readLocalFile(await folderHandle(latest.folderId), latest.path);
       setPreview({ path: latest.path, text });
     } catch (error) { fail(error, t('파일을 열지 못했습니다.')); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
+  }
+
+  /** 폴더열기 — 연결 폴더에서 시작하는 운영체제 파일 창을 띄우고, 고른 파일이 있으면 엽니다. */
+  async function openFolder() {
+    if (busy) return;
+    setBusy('folder');
+    try {
+      const linked = await fetchProjectFolders(projectId);
+      const folder = linked[0];
+      if (!folder) { onNotice(t('아직 연결한 작업 폴더가 없습니다. 아래 작업 폴더 섹션의 폴더 추가로 먼저 연결해 주세요.')); return; }
+      const handle = await folderHandle(folder.id);
+      const picked = await openFolderDialog(handle);
+      const file = picked?.[0];
+      if (!file) return;
+      const blob = await file.getFile();
+      if (isBrowserViewable(file.name)) {
+        const tab = window.open('', '_blank');
+        const url = URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: mimeOf(file.name) }));
+        if (tab) tab.location.href = url; else window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+      if (blob.size > 1_000_000) throw new Error('편집 가능한 파일 크기는 1MB까지입니다.');
+      setPreview({ path: file.name, text: await blob.text() });
+    } catch (error) { fail(error, t('폴더를 열지 못했습니다.')); }
+    finally { setBusy(null); }
   }
 
   return <div className="detail-file-actions">
-    <Button variant="outline" disabled={!artifacts.length || busy} onClick={() => void showResult()}
+    <Button variant="outline" disabled={!artifacts.length || busy !== null} onClick={() => void showResult()}
       title={artifacts.length ? undefined : t('에이전트가 작업을 완료하고 파일을 저장하면 열 수 있습니다.')}>
-      {busy ? <LoaderCircle size={14} className="spin" /> : <Sparkles size={14} />} {t('결과보기')}{artifacts.length > 0 && <em className="detail-file-count">{artifacts.length}</em>}
+      {busy === 'results' ? <LoaderCircle size={14} className="spin" /> : <Sparkles size={14} />} {t('결과보기')}{artifacts.length > 0 && <em className="detail-file-count">{artifacts.length}</em>}
     </Button>
-    <LocalFileWorkspace projectId={projectId} label={t('폴더열기')} className="detail-file-trigger" autoSelectFolder />
+    <Button variant="outline" disabled={busy !== null} onClick={() => void openFolder()}>
+      {busy === 'folder' ? <LoaderCircle size={14} className="spin" /> : <FolderOpen size={14} />} {t('폴더열기')}
+    </Button>
     <Dialog open={preview !== null} onOpenChange={(value) => { if (!value) setPreview(null); }}>
       <DialogContent className="project-files-dialog">
         {preview && <>

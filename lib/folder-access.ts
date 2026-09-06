@@ -23,7 +23,10 @@ export type FsDirHandle = {
   queryPermission?(descriptor: FsPermissionMode): Promise<PermissionState>;
   requestPermission?(descriptor: FsPermissionMode): Promise<PermissionState>;
 };
-type PickerWindow = Window & { showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite'; id?: string }) => Promise<FsDirHandle> };
+type PickerWindow = Window & {
+  showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite'; id?: string; startIn?: FsDirHandle }) => Promise<FsDirHandle>;
+  showOpenFilePicker?: (options?: { multiple?: boolean; id?: string; startIn?: FsDirHandle }) => Promise<FsFileHandle[]>;
+};
 
 export type ProjectFolder = { id: string; name: string; pathHint: string; fileCount: number; addedAt: number };
 export type FolderLinkState = 'ready' | 'blocked' | 'missing';
@@ -76,6 +79,21 @@ export async function pickDirectory(): Promise<FsDirHandle | null> {
     return await picker({ mode: 'readwrite', id: 'cowork-project-folder' });
   } catch (error) {
     // 사용자가 취소를 누른 경우는 오류가 아닙니다.
+    if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NotAllowedError')) return null;
+    throw error;
+  }
+}
+
+/**
+ * 연결 폴더를 운영체제의 파일 열기 창으로 엽니다 — '폴더 추가' 와 같은 종류의 창이지만 그 폴더 안에서 시작하고 파일까지 보입니다.
+ * 사용자가 파일을 고르면 그 핸들을, 취소하면 null 을 돌려줍니다.
+ */
+export async function openFolderDialog(startIn: FsDirHandle): Promise<FsFileHandle[] | null> {
+  const picker = (window as PickerWindow).showOpenFilePicker;
+  if (!picker) throw new Error('이 브라우저는 폴더 열기를 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.');
+  try {
+    return await picker({ multiple: true, id: 'cowork-open-folder', startIn });
+  } catch (error) {
     if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NotAllowedError')) return null;
     throw error;
   }
