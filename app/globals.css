@@ -688,6 +688,9 @@ p { color:var(--c-text); }
 
 /* ── 프로젝트 상세 머리: 결과보기 · 폴더열기 ─────────────────────────────── */
 .detail-file-actions{display:flex;gap:8px;margin-top:12px}
+.detail-file-trigger{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--c-line-mid);border-radius:var(--r-md);background:var(--c-surface-card);color:var(--c-ink);font-size:13px;font-weight:500;cursor:pointer}
+.detail-file-trigger:hover{background:var(--c-surface-soft);border-color:var(--c-line-strong)}
+.detail-file-trigger:disabled{opacity:.45;cursor:not-allowed}
 .detail-file-actions .detail-file-count{margin-left:2px;padding:1px 6px;border-radius:var(--r-lg);background:var(--c-surface-strong);color:var(--c-text-muted);font-size:10px;font-weight:600;font-style:normal}
 .project-files-dialog[data-slot='dialog-content']{width:640px;max-width:calc(100vw - 28px);max-height:calc(100dvh - 28px);overflow:auto;padding:24px}
 .project-files-empty{font-size:13px;color:var(--c-text-muted);margin:0}
@@ -701,12 +704,7 @@ p { color:var(--c-text); }
 .project-files-preview>div{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--c-line);font-size:12px}
 .project-files-preview>div button{border:0;background:none;color:var(--c-link);cursor:pointer;font-size:12px}
 .project-files-preview pre{margin:0;padding:11px;max-height:60vh;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all}
-.project-files-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.55;color:var(--c-text)}
-.project-files-command{display:flex;align-items:center;gap:8px;margin-top:8px;border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-inverse);color:var(--c-on-inverse);padding:8px 10px}
-.project-files-command code{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
-.project-files-command button{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:var(--r-sm);background:var(--c-overlay-33);color:var(--c-on-inverse);cursor:pointer}
-.project-files-note{margin:0;font-size:12px;line-height:1.55;color:var(--c-text-muted)}
-.project-files-note a{display:inline-flex;align-items:center;gap:3px;color:var(--c-link)}
+
 
 /* ── TASK 상세 패널 ──────────────────────────────────────────────────────── */
 .task-detail-dialog{max-width:720px!important;border-radius:var(--r-xl);padding:0;overflow:hidden}

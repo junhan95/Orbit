@@ -7,7 +7,13 @@ import { codeFiles, readLocalFile, saveLocalFile } from '@/lib/local-files';
 
 import { t } from '@/lib/i18n';
 
-export function LocalFileWorkspace({ projectId, initial }: { projectId: string; initial?: { name: string; content: string } }) {
+/**
+ * 연결 폴더 파일 브라우저. 기본 트리거는 '파일 열기·편집' 이고, 프로젝트 머리의 '폴더열기' 도 같은 창을 씁니다
+ * (label·className 으로 겉모습만 바꾸고, autoSelectFolder 면 폴더가 하나일 때 바로 열어 목록을 보여 줍니다).
+ */
+export function LocalFileWorkspace({ projectId, initial, label, className, autoSelectFolder = false }: {
+  projectId: string; initial?: { name: string; content: string }; label?: string; className?: string; autoSelectFolder?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [folderId, setFolderId] = useState('');
@@ -25,7 +31,9 @@ export function LocalFileWorkspace({ projectId, initial }: { projectId: string; 
     if (!value) { if (!busy && discard()) setOpen(false); return; }
     setOpen(true); setBusy(true); setNote(''); setFailed(false); setHandle(null); setFolderId(''); setFiles([]);
     setPath(initial?.name ?? ''); setContent(initial?.content ?? ''); setOriginal(null);
-    try { setFolders(await fetchProjectFolders(projectId)); } finally { setBusy(false); }
+    let list: ProjectFolder[] = [];
+    try { list = await fetchProjectFolders(projectId); setFolders(list); } finally { setBusy(false); }
+    if (autoSelectFolder && list.length === 1) await choose(list[0].id);
   }
   async function choose(id: string) {
     if (handle && !discard()) return;
@@ -55,7 +63,7 @@ export function LocalFileWorkspace({ projectId, initial }: { projectId: string; 
     finally { setBusy(false); }
   }
   return <Dialog open={open} onOpenChange={(value) => void show(value)}>
-    <DialogTrigger render={<button aria-label={initial ? `${t('파일로 저장')} · ${initial.name}` : t('파일 열기·편집')} className="local-files-trigger" disabled={!projectId} />}><FolderOpen size={15} /> {initial ? `${t('파일로 저장')} · ${initial.name}` : t('파일 열기·편집')}</DialogTrigger>
+    <DialogTrigger render={<button aria-label={label ?? (initial ? `${t('파일로 저장')} · ${initial.name}` : t('파일 열기·편집'))} className={className ?? 'local-files-trigger'} disabled={!projectId} />}><FolderOpen size={15} /> {label ?? (initial ? `${t('파일로 저장')} · ${initial.name}` : t('파일 열기·편집'))}</DialogTrigger>
     <DialogContent className="local-file-dialog">
       <DialogHeader><DialogTitle>{t('작업 폴더 파일')}</DialogTitle><DialogDescription>{t('연결한 폴더의 텍스트 파일을 읽고 편집하거나 새 파일을 저장합니다. 저장할 때 브라우저에서 쓰기 권한을 요청할 수 있습니다.')}</DialogDescription></DialogHeader>
       <label>{t('저장 폴더')}<select value={folderId} disabled={busy} onChange={(event) => void choose(event.target.value)}><option value="">{t('폴더 선택')}</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
