@@ -27,9 +27,9 @@ async function handleGET(request: Request) {
   // 요약(chat_summaries)이 있으면 그 이후 메시지만 원문으로 보내고, 요약은 배너용으로 함께 돌려줍니다.
   const summary = await loadChatSummary(db, user.userId, projectId, agentId);
   const messages = await db
-    .prepare('SELECT id, role, content, created_at AS createdAt FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? AND created_at > ? ORDER BY created_at ASC LIMIT 200')
-    .bind(user.userId, projectId, agentId, summary?.coversTo ?? 0).all<ChatRow>();
-  return Response.json({ messages: messages.results, summary });
+    .prepare('SELECT id, role, content, created_at AS createdAt FROM chat_messages WHERE user_id = ? AND project_id = ? AND agent_id = ? ORDER BY created_at DESC LIMIT 200')
+    .bind(user.userId, projectId, agentId).all<ChatRow>();
+  return Response.json({ messages: messages.results.reverse(), summary });
 }
 
 /** 비스트리밍 대화. 스트리밍은 /api/chat/stream 이 같은 lib/chat-agent 헬퍼로 처리합니다. */

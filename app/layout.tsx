@@ -1,3 +1,4 @@
+import { ExampleTabCompletion } from '@/components/example-tab-completion';
 import type { Metadata } from 'next';
 import { Figtree, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
  */
 const THEME_BOOTSTRAP = `(()=>{try{
   var p=JSON.parse(localStorage.getItem('orbit-preferences')||'{}');
-  var choice=p.theme==='dark'||p.theme==='light'?p.theme:'system';
+  var choice=['dark','light','system'].includes(p.theme)?p.theme:'dark';
   var dark=choice==='dark'||(choice==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);
   var el=document.documentElement;
   el.classList.toggle('dark',dark);
@@ -52,6 +53,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
       <body className={`${figtree.variable} ${geistMono.variable} antialiased`}>
+        <ExampleTabCompletion />
         {children}
       </body>
     </html>

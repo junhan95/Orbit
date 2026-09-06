@@ -65,3 +65,38 @@ describe('과금 핸들 (lib/claude.ts ClaudeBilling)', () => {
     expect(bodies).toHaveLength(0);
   });
 });
+
+
+describe('worker output recovery', () => {
+  const options = { apiKey: 'k', model: 'claude-sonnet-5', system: 's', messages: [{ role: 'user' as const, content: 'build' }], maxTokens: 8000, maxOutputRetries: 2 };
+  const truncated = { ...endTurn, stop_reason: 'max_tokens', content: [{ type: 'text', text: 'partial' }, { type: 'tool_use', id: 'bad', name: 'noop', input: {} }] };
+  it('retries truncated output without executing partial tools or retaining partial artifacts', async () => {
+    const { bodies } = fakeFetch([truncated, endTurn]);
+    const executeTool = vi.fn();
+    const result = await runClaudeAgent({ ...options, executeTool });
+    expect(result.stopReason).toBe('end_turn');
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.turns.map(t => t.text)).toEqual(['완료']);
+    expect(result.usage.outputTokens).toBe(100);
+    expect((bodies[1] as { max_tokens: number }).max_tokens).toBe(16000);
+  });
+  it('stops recovery when credits run out', async () => {
+    const { bodies } = fakeFetch([truncated]);
+    const result = await runClaudeAgent({ ...options, apiKey: { apiKey: 'k', onUsage: () => ({ stop: true }) } });
+    expect(result.stopReason).toBe('insufficient_credits');
+    expect(bodies).toHaveLength(1);
+  });
+  it('bounds retries and retains max_tokens failure', async () => {
+    const { bodies } = fakeFetch([truncated, truncated, truncated]);
+    const result = await runClaudeAgent(options);
+    expect(result.stopReason).toBe('max_tokens');
+    expect(bodies).toHaveLength(3);
+  });
+  it('delivers delegated code beyond generic tool clipping', async () => {
+    const code = 'x'.repeat(20000);
+    const { bodies } = fakeFetch([{ ...toolTurn, content: [{ type: 'tool_use', id: 'd', name: 'delegate_task', input: {} }] }, endTurn]);
+    await runClaudeAgent({ ...options, executeTool: async () => ({ report: code }) });
+    const request = bodies[1] as { messages: Array<{ content: Array<{ content: string }> }> };
+    expect(request.messages.at(-1)?.content[0].content).toBe(JSON.stringify({ report: code }));
+  });
+});

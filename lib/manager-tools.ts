@@ -17,7 +17,7 @@ import { recallDocUpsert } from '@/lib/recall';
 export const MAX_RECRUITS = 4;
 export const MAX_DELEGATIONS = 4;
 /** 매니저에게 돌려주는 하위 결과 본문 길이 상한 */
-const REPORT_CLIP = 4_000;
+const REPORT_CLIP = 48_000;
 
 export const RECRUIT_TOOL: ToolDefinition = {
   name: 'recruit_agent',

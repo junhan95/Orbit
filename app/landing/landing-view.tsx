@@ -18,8 +18,8 @@ import { COMPANY, LEGAL_LINKS } from '@/lib/legal';
  * 동작합니다 — 전환·저장(localStorage 'orbit-landing-lang')은 enhanceLanding() 이 맡습니다.
  * 앵커 id 는 영어 트리가 원본(#features), 한국어 트리는 ko- 접두(#ko-features)를 씁니다.
  *
- * 섹션: 히어로(+앱 목업) → 신뢰 스트립 → 제품 노트 → 어바웃 → 기능(벤토) → 작동 방식
- *       → 크루(에이전트 팀) → 비교표 → 요금(크레딧 · 팀 · 기업) → 시작 안내 → FAQ → CTA → 푸터
+ * 섹션: 고객 성과 → 문제 공감 → AI 모델·오케스트레이션 → 무료 이용 조건 → 핵심 강점
+ *       → 작동 방식 → 크루 → 시작 안내 → FAQ → CTA → 푸터
  *
  * 요금 카피는 docs/pricing-credits.md 를 따릅니다 — 개인은 크레딧 종량제(가입 시 300 크레딧, 1 크레딧 = 10원),
  * 본인 Claude API 키를 연결하면 무료(BYOK). 팀 플랜은 준비 중, 기업은 셀프호스팅 문의.
@@ -85,10 +85,10 @@ interface Dict {
 
 const KO: Dict = {
   nav: [
-    { label: '제품', id: 'product' },
+    { label: '내 일이 달라지는 방식', id: 'product' },
     { label: '기능', id: 'features' },
     { label: '작동 방식', id: 'how' },
-    { label: '크루', id: 'crew' },
+    { label: 'AI 모델', id: 'models' },
     { label: '요금', id: 'pricing' },
     { label: '시작하기', id: 'start' },
   ],
@@ -100,15 +100,15 @@ const KO: Dict = {
   },
   menu: '메뉴',
   langLabel: '언어',
-  eyebrow: 'AI AGENT COMMAND CENTER',
-  h1a: 'ONE MANAGER RUNS',
-  h1b: 'YOUR WHOLE',
-  h1accent: 'TEAM',
-  heroSub: '프로젝트 하나에 매니저 한 명. 나머지는 매니저가 뽑고, 나누고, 받아냅니다.',
-  ctaStart: '시작하기',
-  ctaTour: '제품 둘러보기',
-  facts: [{ n: '4', l: '층 기억' }, { n: '4', l: '패스 검토' }, { n: '14', l: '일 관제 기준선' }, { n: '3', l: '단계 승인 레벨' }],
-  factsLabel: '핵심 수치',
+  eyebrow: 'YOUR GOAL. YOUR AI CREW.',
+  h1a: '혼자 하던 일에',
+  h1b: 'AI 팀이',
+  h1accent: '생깁니다',
+  heroSub: '조사하고, 정리하고, 다시 확인하느라 미뤄둔 일. 목표만 알려주세요. AI 매니저가 팀을 꾸려 실행하고, 검토한 결과를 모아드립니다.',
+  ctaStart: '내 AI 팀 만들기',
+  ctaTour: '어떻게 맡기는지 보기',
+  facts: [{ n: '목표를 전하면', l: '매니저가 일을 나누고' }, { n: '팀이 실행하고', l: '서로의 결과를 검토하고' }, { n: '나는 결정합니다', l: '결과를 보고 다음 방향을' }],
+  factsLabel: '목표에서 결과까지',
   trust: [
     { icon: 'key', t: '가입 즉시 시작', d: '300 크레딧 무료 · 쓴 만큼만 결제' },
     { icon: 'lock', t: '본인 키면 무료', d: 'Claude API 키는 서버에서 암호화' },
@@ -119,8 +119,8 @@ const KO: Dict = {
   trustLabel: '신뢰 요소',
   product: {
     eyebrow: 'PRODUCT',
-    h: '대쉬보드 · 보드 · 대화, 한 화면에서',
-    p: '매니저가 채운 보드와 실행 기록을 보고, 궁금하면 그 자리에서 담당 에이전트에게 말을 겁니다.',
+    h: 'AI에게 물어본 뒤, 결국 내가 다 하고 있나요?',
+    p: '답변을 옮기고, 배경을 다시 설명하고, 빠진 내용을 확인하는 일. 하나의 프로젝트 안에서 AI 팀이 이어받습니다.',
     notes: [
       { icon: 'chart', t: '대쉬보드', d: '집중 프로젝트 · 주간 처리량 · 검토 도달률' },
       { icon: 'board', t: 'TASK 보드', d: '담당자 · 상태 · 분류로 묶어 보기' },
@@ -128,21 +128,21 @@ const KO: Dict = {
     ],
   },
   about: {
-    a: 'ABOUT',
-    b: 'ORBITCREW',
-    p: 'orbitcrew 는 AI 에이전트가 실제로 일을 끝내게 만드는 워크스페이스입니다. 기억하고, 지난 실행을 되찾아 읽고, 근거를 붙여 보고하고, 서로의 결과를 검토합니다. 사람은 상태를 옮기지 않습니다. 루프 위에서 승인하고, 거절하고, 방향만 잡습니다.',
+    a: '당신은 방향을.',
+    b: '실행은 AI 팀이.',
+    p: '경쟁사 조사부터 문서 초안까지. 매니저가 필요한 담당자를 모으고, 조사 결과를 작성자에게 연결하고, 검토자가 빠진 내용을 확인합니다. 당신은 결과를 보고 다음 방향을 결정하세요.',
     more: '더 알아보기',
   },
   features: {
     eyebrow: 'CAPABILITIES',
-    h: '에이전트가 혼자 일해도 되는 이유',
+    h: '맡긴 뒤에도 안심할 수 있도록',
     items: [
-      { k: '01', t: '프로젝트 매니저', d: '프로젝트를 만들면 전용 매니저가 배정됩니다. 지시를 읽고 필요한 직무의 에이전트를 합류시키고, 업무를 나누고, 보고를 모아 정리해 돌려줍니다.', span: 'lp-b-7', art: 'manager' },
-      { k: '02', t: '4층 기억', d: '사용자·프로젝트·에이전트 기억을 문자 예산 안에서 관리합니다. 턴 시작에 동결하고, 실행이 끝나면 리뷰가 돌며, 프로젝트 기억은 사람 승인을 거칩니다.', span: 'lp-b-5', art: 'memory' },
-      { k: '03', t: '회상', d: '지난 실행과 대화를 FTS5 로 되찾습니다. 한국어 두 글자 단어까지 바이그램으로 잡고, 실행당 호출 횟수에 상한을 둬 비용이 새지 않습니다.', span: 'lp-b-4', art: 'recall' },
-      { k: '04', t: '검증된 완료', d: '에이전트는 근거를 붙여야 완료로 보고할 수 있습니다. 근거가 없으면 카드에 표시가 남고, 다른 에이전트가 버그·스펙·정책·근거 네 패스로 검토합니다.', span: 'lp-b-4', art: 'verify' },
-      { k: '05', t: '승인 게이트', d: '카드를 많이 만들거나 전역 스킬을 저장하려 하면 승인 큐로 넘어갑니다. 연속 실패는 서킷브레이커가 끊고, 사람 댓글이 다시 풀어줍니다.', span: 'lp-b-4', art: 'gate' },
-      { k: '06', t: '관제 밴드', d: '실패·막힘·근거 누락·게이트 차단·실행당 비용을 14일 기준선과 비교합니다. 밴드를 벗어나면 매니저에게 진단 카드가 자동으로 올라갑니다.', span: 'lp-b-12', art: 'band' },
+      { k: '01', t: '업무를 나누는 수고를 덜어줍니다', d: '목표를 전하면 매니저가 필요한 역할을 찾고 일을 나눕니다. 담당자를 하나씩 만들고 지시할 필요가 줄어듭니다.', span: 'lp-b-7', art: 'manager' },
+      { k: '02', t: '같은 배경을 반복해서 설명하지 마세요', d: '사용자와 프로젝트의 맥락을 기억합니다. 팀원이 달라져도 목표와 작업 기준을 이어갑니다.', span: 'lp-b-5', art: 'memory' },
+      { k: '03', t: '지난 대화를 찾아 헤매지 마세요', d: '이전 실행과 대화에서 필요한 내용을 찾아 이어갑니다. 이미 정한 내용을 다시 모으는 수고를 덜어줍니다.', span: 'lp-b-4', art: 'recall' },
+      { k: '04', t: '결과와 근거를 함께 확인하세요', d: '담당 AI가 남긴 결과를 다른 AI가 검토합니다. 누락된 근거와 수정할 부분을 확인한 뒤 판단할 수 있습니다.', span: 'lp-b-4', art: 'verify' },
+      { k: '05', t: '중요한 결정은 당신에게 남깁니다', d: '승인이 필요한 작업은 승인함에 모입니다. 진행을 허용하거나 되돌리며 팀의 방향을 직접 잡을 수 있습니다.', span: 'lp-b-4', art: 'gate' },
+      { k: '06', t: '막힌 일과 비용을 놓치지 마세요', d: '반복되는 실패와 평소와 다른 비용 흐름을 감지합니다. 모든 기록을 뒤지기 전에 살펴볼 곳을 알려줍니다.', span: 'lp-b-12', art: 'band' },
     ],
   },
   how: {
@@ -195,7 +195,7 @@ const KO: Dict = {
   },
   pricing: {
     eyebrow: 'PRICING',
-    h: '월 구독 없이, 쓴 만큼만',
+    h: '무료로 시작하고, 나에게 맞게 쓰세요',
     p: '개인은 크레딧을 충전해 AI 사용량만큼 씁니다. 광고도, 개인 월 정액도 없습니다. 팀과 기업은 필요한 만큼만 위로 올라갑니다.',
     plans: [
       {
@@ -256,7 +256,7 @@ const KO: Dict = {
       { q: '오픈소스인가요?', a: '네. AGPL-3.0 라이선스로 저장소가 공개돼 있습니다. 직접 배포해 쓰거나 코드를 살펴볼 수 있습니다.' },
     ],
   },
-  cta: { a: 'START', b: 'TODAY', p: '프로젝트 이름과 작업 폴더만 정하면, 매니저가 첫 업무를 만들어 옵니다.', btn: 'orbitcrew 열기' },
+  cta: { a: '미뤄둔 일 하나,', b: '오늘 맡겨보세요.', p: '가입하면 300 크레딧 무료. 카드 등록 없이 첫 프로젝트를 시작하세요.', btn: '무료로 내 AI 팀 만들기' },
   footer: {
     tag: 'AI Agent Command Center',
     product: '제품',
@@ -310,15 +310,15 @@ const EN: Dict = {
   },
   menu: 'Menu',
   langLabel: 'Language',
-  eyebrow: 'AI AGENT COMMAND CENTER',
-  h1a: 'ONE MANAGER RUNS',
-  h1b: 'YOUR WHOLE',
-  h1accent: 'TEAM',
-  heroSub: 'One project, one manager. The manager hires the rest, splits the work, and collects the results.',
-  ctaStart: 'Get started',
+  eyebrow: 'YOUR GOAL. YOUR AI CREW.',
+  h1a: 'BIG PLANS.',
+  h1b: 'YOUR OWN',
+  h1accent: 'AI TEAM.',
+  heroSub: 'Give your goal to an AI manager. It brings in specialists, divides the work, and brings reviewed results back to you.',
+  ctaStart: 'Build my AI team',
   ctaTour: 'See the product',
-  facts: [{ n: '4', l: 'memory layers' }, { n: '4', l: 'review passes' }, { n: '14', l: 'day baseline' }, { n: '3', l: 'approval levels' }],
-  factsLabel: 'Key numbers',
+  facts: [{ n: 'You set the goal', l: 'Your manager divides the work' }, { n: 'Your crew delivers', l: 'Specialists execute and review' }, { n: 'You decide next', l: 'Review results and set direction' }],
+  factsLabel: 'From goal to results',
   trust: [
     { icon: 'key', t: 'Start instantly', d: '300 free credits · pay as you go' },
     { icon: 'lock', t: 'Free with your own key', d: 'Claude API keys are encrypted server-side' },
@@ -328,31 +328,25 @@ const EN: Dict = {
   ],
   trustLabel: 'Trust',
   product: {
-    eyebrow: 'PRODUCT',
-    h: 'Dashboard, board, and chat on one screen',
-    p: 'See the board and run history your manager fills in — and when you have a question, talk to the agent in charge right there.',
+    eyebrow: 'YOUR WORKDAY', h: 'AI answered. Why is the work still yours?',
+    p: 'Copying answers, repeating context, checking what is missing. Let your team pick up the work inside one project.',
     notes: [
-      { icon: 'chart', t: 'Dashboard', d: 'Focus project · weekly throughput · review rate' },
-      { icon: 'board', t: 'Task board', d: 'Group by assignee, status, or category' },
-      { icon: 'chat', t: 'Chat', d: '“Talk” straight from any task card' },
+      { icon: 'chart', t: 'See progress', d: 'Know who is working on what.' },
+      { icon: 'board', t: 'Delegate once', d: 'Your manager assigns the work.' },
+      { icon: 'chat', t: 'Give feedback in context', d: 'Talk to the AI on the task.' },
     ],
   },
-  about: {
-    a: 'ABOUT',
-    b: 'ORBITCREW',
-    p: 'orbitcrew is a workspace where AI agents actually finish the job. They remember, recall past runs, report with evidence, and review each other’s work. People don’t drag cards around — they sit above the loop, approving, rejecting, and setting direction.',
-    more: 'Learn more',
-  },
+  about: { a: 'YOU SET DIRECTION.', b: 'YOUR TEAM EXECUTES.', p: 'From competitor research to a document draft, your manager connects specialists and a reviewer checks the result. You decide what comes next.', more: 'See what supports your team' },
   features: {
     eyebrow: 'CAPABILITIES',
     h: 'Why agents can be left to work alone',
     items: [
-      { k: '01', t: 'Project manager', d: 'Every project gets a dedicated manager. It reads your instruction, brings in agents for the roles it needs, splits the work, and returns a consolidated report.', span: 'lp-b-7', art: 'manager' },
-      { k: '02', t: 'Four-layer memory', d: 'User, project, and agent memory managed within a character budget. Frozen at the start of a turn, reviewed after each run, and project memory needs a human sign-off.', span: 'lp-b-5', art: 'memory' },
-      { k: '03', t: 'Recall', d: 'Past runs and conversations are retrieved with FTS5. Bigram indexing catches even two-character Korean words, and a per-run call cap keeps cost from leaking.', span: 'lp-b-4', art: 'recall' },
-      { k: '04', t: 'Verified completion', d: 'An agent can only report “done” with evidence attached. Missing evidence is flagged on the card, and another agent reviews in four passes: bugs, spec, policy, evidence.', span: 'lp-b-4', art: 'verify' },
-      { k: '05', t: 'Approval gate', d: 'Creating many cards or saving a global skill goes to an approval queue. Repeated failures trip a circuit breaker; a human comment resets it.', span: 'lp-b-4', art: 'gate' },
-      { k: '06', t: 'Control band', d: 'Failures, stalls, missing evidence, gate blocks, and cost per run are compared against a 14-day baseline. Leave the band and a diagnostic card goes to the manager automatically.', span: 'lp-b-12', art: 'band' },
+      { k: '01', t: 'Skip the task breakdown', d: 'Give your goal to a manager that finds the right roles and assigns the work.', span: 'lp-b-7', art: 'manager' },
+      { k: '02', t: 'Stop repeating the background', d: 'Project and user memory help teammates carry your goals and working context forward.', span: 'lp-b-5', art: 'memory' },
+      { k: '03', t: 'Pick up where you left off', d: 'Your team can find relevant past conversations and runs before continuing the work.', span: 'lp-b-4', art: 'recall' },
+      { k: '04', t: 'Review results with evidence', d: 'Another AI reviews the work so you can check missing evidence and requested changes.', span: 'lp-b-4', art: 'verify' },
+      { k: '05', t: 'Keep important decisions yours', d: 'Review gated actions in your approval inbox and decide whether they should proceed.', span: 'lp-b-4', art: 'gate' },
+      { k: '06', t: 'Catch blocked work and unusual costs', d: 'Monitoring highlights repeated failures and changes in spending so you know where to look.', span: 'lp-b-12', art: 'band' },
     ],
   },
   how: {
@@ -466,7 +460,7 @@ const EN: Dict = {
       { q: 'Is it open source?', a: 'Yes. The repository is public under AGPL-3.0. Self-host it or read the code.' },
     ],
   },
-  cta: { a: 'START', b: 'TODAY', p: 'Name a project and pick a folder — the manager comes back with the first task.', btn: 'Open orbitcrew' },
+  cta: { a: 'ONE TASK ON YOUR MIND.', b: 'START WITH THAT.', p: 'Get 300 free credits and start your first project. No payment card required.', btn: 'Build my AI team free' },
   footer: {
     tag: 'AI Agent Command Center',
     product: 'Product',
@@ -581,6 +575,7 @@ export function LandingView() {
   return (
     <div className="lp" ref={rootRef} id="top" data-lang="en">
       <style dangerouslySetInnerHTML={{ __html: LP_CSS }} />
+      <div className="lp-universe" aria-hidden="true" />
       {LANDING_LANGS.map((lang) => (
         <div key={lang} className="lp-tree" data-lang={lang} lang={lang}>
           <LandingContent lang={lang} />
@@ -651,7 +646,7 @@ function LandingContent({ lang }: { lang: LandingLang }) {
           <div className="lp-stars lp-stars-b" />
           <div className="lp-nebula lp-nebula-a" />
           <div className="lp-nebula lp-nebula-b" />
-          <div className="lp-hero-orbit"><OrbitDiagram chips={t.orbitChips} uid={lang} /></div>
+          <div className="lp-hero-orbit"><OrbitDiagram uid={lang} /></div>
         </div>
 
         <div className="lp-hero-body">
@@ -670,11 +665,12 @@ function LandingContent({ lang }: { lang: LandingLang }) {
           <p className="lp-hero-sub">{t.heroSub}</p>
 
           <div className="lp-hero-cta">
-            <a className="lp-btn" href={href('start')}>
+            {/* oxlint-disable-next-line next/no-html-link-for-pages -- 정적 랜딩 빌드에서 앱 주소로 치환됩니다 */}
+            <a className="lp-btn" href="/login">
               {t.ctaStart}
               <i className="lp-btn-line" />
             </a>
-            <a className="lp-btn lp-btn-ghost" href={href('product')}>
+            <a className="lp-btn lp-btn-ghost" href={href('how')}>
               {t.ctaTour}
             </a>
           </div>
@@ -724,6 +720,8 @@ function LandingContent({ lang }: { lang: LandingLang }) {
         </ul>
       </section>
 
+<section className="lp-model-story" id={id('models')}><div><p className="lp-eyebrow">FROM MODEL TO MOMENTUM</p><h2 className="lp-h3">{lang === 'ko' ? '새로운 AI의 능력, 내 일의 진전으로.' : 'Put powerful AI to work on your goals.'}</h2><p className="lp-p">{lang === 'ko' ? 'Fable 5.1을 팀원에게 배정하고, 조사·작성·검토를 하나의 흐름으로 연결하세요. 여러 AI의 일을 조율하는 AI 오케스트레이션을 목표 한 줄로 시작할 수 있습니다.' : 'Assign Fable 5.1 to a teammate and connect research, writing, and review. Start orchestrating your AI team with a single goal.'}</p><p className="lp-offer-note">{lang === 'ko' ? 'Fable 5.1은 본인 API 키 또는 유료 잔액이 필요합니다. 제공사 계정의 모델 접근 권한에 따라 이용이 제한될 수 있습니다.' : 'Fable 5.1 requires your API key or a paid balance, subject to provider model access.'}</p></div><div className="lp-model-flow"><span>Fable 5.1 · Claude</span><h3>{lang === 'ko' ? '“경쟁사 조사해서 제안서 초안까지.”' : '“Research the competition. Draft my proposal.”'}</h3><ol>{(lang === 'ko' ? ['매니저가 업무 분담', '리서처 → 작성자 → 검토자', '나는 결과 확인과 방향 결정'] : ['Manager divides the work', 'Researcher → Writer → Reviewer', 'You review and set direction']).map(x=><li key={x}>{x}</li>)}</ol></div></section>
+
       {/* ── Section 3 — About ──────────────────────────────── */}
       <section className="lp-about" id={id('about')}>
         <div className="lp-about-left lp-reveal">
@@ -742,6 +740,50 @@ function LandingContent({ lang }: { lang: LandingLang }) {
           <BoardDiagram b={t.board} />
           <div className="lp-tint" />
         </div>
+      </section>
+
+      {/* ── Section 8 — Pricing / 크레딧 · 팀 · 기업 (docs/pricing-credits.md §5) ── */}
+      <section className="lp-pricing" id={id('pricing')}>
+        <header className="lp-sec-head lp-sec-head-center lp-reveal">
+          <p className="lp-eyebrow">{t.pricing.eyebrow}</p>
+          <h2 className="lp-h3">{t.pricing.h}</h2>
+          <p className="lp-p">{t.pricing.p}</p>
+        </header>
+        <div className="lp-beta-banner lp-reveal" role="note">
+          <span className="lp-beta lp-beta-lg">{t.beta}</span>
+          <div><strong>{t.betaBanner.t}</strong><p>{t.betaBanner.d}</p></div>
+        </div>
+        <div className="lp-free-offer lp-reveal"><div><p className="lp-eyebrow">BRING YOUR OWN KEY</p><h3>{lang === 'ko' ? '내 API 키로, orbitcrew는 무료.' : 'Your API key. Zero platform fee.'}</h3><p>{lang === 'ko' ? '본인 Anthropic API 키를 연결하면 서비스 이용료는 0원입니다. AI 사용료는 Anthropic에서 별도로 청구합니다. Claude·ChatGPT 구독에 포함되는 혜택은 아닙니다.' : 'Connect your Anthropic API key for zero orbitcrew platform fees. Anthropic bills AI usage separately. Claude and ChatGPT subscriptions do not include this API usage.'}</p></div>
+          {/* oxlint-disable-next-line next/no-html-link-for-pages -- 정적 랜딩 빌드에서 앱 주소로 치환됩니다 */}
+          <a className="lp-btn" href="/login">{lang === 'ko' ? '무료로 시작하기' : 'Get started free'}<span className="lp-beta">BETA</span></a></div>
+        <div className="lp-plans">
+          {t.pricing.plans.map((plan, i) => (
+            <article key={plan.name} className={`lp-plan lp-reveal${plan.featured ? ' lp-plan-featured' : ''}`} style={{ '--d': i } as CSSProperties}>
+              <div className="lp-plan-head">
+                <h3>{plan.name}</h3>
+                {plan.tag ? <span className="lp-plan-tag">{plan.tag}</span> : null}
+              </div>
+              <p className="lp-plan-price">{plan.price}</p>
+              <p className="lp-plan-unit">{plan.unit}</p>
+              <p className="lp-plan-d">{plan.d}</p>
+              <ul className="lp-plan-perks">
+                {plan.perks.map((perk) => (
+                  <li key={perk}><Icon name="check" />{perk}</li>
+                ))}
+              </ul>
+              {/* oxlint-disable-next-line next/no-html-link-for-pages -- 정적 빌드에서 /login 은 앱 주소로 치환됩니다 */}
+              <a className={`lp-btn${plan.featured ? '' : ' lp-btn-ghost'}`} href={plan.href}>
+                {plan.cta}
+                {plan.featured ? <span className="lp-beta lp-beta-on-cta">{t.beta}</span> : null}
+                {plan.featured ? <i className="lp-btn-line" /> : null}
+              </a>
+            </article>
+          ))}
+        </div>
+        <p className="lp-plan-note lp-reveal">
+          {t.pricing.note} <a href={href('start')}>{t.pricing.noteLink}</a>
+        </p>
+        <p className="lp-plan-rate lp-reveal">{t.pricing.rateNote}</p>
       </section>
 
       {/* ── Section 4 — Features (bento) ───────────────────── */}
@@ -819,81 +861,6 @@ function LandingContent({ lang }: { lang: LandingLang }) {
             </article>
           ))}
         </div>
-      </section>
-
-      {/* ── Section 7 — Compare ────────────────────────────── */}
-      <section className="lp-compare" id={id('compare')}>
-        <header className="lp-sec-head lp-sec-head-center lp-reveal">
-          <p className="lp-eyebrow">{t.compare.eyebrow}</p>
-          <h2 className="lp-h3">{t.compare.h}</h2>
-        </header>
-        <div className="lp-table-wrap lp-reveal">
-          <table className="lp-table">
-            <thead>
-              <tr>
-                <th scope="col"><span className="lp-sr">{t.compare.colLabel}</span></th>
-                {t.compare.cols.map((c, i) => (
-                  <th key={c} scope="col" className={i === 2 ? 'is-us' : undefined}>
-                    {i === 2 ? <span className="lp-th-us"><OrbitMark size={16} />{c}</span> : c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {t.compare.rows.map((r) => (
-                <tr key={r.k}>
-                  <th scope="row">{r.k}</th>
-                  {r.v.map((v, i) => (
-                    <td key={i} className={i === 2 ? 'is-us' : undefined}>
-                      {i === 2 ? <span className="lp-td-us"><Icon name="check" />{v}</span> : v}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* ── Section 8 — Pricing / 크레딧 · 팀 · 기업 (docs/pricing-credits.md §5) ── */}
-      <section className="lp-pricing" id={id('pricing')}>
-        <header className="lp-sec-head lp-sec-head-center lp-reveal">
-          <p className="lp-eyebrow">{t.pricing.eyebrow}</p>
-          <h2 className="lp-h3">{t.pricing.h}</h2>
-          <p className="lp-p">{t.pricing.p}</p>
-        </header>
-        <div className="lp-beta-banner lp-reveal" role="note">
-          <span className="lp-beta lp-beta-lg">{t.beta}</span>
-          <div><strong>{t.betaBanner.t}</strong><p>{t.betaBanner.d}</p></div>
-        </div>
-        <div className="lp-plans">
-          {t.pricing.plans.map((plan, i) => (
-            <article key={plan.name} className={`lp-plan lp-reveal${plan.featured ? ' lp-plan-featured' : ''}`} style={{ '--d': i } as CSSProperties}>
-              <div className="lp-plan-head">
-                <h3>{plan.name}</h3>
-                {plan.tag ? <span className="lp-plan-tag">{plan.tag}</span> : null}
-              </div>
-              <p className="lp-plan-price">{plan.price}</p>
-              <p className="lp-plan-unit">{plan.unit}</p>
-              <p className="lp-plan-d">{plan.d}</p>
-              <ul className="lp-plan-perks">
-                {plan.perks.map((perk) => (
-                  <li key={perk}><Icon name="check" />{perk}</li>
-                ))}
-              </ul>
-              {/* oxlint-disable-next-line next/no-html-link-for-pages -- 정적 빌드에서 /login 은 앱 주소로 치환됩니다 */}
-              <a className={`lp-btn${plan.featured ? '' : ' lp-btn-ghost'}`} href={plan.href}>
-                {plan.cta}
-                {plan.featured ? <span className="lp-beta lp-beta-on-cta">{t.beta}</span> : null}
-                {plan.featured ? <i className="lp-btn-line" /> : null}
-              </a>
-            </article>
-          ))}
-        </div>
-        <p className="lp-plan-note lp-reveal">
-          {t.pricing.note} <a href={href('start')}>{t.pricing.noteLink}</a>
-        </p>
-        <p className="lp-plan-rate lp-reveal">{t.pricing.rateNote}</p>
       </section>
 
       {/* ── Section 9 — Start / 가입 즉시 300 크레딧 ────────── */}
@@ -1044,77 +1011,87 @@ function Icon({ name }: { name: IconName }) {
 }
 
 /** 히어로 비주얼 — 매니저 코어를 도는 에이전트 궤도. 영상 대신 쓰는 SVG. (uid: 두 언어 트리의 gradient id 충돌 방지) */
-function OrbitDiagram({ chips, uid }: { chips: [string, string, string]; uid: string }) {
-  const nodes: { x: number; y: number; t: string; cls: string }[] = [
-    { x: 310, y: 20, t: chips[0], cls: 'lp-node-ink' },
-    { x: 600, y: 310, t: chips[1], cls: 'lp-node-mint' },
-    { x: 310, y: 600, t: chips[2], cls: 'lp-node-brand' },
+function OrbitDiagram({ uid }: { uid: string }) {
+  // Each satellite and its fading wake share one elliptical path. No visible orbit rails.
+  const flights = [
+    { cx: 310, cy: 310, rx: 128, ry: 66, tilt: -18, duration: 22, phase: 0, color: '#9edcff' },
+    { cx: 310, cy: 310, rx: 168, ry: 84, tilt: 24, duration: 29, phase: 72, color: '#ffd76a' },
+    { cx: 310, cy: 310, rx: 208, ry: 104, tilt: -42, duration: 37, phase: 144, color: '#77f4da' },
+    { cx: 310, cy: 310, rx: 248, ry: 124, tilt: 42, duration: 46, phase: 216, color: '#c49aff' },
+    { cx: 310, cy: 310, rx: 288, ry: 144, tilt: -8, duration: 58, phase: 288, color: '#ff91af' },
   ];
-  const core = `lpCore-${uid}`;
-  const halo = `lpHalo-${uid}`;
   return (
     <svg className="lp-orbit" viewBox="0 0 620 620" role="presentation">
       <defs>
-        <radialGradient id={core} cx="50%" cy="40%" r="60%">
-          <stop offset="0%" stopColor="#312e81" />
-          <stop offset="100%" stopColor="#0b0b14" />
-        </radialGradient>
-        <radialGradient id={halo} cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="var(--lp-indigo)" stopOpacity=".35" />
-          <stop offset="60%" stopColor="var(--lp-indigo)" stopOpacity=".08" />
-          <stop offset="100%" stopColor="var(--lp-indigo)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-
-      <circle cx="310" cy="310" r="300" fill={`url(#${halo})`} />
-
-      {[290, 230, 168, 106].map((r, i) => (
-        <circle key={r} cx="310" cy="310" r={r} className={`lp-ring ${i % 2 ? 'lp-ring-dash' : ''}`} style={{ opacity: 0.16 + i * 0.08 }} />
-      ))}
-
-      <g className="lp-spokes">
-        {[0, 60, 120, 180, 240, 300].map((a) => {
-          const rad = (a * Math.PI) / 180;
-          return (
-            <line
-              key={a}
-              x1={310 + Math.cos(rad) * 96}
-              y1={310 + Math.sin(rad) * 96}
-              x2={310 + Math.cos(rad) * 290}
-              y2={310 + Math.sin(rad) * 290}
-            />
-          );
-        })}
-      </g>
-
-      <g className="lp-spin lp-spin-a">
-        {nodes.map((c) => (
-          <g key={c.t} className="lp-chip-g" transform={`translate(${c.x} ${c.y})`}>
-            <circle r="13" className={`lp-node ${c.cls}`} />
-            <g className="lp-counter-a">
-              <rect x="-34" y="20" width="68" height="22" rx="11" className="lp-chip" />
-              <text y="35" className="lp-chip-t">{c.t}</text>
-            </g>
-          </g>
+        {flights.map((f, i) => (
+          <path key={i} id={`lp-flight-${uid}-${i}`} pathLength="360"
+            d={`M ${f.cx + f.rx} ${f.cy} a ${f.rx} ${f.ry} 0 1 1 ${-2 * f.rx} 0 a ${f.rx} ${f.ry} 0 1 1 ${2 * f.rx} 0`} />
         ))}
+      </defs>
+      <g className="lp-central-star" aria-hidden="true">
+        <foreignObject x="254" y="254" width="112" height="112" overflow="visible">
+          <div className="lp-star-sphere"><div className="lp-star-texture" /><div className="lp-star-shading" /></div>
+        </foreignObject>
       </g>
-      <g className="lp-spin lp-spin-b">
-        <circle cx="310" cy="80" r="10" className="lp-node lp-node-brand" />
-        <circle cx="540" cy="310" r="8" className="lp-node lp-node-ink" />
-        <circle cx="147" cy="404" r="7" className="lp-node lp-node-mint" />
-      </g>
-      <g className="lp-spin lp-spin-c">
-        <circle cx="310" cy="142" r="9" className="lp-node lp-node-mint" />
-        <circle cx="478" cy="310" r="7" className="lp-node lp-node-brand" />
-        <circle cx="310" cy="478" r="7" className="lp-node lp-node-ink" />
-      </g>
-
-      <circle cx="310" cy="310" r="66" fill={`url(#${core})`} />
-      <circle cx="310" cy="310" r="66" className="lp-core-ring" />
-      <circle cx="310" cy="310" r="90" className="lp-pulse" />
-      <circle cx="310" cy="310" r="90" className="lp-pulse lp-pulse-2" />
-      <text x="310" y="305" className="lp-core-t1">MANAGER</text>
-      <text x="310" y="325" className="lp-core-t2">orbitcrew</text>
+      {flights.map((f, i) => (
+        <g key={f.color} transform={`rotate(${f.tilt} ${f.cx} ${f.cy})`}
+          style={{ color: f.color, '--flight-duration': `${f.duration}s`, '--flight-delay': `-${f.duration * f.phase / 360}s` } as CSSProperties}>
+          {/* Use the same SVG motion clock and path for the head and every particle.
+              Negative start times place the full trailing wake on screen immediately. */}
+          {Array.from({ length: 64 }, (_, j) => {
+            // Stable pseudo-random values keep SSR and hydration identical.
+            const noise = (seed: number) => {
+              const n = Math.sin(seed * 127.1 + i * 311.7) * 43758.5453;
+              return n - Math.floor(n);
+            };
+            const age = (j + 0.4 + noise(j + 2) * 0.6) / 64;
+            const phase = ((f.phase + 40.75) / 360 - age * 0.2 + 1) % 1;
+            const spread = 0.6 + Math.pow(age, 0.8) * 10;
+            const drift = 0.3 + age * 4;
+            return (
+              <g key={j} className="lp-satellite-particle" opacity={0.85 * Math.pow(1 - age, 1.7)}>
+                <g>
+                  <animate attributeName="opacity" values=".65;1;.65;.2;.65" keyTimes="0;.25;.5;.75;1" dur={`${f.duration}s`} begin={`-${f.duration * phase}s`} repeatCount="indefinite" />
+                  <g className="lp-dust-cloud" style={{
+                    '--dust-x': `${(noise(j + 41) - 0.5) * drift * 2}px`,
+                    '--dust-y': `${drift}px`,
+                    '--dust-duration': `${3.5 + noise(j + 17) * 5}s`,
+                    '--dust-delay': `-${noise(j + 29) * 9}s`,
+                  } as CSSProperties}>
+                    {Array.from({ length: 9 }, (_, k) => {
+                      const seed = j * 19 + k * 7 + 1;
+                      const angle = noise(seed) * Math.PI * 2;
+                      const distance = Math.pow(noise(seed + 3), 0.65) * spread;
+                      return <circle key={k}
+                        cx={Math.cos(angle) * distance * 0.85}
+                        cy={Math.sin(angle) * distance + Math.sin(age * 16 + i) * age * 2}
+                        r={(0.17 + noise(seed + 5) * 0.55) * (1 - age * 0.45)}
+                        fill={k === 0 ? '#effaff' : k === 3 ? '#b7a7ff' : 'currentColor'}
+                        opacity={0.25 + noise(seed + 9) * 0.75} />;
+                    })}
+                  </g>
+                </g>
+                <animateMotion dur={`${f.duration}s`} begin={`-${f.duration * phase}s`} repeatCount="indefinite" calcMode="paced" rotate="auto">
+                  <mpath href={`#lp-flight-${uid}-${i}`} />
+                </animateMotion>
+              </g>
+            );
+          })}
+          <g className="lp-satellite">
+            <g className="lp-satellite-depth">
+              <circle r="8" fill="currentColor" opacity=".1" />
+              <circle r="3" fill="currentColor" className="lp-signal-head" />
+              <circle r="1.3" fill="white" />
+              <animateTransform attributeName="transform" type="scale" values="1;1.45;1;0.55;1" keyTimes="0;.25;.5;.75;1" dur={`${f.duration}s`} begin={`-${f.duration * (f.phase + 40.75) / 360}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values=".7;1;.7;.25;.7" keyTimes="0;.25;.5;.75;1" dur={`${f.duration}s`} begin={`-${f.duration * (f.phase + 40.75) / 360}s`} repeatCount="indefinite" />
+            </g>
+            <animateMotion dur={`${f.duration}s`} begin={`-${f.duration * (f.phase + 40.75) / 360}s`} repeatCount="indefinite" calcMode="paced">
+              <mpath href={`#lp-flight-${uid}-${i}`} />
+            </animateMotion>
+          </g>
+          <circle className="lp-satellite-still" cx={f.cx + f.rx} cy={f.cy} r="3" fill="currentColor" />
+        </g>
+      ))}
     </svg>
   );
 }
@@ -1325,19 +1302,19 @@ const LP_CSS = `
 .lp{
   /* 우주 테마 — 시스템 테마와 무관하게 항상 다크. 팔레트는 Launch UI(ultraviolet) 토큰 + 브랜드 노랑. */
   color-scheme:dark;
-  --lp-bg:#09090b;
+  --lp-bg:#030711;
   --lp-bg-2:#0e0e13;
   --lp-bg-3:#15151c;
   --lp-ink:#fafafa;
   --lp-text:#e4e4e7;
-  --lp-muted:#a1a1aa;
-  --lp-soft:#71717a;
+  --lp-muted:#b6c2d6;
+  --lp-soft:#8d9db6;
   --lp-line:#ffffff1a;
   --lp-line-soft:#ffffff0d;
   --lp-line-strong:#ffffff33;
   --lp-card:#fafafa05;
   --lp-card-2:#fafafa0a;
-  --lp-card-solid:#101016;
+  --lp-card-solid:#0c182c66;
   --lp-brand:#ffd02f;
   --lp-brand-deep:#fcb900;
   --lp-brand-soft:#ffd02f26;
@@ -1362,7 +1339,7 @@ const LP_CSS = `
   --lp-ease:cubic-bezier(.2,.7,.2,1);
   --lp-nav-h:76px;
   font-family:var(--font-app,var(--font-app-sans),'Figtree','Pretendard','Noto Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif);
-  background:var(--lp-bg);
+  background:transparent;
   color:var(--lp-text);
   -webkit-font-smoothing:antialiased;
   scroll-behavior:smooth;
@@ -1370,6 +1347,8 @@ const LP_CSS = `
   position:relative;
 }
 .lp *{ box-sizing:border-box; }
+/* Isolate heading colors from the application light-theme defaults. */
+.lp :is(h1,h2,h3,h4,h5,h6){color:var(--lp-ink);}
 
 /* ── 언어 트리 전환 (루트 data-lang 이 고르는 쪽만 보임) ── */
 .lp-tree{ display:none; }
@@ -1466,7 +1445,7 @@ const LP_CSS = `
 /* ── 네브바 ── */
 .lp-nav{ position:sticky; top:0; z-index:20; height:var(--lp-nav-h); margin-bottom:calc(-1 * var(--lp-nav-h)); display:flex; align-items:center; gap:clamp(20px,5vw,56px);
   padding:0 clamp(20px,4vw,48px); transition:background .3s ease,box-shadow .3s ease; }
-.lp-nav.is-stuck{ background:#09090bd9; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); box-shadow:0 1px 0 var(--lp-line); }
+.lp-nav.is-stuck{ background:#08122380; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); box-shadow:0 1px 0 var(--lp-line); }
 .lp-logo{ display:flex; align-items:center; gap:12px; }
 .lp-logo-mark{ width:38px; height:38px; display:grid; place-items:center; color:var(--lp-ink); filter:drop-shadow(0 0 10px #ffd02f66); }
 .lp-logo-word{ font-size:clamp(22px,5vw,28px); font-weight:500; color:var(--lp-ink); letter-spacing:-.5px; }
@@ -1497,16 +1476,16 @@ const LP_CSS = `
 .lp-mobile-menu a{ font-weight:600; color:var(--lp-ink); }
 
 /* ── 히어로 ── */
-.lp-hero{ position:relative; padding-top:var(--lp-nav-h); background:var(--lp-bg); overflow:hidden; display:flex; flex-direction:column; align-items:center; }
+.lp-hero{ position:relative; padding-top:var(--lp-nav-h); background:transparent; overflow:hidden; display:flex; flex-direction:column; align-items:center; }
 .lp-hero-body{ position:relative; z-index:2; width:100%; max-width:1040px; display:flex; flex-direction:column; align-items:center; text-align:center;
   padding:clamp(56px,9vh,110px) 20px 0; }
 .lp-hero-sub{ margin:clamp(20px,3vh,30px) 0 0; max-width:560px; font-size:clamp(15px,1.7vw,19px); line-height:1.7; color:var(--lp-muted); animation:lp-rise .9s var(--lp-ease) both; animation-delay:.45s; }
 .lp-hero-cta{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; padding:clamp(24px,4vh,40px) 0 0; animation:lp-rise .9s var(--lp-ease) both; animation-delay:.58s; }
 .lp-hero-facts{ list-style:none; margin:clamp(28px,4.5vh,48px) 0 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; gap:0; animation:lp-rise .9s var(--lp-ease) both; animation-delay:.7s; }
-.lp-hero-facts li{ display:flex; align-items:baseline; gap:6px; padding:0 22px; border-right:1px solid var(--lp-line); }
+.lp-hero-facts li{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:0 22px; border-right:1px solid var(--lp-line); }
 .lp-hero-facts li:last-child{ border-right:0; }
 .lp-hero-facts strong{ font-size:clamp(22px,2.6vw,30px); font-weight:500; letter-spacing:-.03em; color:var(--lp-ink); }
-.lp-hero-facts span{ font-size:12px; font-weight:500; letter-spacing:.02em; color:var(--lp-muted); }
+.lp-hero-facts span{ font-size:14px; font-weight:500; letter-spacing:.02em; color:var(--lp-muted); }
 
 .lp-hero-stage{ position:relative; z-index:2; width:100%; max-width:1160px; margin-top:clamp(56px,9vh,120px); padding:0 20px; scroll-margin-top:100px; }
 .lp-hero-stage .lp-horizon{ bottom:auto; top:-40px; height:min(40vw,360px); z-index:0; }
@@ -1514,10 +1493,10 @@ const LP_CSS = `
   background:linear-gradient(90deg,transparent,#a78bfa 30%,#fff 50%,#a78bfa 70%,transparent); box-shadow:var(--lp-glow); opacity:.9; }
 .lp-hero-mock{ position:relative; z-index:1; animation:lp-rise 1.1s var(--lp-ease) both; animation-delay:.85s; }
 .lp-hero-mock::after{ content:''; position:absolute; left:0; right:0; bottom:-1px; height:42%; pointer-events:none; border-radius:0 0 var(--lp-r-lg) var(--lp-r-lg);
-  background:linear-gradient(180deg,transparent,var(--lp-bg) 92%); }
+  background:linear-gradient(180deg,transparent,#03071145 92%); }
 
 /* ── 신뢰 스트립 ── */
-.lp-trust{ border-top:1px solid var(--lp-line-soft); border-bottom:1px solid var(--lp-line-soft); background:var(--lp-bg); padding:0 var(--lp-gutter); }
+.lp-trust{ border-top:1px solid var(--lp-line-soft); border-bottom:1px solid var(--lp-line-soft); background:transparent; padding:0 var(--lp-gutter); }
 .lp-trust-list{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
 .lp-trust-list li{ display:flex; align-items:center; gap:12px; padding:22px 18px 22px 0; border-right:1px solid var(--lp-line-soft); margin-right:18px; }
 .lp-trust-list li:last-child{ border-right:0; margin-right:0; }
@@ -1527,20 +1506,20 @@ const LP_CSS = `
 .lp-trust-text span{ font-size:12px; color:var(--lp-muted); }
 
 /* ── 제품 노트 ── */
-.lp-product{ background:var(--lp-bg); padding:clamp(70px,9vw,120px) var(--lp-gutter) clamp(40px,5vw,70px); }
+.lp-product{ background:transparent; padding:clamp(70px,9vw,120px) var(--lp-gutter) clamp(40px,5vw,70px); }
 .lp-product-notes{ list-style:none; max-width:1120px; margin:0 auto; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
 .lp-product-notes li{ display:flex; align-items:center; gap:12px; padding:16px 18px; border:1px solid var(--lp-line); border-radius:var(--lp-r-card); background:var(--lp-card); font-size:13px; color:var(--lp-muted); box-shadow:inset 0 1px 0 #ffffff0a; }
 .lp-product-notes li strong{ display:block; font-size:13.5px; color:var(--lp-ink); }
 .lp-product-notes .lp-ic{ color:var(--lp-violet); }
 
 /* ── 앱 목업 ── */
-.lp-mock{ position:relative; border:1px solid var(--lp-line); border-radius:var(--lp-r-lg); background:#0b0b10;
+.lp-mock{ position:relative; border:1px solid var(--lp-line); border-radius:var(--lp-r-lg); background:#07122250;
   box-shadow:0 40px 100px -30px #000,0 0 80px -20px #4f46e566; overflow:hidden; font-size:12px; color:var(--lp-text); }
-.lp-mock-bar{ display:flex; align-items:center; gap:7px; padding:10px 14px; border-bottom:1px solid var(--lp-line-soft); background:#0f0f15; }
+.lp-mock-bar{ display:flex; align-items:center; gap:7px; padding:10px 14px; border-bottom:1px solid var(--lp-line-soft); background:#9fcaff08; }
 .lp-mock-bar span{ width:10px; height:10px; border-radius:50%; background:#ffffff1f; }
 .lp-mock-bar i{ margin-left:12px; font-style:normal; font-size:11px; color:var(--lp-soft); padding:4px 12px; border-radius:6px; background:#ffffff08; border:1px solid var(--lp-line-soft); }
 .lp-mock-body{ display:grid; grid-template-columns:168px 1fr; min-height:440px; }
-.lp-mock-side{ border-right:1px solid var(--lp-line-soft); padding:16px 12px; display:flex; flex-direction:column; gap:4px; background:#0d0d12; }
+.lp-mock-side{ border-right:1px solid var(--lp-line-soft); padding:16px 12px; display:flex; flex-direction:column; gap:4px; background:#07122230; }
 .lp-mock-side-logo{ display:flex; align-items:center; gap:8px; padding:4px 8px 16px; color:var(--lp-ink); }
 .lp-mock-side-logo b{ font-weight:500; font-size:14px; letter-spacing:-.3px; }
 .lp-mock-side span{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; color:var(--lp-muted); font-weight:500; }
@@ -1583,7 +1562,7 @@ const LP_CSS = `
 
 /* ── 어바웃 ── */
 .lp-about{ display:flex; flex-wrap:wrap; align-items:center; gap:40px; position:relative; overflow:hidden;
-  background:linear-gradient(180deg,var(--lp-bg) 0%,var(--lp-bg-2) 100%);
+  background:transparent;
   padding:clamp(60px,10vw,140px) 0 clamp(50px,7vw,100px) var(--lp-gutter); }
 .lp-about-left{ flex:1 1 420px; min-width:300px; }
 .lp-about-left .lp-p{ margin:32px 0 0 var(--lp-indent); }
@@ -1610,7 +1589,7 @@ const LP_CSS = `
 .lp-board-col:last-child .lp-board-card{ border-color:#4f46e566; }
 
 /* ── 기능 (벤토) ── */
-.lp-features{ background:var(--lp-bg-2); padding:clamp(70px,9vw,130px) var(--lp-gutter); overflow:hidden; }
+.lp-features{ background:transparent; padding:clamp(70px,9vw,130px) var(--lp-gutter); overflow:hidden; }
 .lp-features::before{ content:''; position:absolute; left:-10%; top:10%; width:50vw; height:50vw; max-width:700px; max-height:700px; border-radius:50%; pointer-events:none;
   background:radial-gradient(closest-side,#4f46e52e,transparent); filter:blur(60px); }
 .lp-features > *{ position:relative; }
@@ -1670,7 +1649,7 @@ const LP_CSS = `
 .lp-art-alert{ fill:var(--lp-coral); stroke:#fff; stroke-width:1.5; animation:lp-blink 1.6s ease-in-out infinite; }
 
 /* ── 작동 방식 ── */
-.lp-how{ background:linear-gradient(180deg,var(--lp-bg-2) 0%,#100e24 50%,var(--lp-bg) 100%); color:var(--lp-ink); padding:clamp(70px,9vw,130px) var(--lp-gutter); overflow:hidden; border-top:1px solid var(--lp-line-soft); }
+.lp-how{ background:transparent; color:var(--lp-ink); padding:clamp(70px,9vw,130px) var(--lp-gutter); overflow:hidden; border-top:1px solid var(--lp-line-soft); }
 .lp-how::after{ content:''; position:absolute; right:-10%; top:-10%; width:52vw; height:52vw; max-width:760px; max-height:760px; border-radius:50%;
   background:radial-gradient(closest-side,#4f46e540,transparent); filter:blur(40px); pointer-events:none; }
 .lp-how > *{ position:relative; z-index:1; }
@@ -1698,7 +1677,7 @@ const LP_CSS = `
 .lp-msg-report{ border-left:3px solid var(--lp-teal); }
 
 /* ── 크루 ── */
-.lp-crew{ background:var(--lp-bg); padding:clamp(70px,9vw,130px) var(--lp-gutter); }
+.lp-crew{ background:transparent; padding:clamp(70px,9vw,130px) var(--lp-gutter); }
 .lp-crew-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
 .lp-crew-card{ position:relative; padding:24px; border:1px solid var(--lp-line); border-radius:var(--lp-r-feature); background:var(--lp-card); display:flex; flex-direction:column; gap:10px; box-shadow:inset 0 1px 0 #ffffff0a;
   transition:transform .35s var(--lp-ease),box-shadow .35s var(--lp-ease),border-color .35s ease; }
@@ -1715,7 +1694,7 @@ const LP_CSS = `
 .lp-crew-card p{ margin:0; font-size:13.5px; line-height:1.7; color:var(--lp-muted); }
 
 /* ── 비교표 ── */
-.lp-compare{ background:var(--lp-bg-2); padding:clamp(70px,9vw,130px) var(--lp-gutter); border-top:1px solid var(--lp-line-soft); }
+.lp-compare{ background:transparent; padding:clamp(70px,9vw,130px) var(--lp-gutter); border-top:1px solid var(--lp-line-soft); }
 .lp-table-wrap{ max-width:1000px; margin:0 auto; overflow-x:auto; border:1px solid var(--lp-line); border-radius:var(--lp-r-feature); background:var(--lp-card); box-shadow:inset 0 1px 0 #ffffff0a,0 0 80px -30px #4f46e5; }
 .lp-table{ width:100%; min-width:640px; border-collapse:separate; border-spacing:0; font-size:14px; }
 .lp-table th,.lp-table td{ padding:16px 18px; text-align:left; border-bottom:1px solid var(--lp-line-soft); vertical-align:top; }
@@ -1729,7 +1708,7 @@ const LP_CSS = `
 .lp-td-us .lp-ic{ width:16px; height:16px; color:var(--lp-success); }
 
 /* ── 시작 안내 ── */
-.lp-pricing{ background:var(--lp-bg); padding:clamp(70px,9vw,130px) var(--lp-gutter) clamp(40px,5vw,64px); border-top:1px solid var(--lp-line-soft); }
+.lp-pricing{ background:transparent; padding:clamp(70px,9vw,130px) var(--lp-gutter) clamp(40px,5vw,64px); border-top:1px solid var(--lp-line-soft); }
 .lp-plans{ display:grid; grid-template-columns:1fr; gap:18px; max-width:1120px; margin:0 auto; }
 @media (min-width:860px){ .lp-plans{ grid-template-columns:repeat(3,minmax(0,1fr)); align-items:stretch; } }
 .lp-plan{ display:flex; flex-direction:column; padding:28px 26px 26px; border:1px solid var(--lp-line); border-radius:var(--lp-r-lg); background:var(--lp-card); box-shadow:inset 0 1px 0 #ffffff0a; transition:border-color .25s ease,transform .3s var(--lp-ease),box-shadow .3s ease; }
@@ -1749,7 +1728,7 @@ const LP_CSS = `
 .lp-plan-note{ max-width:760px; margin:clamp(28px,4vw,40px) auto 0; text-align:center; font-size:14px; line-height:1.7; color:var(--lp-text); }
 .lp-plan-note a{ color:var(--lp-ink); text-decoration:underline; text-underline-offset:3px; white-space:nowrap; }
 .lp-plan-rate{ max-width:760px; margin:10px auto 0; text-align:center; font-size:12.5px; color:var(--lp-muted); }
-.lp-start{ background:var(--lp-bg); padding:clamp(70px,9vw,130px) var(--lp-gutter); display:grid; grid-template-columns:1fr; gap:clamp(32px,5vw,72px); align-items:start; }
+.lp-start{ background:transparent; padding:clamp(70px,9vw,130px) var(--lp-gutter); display:grid; grid-template-columns:1fr; gap:clamp(32px,5vw,72px); align-items:start; }
 @media (min-width:900px){ .lp-start{ grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); } }
 .lp-start-left .lp-p{ margin:16px 0 0; }
 .lp-start-perks{ list-style:none; margin:24px 0 32px; padding:0; display:flex; flex-direction:column; gap:10px; }
@@ -1764,7 +1743,7 @@ const LP_CSS = `
 .lp-start-steps p{ margin:0; font-size:13.5px; line-height:1.7; color:var(--lp-muted); }
 
 /* ── FAQ ── */
-.lp-faq{ background:var(--lp-bg-2); padding:clamp(70px,9vw,130px) var(--lp-gutter); border-top:1px solid var(--lp-line-soft); }
+.lp-faq{ background:transparent; padding:clamp(70px,9vw,130px) var(--lp-gutter); border-top:1px solid var(--lp-line-soft); }
 .lp-faq-list{ max-width:820px; display:flex; flex-direction:column; gap:10px; }
 .lp-faq-item{ border:1px solid var(--lp-line); border-radius:var(--lp-r-lg); background:var(--lp-card); overflow:hidden; transition:border-color .25s ease,background .25s ease; }
 .lp-faq-item[open]{ border-color:#a78bfa66; background:var(--lp-card-2); }
@@ -1778,7 +1757,7 @@ const LP_CSS = `
 .lp-faq-item p{ margin:0; padding:0 22px 20px; font-size:14px; line-height:1.75; color:var(--lp-muted); }
 
 /* ── CTA · 푸터 ── */
-.lp-cta{ position:relative; overflow:hidden; background:var(--lp-bg); padding:clamp(100px,12vw,180px) var(--lp-gutter); display:flex; flex-direction:column; align-items:center; gap:26px; text-align:center; }
+.lp-cta{ position:relative; overflow:hidden; background:transparent; padding:clamp(100px,12vw,180px) var(--lp-gutter); display:flex; flex-direction:column; align-items:center; gap:26px; text-align:center; }
 .lp-cta > *{ position:relative; z-index:1; }
 .lp-cta-bg{ position:absolute; inset:0; z-index:0; pointer-events:none; display:grid; place-items:center; }
 .lp-cta-bg .lp-stars{ opacity:.5; }
@@ -1788,7 +1767,7 @@ const LP_CSS = `
 .lp-horizon-cta{ opacity:.8; }
 .lp-h2-center{ align-items:center; }
 .lp-p-center{ margin:0; }
-.lp-footer{ background:var(--lp-bg); border-top:1px solid var(--lp-line); padding:44px var(--lp-gutter) 30px;
+.lp-footer{ background:transparent; border-top:1px solid var(--lp-line); padding:44px var(--lp-gutter) 30px;
   display:flex; flex-direction:column; gap:28px; font-size:12px; color:var(--lp-muted); }
 .lp-footer-top{ display:grid; grid-template-columns:1fr; gap:28px; }
 @media (min-width:720px){ .lp-footer-top{ grid-template-columns:1.6fr 1fr 1fr; } }
@@ -1868,5 +1847,136 @@ const LP_CSS = `
   .lp-crew-tag{ position:static; align-self:flex-start; }
   .lp-convo{ padding:14px; }
   .lp-msg{ max-width:94%; }
+}
+
+.lp-offer-note{font-size:14px;line-height:1.7;color:#aaa5b7;max-width:720px;margin:20px auto;}
+.lp-model-story{display:grid;grid-template-columns:1.15fr 1fr;gap:56px;padding:80px var(--lp-gutter);align-items:center;}
+.lp-model-story .lp-offer-note{margin-left:0;}
+.lp-model-flow{padding:32px;border:1px solid #62548b;border-radius:20px;background:linear-gradient(145deg,#728fb91c,#101b3038);}
+.lp-model-flow>span{color:#ffd02f;font-size:14px;}.lp-model-flow h3{font-size:24px;line-height:1.5;}
+.lp-model-flow ol{padding-left:22px;color:#ccc5db;line-height:2.4;font-size:16px;}
+.lp-free-offer{display:flex;gap:36px;align-items:center;justify-content:space-between;padding:36px;margin:32px 0;border:1px solid #ffd02f70;border-radius:18px;background:#ffd02f09;}
+.lp-free-offer h3{font-size:clamp(24px,3vw,36px);margin:0 0 16px;}.lp-free-offer p:not(.lp-eyebrow){font-size:16px;line-height:1.8;max-width:700px;color:#aaa5b7;}.lp-free-offer .lp-btn{flex-shrink:0;}
+.lp-h1{line-height:1.16;word-break:keep-all;}.lp-hero-facts strong{font-size:clamp(18px,2vw,24px);}.lp-hero-facts{row-gap:24px;}
+@media(max-width:760px){.lp-model-story{grid-template-columns:1fr;gap:24px;padding:48px var(--lp-gutter);}.lp-free-offer{flex-direction:column;align-items:flex-start;padding:24px;}.lp-model-flow{padding:24px;}.lp-hero-facts{flex-wrap:wrap;}.lp-offer-note{padding:0 12px;}}
+
+/* Continuous deep-space canvas; the glass surfaces share one backdrop. */
+.lp{isolation:isolate;background:#030711;}
+.lp-universe{position:fixed;inset:0;z-index:-1;pointer-events:none;background:#030711 url('/orbit-space.webp') center center/cover no-repeat;}
+.lp-universe::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,#02061220,#02061248 50%,#02061270);}
+.lp .lp-space{opacity:1;}
+.lp .lp-space > .lp-stars{opacity:.22;}
+.lp-hero-orbit{opacity:.85;
+ -webkit-mask-image:radial-gradient(circle at 50% 50%,#0000 8%,#0005 25%,#000 52%,#000b 66%,#0000 73%);
+ mask-image:radial-gradient(circle at 50% 50%,#0000 8%,#0005 25%,#000 52%,#000b 66%,#0000 73%);
+}
+.lp-nebula,.lp-features::before,.lp-how::after{display:none;}
+.lp-horizon{opacity:.25;}
+.lp-hero-body{padding-top:clamp(90px,14vh,160px);padding-bottom:24px;}
+.lp-h1{font-weight:500;letter-spacing:-.055em;text-shadow:0 8px 48px #02061288;}
+.lp-hero-sub{max-width:650px;color:#c1ccdc;}
+.lp-eyebrow-pill{background:#9ecfff08;border-color:#c0deff30;backdrop-filter:blur(12px);}
+.lp-hero-facts{padding:22px 12px;border:1px solid #bcdbff26;border-radius:22px;background:#bedaff06;backdrop-filter:blur(12px);}
+.lp :is(.lp-bcard,.lp-crew-card,.lp-plan,.lp-start-steps li,.lp-faq-item,.lp-product-notes li,.lp-model-flow,.lp-free-offer,.lp-convo,.lp-board,.lp-mock){
+ background:linear-gradient(135deg,#ecf5ff10 0%,#c0dbff03 38%,#bad5ff07 100%),#0c182c35;
+ border-color:#dcecff30;border-top-color:#f1f8ff55;border-left-color:#e0efff3b;
+ backdrop-filter:blur(22px) saturate(135%);-webkit-backdrop-filter:blur(22px) saturate(135%);
+ box-shadow:inset 0 1px 0 #ffffff24,inset 0 -1px 0 #bbd8ff0c,inset 1px 0 0 #ffffff0a,0 16px 48px -24px #0009;
+}
+.lp :is(.lp-bcard,.lp-crew-card,.lp-plan):hover{background-color:#b4d3ff0d;border-color:#c3ddff55;box-shadow:inset 0 1px 0 #ffffff38,inset 0 -1px 0 #c3ddff14,0 22px 60px -28px #1c76ae55;}
+.lp .lp-bcard-art{background:#a8d1ff04;border-color:#c3ddff12;}
+.lp .lp-plan-featured{background:linear-gradient(145deg,#dceeff1b,#bca4ff08 60%),#0c182c35;border-color:#b7d8ff55;border-top-color:#e4f3ff77;}
+.lp .lp-model-flow{border-color:#b7d8ff40;}
+.lp .lp-free-offer{background:linear-gradient(120deg,#ffd02f0b,#b4d3ff06);border-color:#ffd02f40;}
+.lp .lp-trust{background:#adcdff04;border-color:#c3ddff14;}
+.lp .lp-nav{background:#08122328;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid #c3ddff12;}
+.lp .lp-nav.is-stuck{background:#081223a0;}
+.lp .lp-mobile-menu{background:#071222eb;}
+.lp :is(.lp-pricing,.lp-how,.lp-faq,.lp-footer){border-color:#c3ddff14;}
+.lp .lp-hero-mock{max-width:1120px;margin-inline:auto;}
+.lp .lp-mock{border-color:#c3ddff45;box-shadow:inset 0 1px 0 #ffffff40,inset 0 -1px 0 #d1e8ff12,0 30px 100px -35px #000a,0 0 90px -55px #99d7ff;}
+.lp .lp-mock-focus{background:linear-gradient(135deg,#82b4ff1c,#9f8eff08);}
+.lp .lp-footer{background:#03071130;}
+.lp .lp-cta-bg{opacity:.4;}
+@media(max-width:700px){
+ .lp-hero-body{padding-top:80px;}
+ .lp-hero-facts{gap:20px;padding:22px;}
+ .lp-hero-facts li{border:0;width:100%;}
+ .lp :is(.lp-bcard,.lp-crew-card,.lp-plan,.lp-start-steps li,.lp-faq-item){backdrop-filter:blur(10px) saturate(120%);-webkit-backdrop-filter:blur(10px) saturate(120%);background-color:#0c182c65;}
+}
+@media(prefers-reduced-motion:reduce){.lp-universe{animation:none;}}
+
+/* Soft edge reflections, without a bright overlay over the content. */
+.lp :is(.lp-bcard,.lp-crew-card,.lp-plan,.lp-model-flow,.lp-convo){border-radius:28px;}
+.lp .lp-mock{border-radius:26px;}
+.lp .lp-mock-bar{background:linear-gradient(180deg,#e7f4ff0d,#d6eaff03);border-bottom-color:#e1f0ff1c;}
+.lp .lp-bcard-art{background:linear-gradient(145deg,#d7ebff06,#a8d1ff02);border-top-color:#e1f0ff20;}
+.lp .lp-hero-facts{background:linear-gradient(140deg,#e6f4ff0e,#bedaff03 60%);border-top-color:#e6f4ff45;box-shadow:inset 0 1px 0 #ffffff18,0 12px 36px -24px #0008;backdrop-filter:blur(18px) saturate(130%);-webkit-backdrop-filter:blur(18px) saturate(130%);}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+ .lp :is(.lp-bcard,.lp-crew-card,.lp-plan,.lp-start-steps li,.lp-faq-item,.lp-product-notes li,.lp-model-flow,.lp-free-offer,.lp-convo,.lp-board,.lp-mock,.lp-hero-facts){background-color:#0c182cdd;}
+}
+
+/* Crisp orbital signals remain behind the headline; no whole-layer blur. */
+.lp-hero-orbit .lp-ring{stroke:#a9d8fa;stroke-width:.7;}
+.lp-hero-orbit .lp-ring-dash{stroke-dasharray:1 9;stroke-width:1;}
+.lp-hero-orbit .lp-spin-a{animation-duration:42s;}
+.lp-hero-orbit .lp-spin-b{animation-duration:29s;}
+.lp-hero-orbit .lp-spin-c{animation-duration:20s;}
+.lp-hero-orbit .lp-node{r:3px;opacity:.7;}
+.lp-hero-orbit .lp-spokes{opacity:.35;}
+.lp-signal-head{filter:drop-shadow(0 0 3px currentColor) drop-shadow(0 0 8px currentColor);}
+@media(max-width:700px){.lp-hero-orbit{width:145vw;opacity:.65;}}
+@media(prefers-reduced-motion:reduce){.lp-hero-orbit .lp-spin{animation:none;}.lp-signal.lp-spin-b{transform:rotate(120deg);}}
+
+/* Fine particle wakes use the same motion path as their satellites. */
+
+.lp-satellite-still{display:none;}
+
+.lp-hero-orbit{opacity:.9;-webkit-mask-image:radial-gradient(ellipse at center,#0007 15%,#000 45%,#000 65%,transparent 76%);mask-image:radial-gradient(ellipse at center,#0007 15%,#000 45%,#000 65%,transparent 76%);}
+@media(prefers-reduced-motion:reduce){.lp-satellite,.lp-satellite-particle{display:none;}.lp-satellite-still{display:block;}}
+
+/* The textured star turns independently of the satellites around it. */
+.lp-central-star{mix-blend-mode:screen;pointer-events:none;}
+.lp-star-surface{transform-origin:310px 310px;animation:lp-star-turn 100s linear infinite;}
+@keyframes lp-star-turn{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){.lp-star-surface{animation:none;}}
+
+/* Surface movement across a shaded sphere suggests axial rotation in depth. */
+.lp-star-sphere{position:relative;width:112px;height:112px;overflow:hidden;border-radius:50%;background:#df991e;box-shadow:0 0 8px #ffda8aaa,0 0 24px #ffb33b55,0 0 48px #ffa32222;}
+.lp-star-texture{position:absolute;inset:0;border-radius:inherit;background-image:url('/orbit-star.webp');background-size:230% 230%;background-position:30% 50%;animation:lp-star-axis 36s ease-in-out infinite alternate;}
+.lp-star-shading{position:absolute;inset:0;border-radius:inherit;background:radial-gradient(circle at 32% 28%,#fff4c52b,transparent 40%,#7b310540 74%,#321500bb 100%);box-shadow:inset -12px -3px 22px #431d0066,inset 2px 1px 5px #fff0ad80;}
+@keyframes lp-star-axis{from{background-position:30% 50%;}to{background-position:70% 50%;}}
+@media(prefers-reduced-motion:reduce){.lp-star-texture{animation:none;}}
+
+/* Small independently phased eddies break up the evenly spaced orbital trail. */
+.lp-dust-cloud{animation:lp-dust-eddy var(--dust-duration) ease-in-out infinite;animation-delay:var(--dust-delay);}
+@keyframes lp-dust-eddy{
+ 0%,100%{transform:translate(0,0);}
+ 27%{transform:translate(var(--dust-x),calc(var(--dust-y) * -.7));}
+ 61%{transform:translate(calc(var(--dust-x) * -.65),var(--dust-y));}
+ 83%{transform:translate(calc(var(--dust-x) * .35),calc(var(--dust-y) * .25));}
+}
+@media(prefers-reduced-motion:reduce){.lp-dust-cloud{animation:none;}}
+
+/* Maintain readable contrast on glass without obscuring the space backdrop. */
+.lp .lp-model-flow h3,.lp .lp-free-offer h3{color:var(--lp-ink);line-height:1.35;}
+.lp .lp-free-offer p:not(.lp-eyebrow),.lp .lp-offer-note{color:#c1ccdc;}
+.lp :is(.lp-bcard,.lp-crew-card,.lp-plan,.lp-start-steps li,.lp-faq-item,.lp-product-notes li,.lp-model-flow,.lp-free-offer,.lp-convo){background-color:#071222a6;}
+.lp .lp-beta-banner{background-color:#071222c4;}
+.lp :is(.lp-bcard p,.lp-crew-card p,.lp-steps p,.lp-start-steps p,.lp-faq-item p,.lp-plan-d){font-size:16px;line-height:1.75;}
+.lp :is(.lp-trust-text span,.lp-product-notes li,.lp-plan-unit,.lp-plan-rate,.lp-footer,.lp-crew-tag,.lp-step-chip){font-size:14px;}
+.lp :is(.lp-trust-text strong,.lp-product-notes li strong){font-size:15px;}
+.lp .lp-footer-tag{color:var(--lp-muted);}
+.lp :is(.lp-model-story,.lp-free-offer)>div{min-width:0;}
+.lp :is(h1,h2,h3,p){overflow-wrap:break-word;}
+.lp a:focus-visible,.lp button:focus-visible,.lp summary:focus-visible{outline:2px solid #ffd76a;outline-offset:5px;}
+@media(max-width:700px){.lp-about-left{min-width:0;}.lp-about .lp-h2{font-size:clamp(28px,8vw,44px);}.lp-in2{padding-left:0;}.lp-about-left .lp-p,.lp-about-left .lp-btn{margin-left:0;}.lp-about-left{padding-right:var(--lp-gutter);}}
+
+@media(max-width:700px){
+ .lp-beta-banner{flex-direction:column;gap:10px;}.lp-beta-banner p{font-size:14px;}
+ .lp-about-right{min-width:0;padding-right:var(--lp-gutter);}
+ .lp-board{grid-template-columns:1fr;border-right:1px solid var(--lp-line);border-radius:20px;}
+ .lp-board-col{min-width:0;}.lp-board-meta{flex-wrap:wrap;gap:8px;}
+ .lp-board-t{font-size:14px;}.lp-board-who{font-size:12px;}
 }
 `;

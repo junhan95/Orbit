@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BookOpen, Bot, Brain, ChartColumn, Check, ChevronDown, ChevronRight, Flag, Inbox, LayoutDashboard, KeyRound, ListChecks, LogOut, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Send, Settings, Sparkles, Trash2, UserRound, Zap } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Bot, Brain, ChartColumn, Check, ChevronDown, Flag, Inbox, LayoutDashboard, KeyRound, ListChecks, LogOut, MessageSquareText, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Trash2, UserRound, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Tutorial } from '@/components/tutorial';
 import { Markdown } from '@/components/markdown';
 import { UsageView } from '@/components/usage-view';
 import { ApprovalsView, fetchInboxCount } from '@/components/approvals-view';
@@ -84,28 +85,30 @@ function formatRelative(timestamp: number) {
   return tf('{0}일 전', Math.floor(diff / 86_400_000));
 }
 
-function agentActivity(agent: StatsAgent) {
-  if (agent.runningCount > 0) return t('지금 실행 중');
-  if (agent.activeTasks > 0) return tf('진행 중 업무 {0}건', agent.activeTasks);
-  if (agent.lastRunAt) return tf('{0} 실행', formatRelative(agent.lastRunAt));
-  return t('대기 중');
-}
-
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [activeNav, setActiveNav] = useState<NavSection>('대쉬보드');
+  const [chatVisited, setChatVisited] = useState(false);
+  const beforeSettings = useRef<NavSection>('대쉬보드');
   // 승인함 배지 — 승인 대기(카드·스킬) + 기억 pending 합계. 화면 전환마다, 그리고 1분마다 다시 셉니다.
+  const [approvalModal, setApprovalModal] = useState(false);
+  const announcedApprovals = useRef(new Set<string>());
   const [inboxCount, setInboxCount] = useState(0);
-  const refreshInbox = useCallback(() => { void fetchInboxCount().then((count) => setInboxCount(count.total)); }, []);
+  const refreshInbox = useCallback(() => { void fetchInboxCount().then((count) => {
+    setInboxCount(count.total);
+    if (count.pendingIds?.some(id => !announcedApprovals.current.has(id))) setApprovalModal(true);
+    if (count.pendingIds) announcedApprovals.current = new Set(count.pendingIds);
+  }); }, []);
   const [projectFilter, setProjectFilter] = useState('');
   // 빠른 대화 입력값
-  const [quickMessage, setQuickMessage] = useState('');
   const [query, setQuery] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newProject, setNewProject] = useState('');
   const [newPriority, setNewPriority] = useState<Priority>('중간');
-  const [notice, setNotice] = useState('');
+  const [noticeQueue, setNoticeQueue] = useState<string[]>([]);
+  const notice = noticeQueue[0] ?? '';
+
   const [displayName, setDisplayName] = useState('사용자');
   const [email, setEmail] = useState('');
   // 계정 화면에서 올린 프로필 사진 (256px data URL). 사이드바 아바타에 씁니다.
@@ -129,9 +132,14 @@ export default function Home() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const flash = useCallback((message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(''), 2600);
+    if (getPrefs().toastNotifications) setNoticeQueue(current => [...current, message]);
   }, []);
+
+  useEffect(() => {
+    if (!noticeQueue.length) return;
+    const timer = window.setTimeout(() => setNoticeQueue(current => current.slice(1)), prefs.toastNotifications ? 4000 : 0);
+    return () => window.clearTimeout(timer);
+  }, [noticeQueue, prefs.toastNotifications]);
 
   const refreshStats = useCallback(async () => {
     try {
@@ -215,6 +223,11 @@ export default function Home() {
   }, [flash]);
 
   /** 세션을 지우고 랜딩으로. 서버가 303 으로 보내지만 fetch 는 따라가지 않으므로 직접 이동합니다. */
+  useEffect(() => {
+    window.addEventListener('orbit-approvals-refresh', refreshInbox);
+    return () => window.removeEventListener('orbit-approvals-refresh', refreshInbox);
+  }, [refreshInbox]);
+
   const logout = useCallback(async () => {
     try { await fetch('/api/auth/logout', { method: 'POST', redirect: 'manual' }); }
     finally { window.location.assign('/landing'); }
@@ -222,10 +235,30 @@ export default function Home() {
 
   /** 화면 이동. 대쉬보드로 돌아올 때는 다른 화면에서 만든 프로젝트·업무가 바로 보이도록 다시 읽습니다. */
   const goTo = useCallback((section: NavSection) => {
+    if (section === '설정' && activeNav !== '설정') beforeSettings.current = activeNav;
+    if (section === '대화') setChatVisited(true);
     setActiveNav(section);
     if (section === '대쉬보드') { void refreshStats(); void refreshTasks(); }
     refreshInbox();
-  }, [refreshStats, refreshTasks, refreshInbox]);
+  }, [activeNav, refreshStats, refreshTasks, refreshInbox]);
+
+  useEffect(() => {
+    if (activeNav !== '설정') return;
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !document.querySelector('[data-preferences-card]')) return;
+      if (target.closest('[data-preferences-card], [role="dialog"], [role="menu"], [role="listbox"]')) return;
+      // Explicit navigation and header controls keep their own click behavior.
+      if (target.closest('button, a, input, textarea, select, [role="button"]')) return;
+      goTo(beforeSettings.current);
+    };
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [role="menu"]')) goTo(beforeSettings.current);
+    };
+    document.addEventListener('click', closeOutside);
+    document.addEventListener('keydown', closeWithEscape);
+    return () => { document.removeEventListener('click', closeOutside); document.removeEventListener('keydown', closeWithEscape); };
+  }, [activeNav, goTo]);
 
   // 토스 결제창에서 돌아온 뒤(?credits=done|error|canceled) — 안내하고 계정 화면으로. 주소는 바로 정리합니다.
   useEffect(() => {
@@ -253,7 +286,7 @@ export default function Home() {
 
   useEffect(() => {
     refreshInbox();
-    const timer = window.setInterval(refreshInbox, 60_000);
+    const timer = window.setInterval(refreshInbox, 15_000);
     return () => window.clearInterval(timer);
   }, [refreshInbox]);
 
@@ -332,7 +365,6 @@ export default function Home() {
   // ── BankDash 구조 블록들이 쓰는 파생값 ─────────────────────────────
   const recentRuns = stats?.runs.recent ?? [];
   const weekly = useMemo(() => stats?.weekly ?? [], [stats]);
-  const trend = useMemo(() => stats?.trend ?? [], [stats]);
   const weeklyMax = Math.max(1, ...weekly.flatMap((day) => [day.created, day.review]));
 
   // 대기 / 진행 중 / 검토 세 조각을 이어 붙인 도넛
@@ -350,33 +382,6 @@ export default function Home() {
       return segment;
     });
   }, [scoped]);
-
-  // 도달률 추이 — 560x185 뷰박스 안에 꺾은선 + 아래 면적
-  const { trendLine, trendArea } = useMemo(() => {
-    if (!trend.length) return { trendLine: '', trendArea: '' };
-    const width = 560;
-    const height = 185;
-    const pad = 14;
-    const step = trend.length > 1 ? width / (trend.length - 1) : width;
-    const points = trend.map((point, index) => [
-      index * step,
-      height - pad - (point.rate / 100) * (height - pad * 2),
-    ] as const);
-    const line = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-    return { trendLine: line, trendArea: `${line} L${width} ${height} L0 ${height} Z` };
-  }, [trend]);
-
-  /** 빠른 대화 — 고른 에이전트를 데리고 대화 탭으로 넘어갑니다. */
-  function sendQuick(agentName: string) {
-    if (!agentName) return;
-    const draft = quickMessage.trim();
-    openChat({
-      projectId: activeProjectId === ALL_PROJECTS ? (projects[0]?.id ?? '') : activeProjectId,
-      agentName,
-      draft: draft || tf('{0}님, 지금 프로젝트에서 먼저 처리할 일을 알려주세요.', agentName),
-    });
-    setQuickMessage('');
-  }
 
   async function createTask() {
     const title = newTitle.trim();
@@ -444,7 +449,7 @@ export default function Home() {
         </div>
         <nav className="primary-nav" aria-label={t("주 메뉴")}>
           {NAV_ITEMS.map(([label, Icon]) => (
-            <button className={activeNav === label ? 'nav-button active' : 'nav-button'} key={label} onClick={() => goTo(label)} aria-label={t(label)} title={t(label)}>
+            <button className={activeNav === label ? 'nav-button active' : 'nav-button'} key={label} data-tour={label === '프로젝트' ? 'nav-project' : label === '대화' ? 'nav-chat' : undefined} onClick={() => goTo(label)} aria-label={t(label)} title={t(label)}>
               <Icon size={20} /><span>{t(label)}</span>
               {label === '승인함' && inboxCount > 0 && <i className="gov-badge" aria-label={tf('대기 {0}건', inboxCount)}>{inboxCount > 99 ? '99+' : inboxCount}</i>}
             </button>
@@ -456,19 +461,13 @@ export default function Home() {
 
       <section className="workspace">
         <header className="topbar">
-          <div className="project-switcher">
-            <span className="project-logo">O</span>
-            <div>
-              <span className="eyebrow">{t("워크스페이스")}</span>
-              <button onClick={() => goTo('프로젝트')} title={t("프로젝트 목록으로 이동")}>{stats?.focus?.name ?? t('orbitcrew 워크스페이스')} <ChevronRight size={14} /></button>
-            </div>
-          </div>
           <label className="search-box">
             <Search size={17} />
             <input ref={searchRef} aria-label={t("업무 검색")} placeholder={t("업무, 에이전트, 분류 검색")} value={query} onChange={(event) => setQuery(event.target.value)} />
             <kbd>⌘ K</kbd>
           </label>
           <div className="top-actions">
+            <Tutorial onNavigate={goTo} />
             <DropdownMenu>
               <DropdownMenuTrigger render={<button className={activeNav === '계정' ? 'user-menu active' : 'user-menu'} aria-label={t("사용자 메뉴")} title={displayName} />}>
                 {/* oxlint-disable-next-line next/no-img-element -- 프로필 사진은 data URL 이라 next/image 로 최적화할 수 없습니다 */}
@@ -535,7 +534,7 @@ export default function Home() {
           </div>
 
           <section className="overview-grid" aria-label={t("오늘의 현황")}>
-            {/* ① 집중 프로젝트 — BankDash 'My Cards' 자리. 통계 지표를 카드 안으로 넣었습니다. */}
+            {/* Current project and recent activity. */}
             <div className="ov-row split-a">
               <div className="ov-block">
                 <h2 className="ov-title">
@@ -582,26 +581,22 @@ export default function Home() {
                   </article>
                   <article className="pcard light">
                     <div className="pcard-top">
-                      <div>
-                        <p>{t("워크스페이스 전체")}</p>
-                        <strong>{stats?.tasks.completionRate ?? 0}%</strong>
-                      </div>
-                      <span className="pcard-chip"><ListChecks size={17} /></span>
+                      <div><p>{t("워크스페이스 승인 대기")}</p><strong>{inboxCount}{t("건")}</strong></div>
+                      <span className="pcard-chip"><Inbox size={17} /></span>
                     </div>
-                    <div className="pcard-track"><i style={{ width: `${stats?.tasks.completionRate ?? 0}%` }} /></div>
                     <div className="pcard-mid">
                       <div><span>{t("진행 중")}</span><strong>{scoped.doing}{t("건")}</strong></div>
                       <div><span>{t("중요도 높음")}</span><strong>{highCount}{t("건")}</strong></div>
                     </div>
                     <div className="pcard-foot">
-                      <span>{stats?.runs.completed ?? 0}{t("회 완료")}{stats?.runs.failed ? tf(' · {0}회 실패', stats.runs.failed) : ''}</span>
-                      <button onClick={() => goTo('에이전트')}>{t("에이전트 보기")} <ArrowUpRight size={14} /></button>
+                      <span>{inboxCount ? t("확인이 필요한 요청이 있습니다") : t("대기 중인 승인 요청이 없습니다")}</span>
+                      <button onClick={() => goTo('승인함')}>{t("승인함 열기")} <ArrowUpRight size={14} /></button>
                     </div>
                   </article>
                 </div>
               </div>
 
-              {/* ② 최근 에이전트 실행 — BankDash 'Recent Transaction' 자리 */}
+              {/* Recent executions. */}
               <div className="ov-block">
                 <h2 className="ov-title">
                   {t("최근 에이전트 실행")}
@@ -628,100 +623,12 @@ export default function Home() {
               </div>
             </div>
 
-            {/* ③④ BankDash 'Weekly Activity' + 'Expense Statistics' 자리 */}
-            <div className="ov-row split-a">
-              <div className="ov-block">
-                <h2 className="ov-title">{t("주간 업무 처리량")}</h2>
-                <div className="ov-card">
-                  <div className="week-legend">
-                    <span><i style={{ background: 'var(--c-inverse)' }} /> {t("신규")}</span>
-                    <span><i style={{ background: 'var(--c-mint)' }} /> {t("검토 도달")}</span>
-                  </div>
-                  {weekly.length ? <div className="week-chart">
-                    {weekly.map((day) => <div className="week-day" key={day.from}>
-                      <div className="week-bars">
-                        <i style={{ height: `${Math.max(4, (day.created / weeklyMax) * 100)}%` }} title={tf('신규 {0}건', day.created)} />
-                        <i className="b" style={{ height: `${Math.max(4, (day.review / weeklyMax) * 100)}%` }} title={tf('검토 도달 {0}건', day.review)} />
-                      </div>
-                      <span>{weekdayLabel(day.from)}</span>
-                    </div>)}
-                  </div> : <p className="ov-empty">{t("표시할 업무 기록이 아직 없어요.")}</p>}
-                </div>
-              </div>
-
-              <div className="ov-block">
-                <h2 className="ov-title">{t("업무 상태 분포")}</h2>
-                <div className="ov-card">
-                  {scoped.total ? <div className="donut-wrap">
-                    <div className="donut">
-                      <svg viewBox="0 0 190 190" aria-label={t("업무 상태 분포")}>
-                        {donutSegments.map((segment) => (
-                          <circle key={segment.key} cx="95" cy="95" r="74" fill="none" stroke={segment.color} strokeWidth="30"
-                            strokeDasharray={`${segment.length} ${DONUT_C - segment.length}`} strokeDashoffset={-segment.offset} />
-                        ))}
-                      </svg>
-                      <div className="donut-center"><strong>{scoped.total}</strong><span>{t("전체 업무")}</span></div>
-                    </div>
-                    <div className="donut-legend">
-                      {donutSegments.map((segment) => (
-                        <span key={segment.key}><i style={{ background: segment.color }} /> {t(segment.key)} {segment.value}{t("건")}</span>
-                      ))}
-                    </div>
-                  </div> : <p className="ov-empty">{t("이 범위에 표시할 업무가 없어요.")}</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* ⑤⑥ BankDash 'Quick Transfer' + 'Balance History' 자리 */}
-            <div className="ov-row split-c">
-              <div className="ov-block">
-                <h2 className="ov-title">{t("에이전트 빠른 대화")}</h2>
-                <div className="ov-card">
-                  {agents.length ? <>
-                    <div className="quick-agents">
-                      {agents.slice(0, 3).map((agent) => (
-                        <button className="quick-agent" key={agent.id} onClick={() => sendQuick(agent.name)} title={tf('{0}에게 대화 걸기', agent.name)}>
-                          <span style={{ background: agent.color }}>{agent.name.slice(0, 1)}</span>
-                          <b>{agent.name}</b>
-                          <small>{t(agent.role)}</small>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="quick-send">
-                      <span>{t("메시지")}</span>
-                      <input value={quickMessage} onChange={(event) => setQuickMessage(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === 'Enter') sendQuick(agents[0]?.name ?? ''); }}
-                        placeholder={t("무엇을 맡길까요?")} aria-label={t("에이전트에게 보낼 메시지")} />
-                      <button onClick={() => sendQuick(agents[0]?.name ?? '')} disabled={!agents.length}>
-                        {t("보내기")} <Send size={15} />
-                      </button>
-                    </div>
-                  </> : <p className="ov-empty">{t("아직 에이전트가 없어요. 프로젝트를 만들면 전담 매니저가 생깁니다.")}</p>}
-                </div>
-              </div>
-
-              <div className="ov-block">
-                <h2 className="ov-title">
-                  {t("검토 도달률 추이")}
-                  <span className="ov-title-aside">{t("최근 7일")}</span>
-                </h2>
-                <div className="ov-card">
-                  {trend.length ? <div className="trend-chart">
-                    <svg viewBox="0 0 560 185" preserveAspectRatio="none" aria-label={t("검토 도달률 추이")}>
-                      <path d={trendArea} fill="var(--c-inverse)" opacity=".08" />
-                      <path d={trendLine} fill="none" stroke="var(--c-inverse)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-                    </svg>
-                    <div className="trend-axis">{trend.map((point) => <span key={point.from}>{weekdayLabel(point.from)}</span>)}</div>
-                  </div> : <p className="ov-empty">{t("추이를 그릴 기록이 아직 없어요.")}</p>}
-                </div>
-              </div>
-            </div>
           </section>
 
-          <section className="main-grid">
+          <section className="dashboard-work" aria-label={t("업무 보드")}>
             <div className="board-panel">
               <div className="section-header">
-                <div><span className="section-kicker">{t("에이전트 상태")}</span><h2>{t("에이전트 보드")}</h2><p className="section-note">{scopeLabel}{t("의 업무와 에이전트 실행 상태가 자동으로 반영됩니다.")}</p></div>
+                <div><span className="section-kicker">{t("에이전트 상태")}</span><h2>{t("업무 보드")}</h2><p className="section-note">{scopeLabel}{t("의 업무와 에이전트 실행 상태가 자동으로 반영됩니다.")}</p></div>
                 <span className="board-count">{projectTasks.length ? tf('{0}건 표시 중', visibleTasks.length) : t('표시할 업무 없음')}</span>
               </div>
               {!loading && !projects.length
@@ -779,26 +686,57 @@ export default function Home() {
               </div>}
             </div>
 
-            <aside className="agent-panel">
-              <div className="section-header">
-                {/* 에이전트는 프로젝트 매니저가 대화 중에 고용합니다. 사용자가 직접 추가하는 경로는 두지 않습니다. */}
-                <div><span className="section-kicker">{t("팀")}</span><h2>{t("에이전트")}</h2></div>
-              </div>
-              <div className="agent-orbit" aria-hidden="true"><span /><span /><i /></div>
-              <div className="agent-list">
-                {agents.map((agent) => <button className="agent-row" key={agent.id} onClick={() => goTo('에이전트')}>
-                  <span className="agent-avatar" style={{ background: agent.color }}>{agent.name[0]}<i className={agent.runningCount > 0 || agent.activeTasks > 0 ? '' : 'idle'} /></span>
-                  <span className="agent-copy"><strong>{agent.name}</strong><small>{t(agent.role)} · {agentActivity(agent)}</small></span>
-                  <ChevronRight size={17} />
-                </button>)}
-                {!loading && !agents.length && <div className="empty-column">{t("아직 에이전트가 없어요. 프로젝트를 만들면 전담 매니저가 생기고, 매니저가 필요한 팀원을 고용합니다.")}</div>}
-              </div>
-              <button className="agent-cta" onClick={() => goTo('대화')}><Sparkles size={16} /> {t("에이전트와 대화하기")}</button>
-            </aside>
+
           </section>
 
           <section className="gov-grid" style={{ marginTop: 14 }}>
             <HealthCard onNotice={flash} onOpenTask={() => goTo('프로젝트')} />
+          </section>
+          <section className="overview-grid" aria-label={t("업무 통계")}>
+            {/* Historical statistics follow active work. */}
+            <div className="ov-row split-a">
+              <div className="ov-block">
+                <h2 className="ov-title">{t("주간 업무 처리량")}</h2>
+                <div className="ov-card">
+                  <div className="week-legend">
+                    <span><i style={{ background: 'var(--c-inverse)' }} /> {t("신규")}</span>
+                    <span><i style={{ background: 'var(--c-mint)' }} /> {t("검토 도달")}</span>
+                  </div>
+                  {weekly.length ? <div className="week-chart">
+                    {weekly.map((day) => <div className="week-day" key={day.from}>
+                      <div className="week-bars">
+                        <i style={{ height: `${Math.max(4, (day.created / weeklyMax) * 100)}%` }} title={tf('신규 {0}건', day.created)} />
+                        <i className="b" style={{ height: `${Math.max(4, (day.review / weeklyMax) * 100)}%` }} title={tf('검토 도달 {0}건', day.review)} />
+                      </div>
+                      <span>{weekdayLabel(day.from)}</span>
+                    </div>)}
+                  </div> : <p className="ov-empty">{t("표시할 업무 기록이 아직 없어요.")}</p>}
+                </div>
+              </div>
+
+              <div className="ov-block">
+                <h2 className="ov-title">{t("업무 상태 분포")}</h2>
+                <div className="ov-card">
+                  {scoped.total ? <div className="donut-wrap">
+                    <div className="donut">
+                      <svg viewBox="0 0 190 190" aria-label={t("업무 상태 분포")}>
+                        {donutSegments.map((segment) => (
+                          <circle key={segment.key} cx="95" cy="95" r="74" fill="none" stroke={segment.color} strokeWidth="30"
+                            strokeDasharray={`${segment.length} ${DONUT_C - segment.length}`} strokeDashoffset={-segment.offset} />
+                        ))}
+                      </svg>
+                      <div className="donut-center"><strong>{scoped.total}</strong><span>{t("전체 업무")}</span></div>
+                    </div>
+                    <div className="donut-legend">
+                      {donutSegments.map((segment) => (
+                        <span key={segment.key}><i style={{ background: segment.color }} /> {t(segment.key)} {segment.value}{t("건")}</span>
+                      ))}
+                    </div>
+                  </div> : <p className="ov-empty">{t("이 범위에 표시할 업무가 없어요.")}</p>}
+                </div>
+              </div>
+            </div>
+
           </section>
           </> : activeNav === '사용량'
             ? <UsageView onNotice={flash} />
@@ -808,12 +746,21 @@ export default function Home() {
             ? <MemoryView onNotice={flash} onChanged={refreshInbox} />
             : activeNav === '스킬'
             ? <SkillsView onNotice={flash} />
-            : <WorkspaceView section={activeNav} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat}
+            : activeNav === '대화' ? null : <WorkspaceView section={activeNav} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat}
                 onProfileSaved={(next) => { if (next.displayName) setDisplayName(next.displayName.split('@')[0]); setEmail(next.email); setAvatar(next.avatar); }} />}
+          {(chatVisited || activeNav === '대화') && <div hidden={activeNav !== '대화'} style={activeNav !== '대화' ? { display: 'none' } : undefined}>
+            <WorkspaceView section="대화" visible={activeNav === '대화'} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat} />
+          </div>}
         </div>
       </section>
 
-      {notice && <output className="toast"><Check size={16} /> {notice}</output>}
+      <Dialog open={approvalModal} onOpenChange={setApprovalModal}>
+        <DialogContent className="approval-request-dialog">
+          <DialogHeader><DialogTitle>{t('승인 요청')}</DialogTitle><DialogDescription>{t('진행 전에 확인이 필요한 요청입니다. 내용을 확인하고 승인하거나 거절하세요.')}</DialogDescription></DialogHeader>
+          <ApprovalsView onNotice={flash} onChanged={() => { refreshInbox(); void refreshTasks(); }} />
+        </DialogContent>
+      </Dialog>
+      {notice && prefs.toastNotifications && <output className="toast"><Check size={16} /> {notice}</output>}
 
       <ApiKeyDialog onNotice={flash} onOpenChange={setApiKeyOpen} onSaved={setApiKeyState} open={apiKeyOpen} state={apiKeyState} />
 

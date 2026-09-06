@@ -13,10 +13,12 @@
 // ── File System Access API 최소 타입 ────────────────────────────────
 // lib.dom 에 showDirectoryPicker / values() / queryPermission 이 없어서 직접 좁게 선언합니다.
 type FsPermissionMode = { mode: 'read' | 'readwrite' };
-type FsFileHandle = { kind: 'file'; name: string; getFile(): Promise<File> };
+export type FsFileHandle = { kind: 'file'; name: string; getFile(): Promise<File>; createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void>; abort(): Promise<void> }> };
 export type FsDirHandle = {
   kind: 'directory';
   name: string;
+  getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FsDirHandle>;
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<FsFileHandle>;
   values(): AsyncIterableIterator<FsDirHandle | FsFileHandle>;
   queryPermission?(descriptor: FsPermissionMode): Promise<PermissionState>;
   requestPermission?(descriptor: FsPermissionMode): Promise<PermissionState>;
@@ -71,7 +73,7 @@ export async function pickDirectory(): Promise<FsDirHandle | null> {
   const picker = (window as PickerWindow).showDirectoryPicker;
   if (!picker) throw new Error('이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.');
   try {
-    return await picker({ mode: 'read', id: 'cowork-project-folder' });
+    return await picker({ mode: 'readwrite', id: 'cowork-project-folder' });
   } catch (error) {
     // 사용자가 취소를 누른 경우는 오류가 아닙니다.
     if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NotAllowedError')) return null;

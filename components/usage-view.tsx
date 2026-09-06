@@ -93,7 +93,7 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
         <div>
           <span className="section-kicker">AI Usage</span>
           <h1>{t("AI 사용량")}</h1>
-          <p>{t("Claude 호출로 소비한 토큰과 웹 검색, 그리고 공개 단가 기준 비용 추정입니다.")}</p>
+          <p>{t("AI 사용량과 예상 비용을 확인하세요. 기간별·모델별 사용 내역을 한눈에 볼 수 있습니다.")}</p>
         </div>
         <fieldset className="view-switch" aria-label={t("조회 기간")}>
           {RANGES.map((range) => (
@@ -261,7 +261,7 @@ export function UsageView({ onNotice }: { onNotice: (message: string) => void })
             </table>
           </div>
           <p className="usage-note">
-            {t("단가는")} <code>lib/pricing.ts</code>{t("에 상수로 적혀 있는 Anthropic 공개 가격(100만 토큰 기준)입니다. 프롬프트 캐시·웹 검색까지 반영한")} <strong>{t("추정치")}</strong>{t("이므로 실제 청구액과 다를 수 있고, 단가가 바뀌면 그 파일만 고치면 됩니다. 단가가 등록되지 않은 모델은 Sonnet 5 기준으로 계산합니다.")}
+            {t("비용은 공개 단가를 기준으로 캐시와 웹 검색 사용량을 반영한 추정치이며, 실제 청구액과 다를 수 있습니다. 단가가 등록되지 않은 모델은 Sonnet 5 기준으로 추정합니다.")}
           </p>
         </section>
       </>}

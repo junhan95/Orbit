@@ -109,7 +109,7 @@ export function SkillsView({ onNotice, onChanged }: { onNotice: (message: string
       <div>
         <span className="section-kicker">{t('반복 절차')}</span>
         <h1>{t('스킬')}</h1>
-        <p>{t('에이전트가 같은 일을 다시 할 때 꺼내 쓰는 절차입니다. 실행 중에는 이름과 설명만 보이고, 필요할 때 본문을 읽습니다. 전역 스킬은 모든 프로젝트에 영향을 주므로 에이전트의 저장 요청은 승인함을 거칩니다.')}</p>
+        <p>{t('반복하는 업무 절차를 저장해 에이전트가 다시 활용하도록 하세요. 모든 프로젝트에서 사용할 스킬을 에이전트가 제안하면 승인함에서 검토할 수 있습니다.')}</p>
       </div>
       <div className="view-actions gov-toolbar">
         <button className="gov-button" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />} {t('새로고침')}</button>
@@ -131,7 +131,7 @@ export function SkillsView({ onNotice, onChanged }: { onNotice: (message: string
           </select>}
         </div>}
         <input value={draft.name} maxLength={limits.name} placeholder={t('이름 (예: 주간 보고서 작성)')} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        <input value={draft.description} maxLength={limits.description} placeholder={t('언제 쓰는 스킬인지 한 줄 (인덱스에 이 문장이 보입니다)')} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+        <input value={draft.description} maxLength={limits.description} placeholder={t('스킬을 사용할 상황을 한 줄로 적어주세요.')} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
         <textarea value={draft.body} maxLength={limits.body} style={{ minHeight: 180 }} placeholder={t('절차. 단계별로, 확인할 것과 흔한 실수를 포함해서.')} onChange={(event) => setDraft({ ...draft, body: event.target.value })} />
         <div className="gov-item-actions">
           <button className="gov-button primary" disabled={!valid || busy !== null} onClick={() => void save()}>{busy ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />} {t('저장')}</button>
@@ -141,7 +141,7 @@ export function SkillsView({ onNotice, onChanged }: { onNotice: (message: string
       </div>
     </article>}
 
-    {!loading && skills.length === 0 && !draft && <div className="entity-empty"><BookOpen size={34} /><h2>{t('저장된 스킬이 없습니다')}</h2><p>{t('에이전트가 반복될 만한 절차를 발견하면 save_skill 로 남기고, 사람도 여기서 직접 쓸 수 있습니다.')}</p></div>}
+    {!loading && skills.length === 0 && !draft && <div className="entity-empty"><BookOpen size={34} /><h2>{t('저장된 스킬이 없습니다')}</h2><p>{t('자주 반복하는 업무를 첫 스킬로 만들어 보세요. 에이전트가 제안한 절차도 여기에 모입니다.')}</p></div>}
 
     <div className="gov-grid">
       {globals.length > 0 && <article className="gov-card wide">
