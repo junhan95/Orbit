@@ -136,9 +136,9 @@ async function runWorker(context: ManagerContext, member: MemberRow, params: { t
   // 카드를 만들고, 실행은 /api/agents/run 과 같은 코어(lib/run-task.ts)에 맡깁니다.
   // 그래야 위임 실행에도 기억·회상·스킬·검증 근거·검토·관제·승인 게이트가 똑같이 적용됩니다.
   await db.batch([
-    db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(taskId, userId, params.title, params.label, member.name, '진행 중', params.priority, member.color, context.projectId, params.brief, now, now),
+    db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, parent_task_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(taskId, userId, params.title, params.label, member.name, '진행 중', params.priority, member.color, context.projectId, params.brief, context.managerTaskId, now, now),
     recallDocUpsert(db, {
       userId, kind: 'task', refId: taskId, projectId: context.projectId, agentName: member.name, title: params.title,
       content: `[${params.label}] ${params.title} — 담당 ${member.name} (${context.managerName} 위임)\n${params.brief}`, createdAt: now,

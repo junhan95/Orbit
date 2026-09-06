@@ -388,6 +388,9 @@ export const EN: Record<string, string> = {
   '결과': 'Result',
   '대화하기': 'Open chat',
 '매니저와 대화하기': 'Chat with manager',
+'{0} 업무 접기': 'Collapse tasks of {0}',
+'{0} 업무 펼치기': 'Expand tasks of {0}',
+'아직 맡은 업무가 없습니다.': 'No tasks assigned yet.',
 '결과보기': 'View results',
 '폴더열기': 'Open folder',
 '에이전트가 작업을 완료하고 파일을 저장하면 열 수 있습니다.': 'Available once an agent finishes and saves files.',
@@ -400,6 +403,7 @@ export const EN: Record<string, string> = {
 '표시할 파일이 없습니다.': 'No files to show.',
 "'{0}' 폴더는 파일이 많아 일부만 표시합니다.": "Folder '{0}' has many files; only part of the list is shown.",
 '폴더 파일 미리보기 닫기': 'Close preview',
+'브라우저에서 바로 실행할 수 없는 형식이라 내용을 보여 줍니다.': 'This format cannot run in the browser, so its contents are shown.',
   "'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.":
     "Please move the '{0}' task forward. Tell me where it stands and what's next, and keep going if you can handle it now.",
   '조건에 맞는 업무가 없어요.': 'No tasks match your search.',

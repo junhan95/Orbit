@@ -9,7 +9,7 @@ import { forgetFolderArtifacts } from '@/lib/project-artifacts';
 import { ProjectTutorialFields } from '@/components/project-tutorial-fields';
 import { tutorialEvent, tutorialExample } from '@/components/tutorial';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronDown, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -59,7 +59,14 @@ type Agent = {
   projectId?: string | null; isManager?: number; roleKey?: string | null;
 };
 type Assignment = { projectId: string; agentId: string };
-type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null };
+type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; summary?: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null; parentTaskId?: string | null; updatedAt?: number };
+
+/** 접힌 팀원 칸에 보여 줄 요약 — 상태별 건수와 가장 최근에 움직인 카드. */
+function briefOf(tasks: ProjectTask[]) {
+  const counts = TASK_STATUSES.map((status) => ({ status, count: tasks.filter((task) => task.status === status).length })).filter((item) => item.count > 0);
+  const latest = [...tasks].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0] ?? null;
+  return { counts, latest };
+}
 type FieldValueRow = { taskId: string; fieldId: string; value: string };
 type TaskCounts = { taskId: string; subtasks: number; doneSubtasks: number; comments: number };
 type Subtask = { id: string; title: string; done: number; owner: string | null; position: number };
@@ -492,6 +499,11 @@ const BOARD_GROUP_KEY = 'cowork.board.group';
 const UNASSIGNED = '__none__';
 
 type BoardColumn = { key: string; title: string; subtitle?: string; color?: string; owner?: string; isManager?: boolean; status?: TaskStatus; label?: string; tasks: ProjectTask[] };
+/**
+ * 담당자 보기의 한 행('업무 칸'). parent 가 있으면 매니저 카드 하나에서 위임된 카드들, 없으면 대화에서 바로 위임된 카드들입니다.
+ * 각 에이전트 열은 접혀 있는 것이 기본이고, 머리를 누르면 그 칸의 카드가 펼쳐집니다.
+ */
+type BoardSection = { key: string; parent: ProjectTask | null; agents: { key: string; name: string; role: string; color: string | undefined; tasks: ProjectTask[] }[] };
 
 function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRename, onDelete, onOpenChat }: { project: Project; agents: Agent[]; assignments: Assignment[]; onBack: () => void; onNotice: (message: string) => void; onRename: () => void; onDelete: () => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -669,6 +681,36 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     return columnList;
   }, [group, tasks, members, agents]);
 
+  // 담당자 보기: 매니저 카드(지시)마다 한 행, 그 아래 위임된 카드를 에이전트별로 묶습니다.
+  const sections = useMemo<BoardSection[]>(() => {
+    if (group !== '담당자') return [];
+    const roster = members.length ? members : agents;
+    const manager = roster.find((agent) => agent.isManager) ?? null;
+    const workers = roster.filter((agent) => !agent.isManager);
+    const known = new Set(roster.map((agent) => agent.name));
+    const managerTasks = manager ? byPriority(tasks.filter((task) => task.owner === manager.name)) : [];
+    const parentIds = new Set(managerTasks.map((task) => task.id));
+    const childTasks = tasks.filter((task) => !manager || task.owner !== manager.name);
+    const build = (key: string, parent: ProjectTask | null, pool: ProjectTask[], showAll: boolean): BoardSection => {
+      const agentCells: BoardSection['agents'] = workers
+        .map((agent) => ({ key: agent.id, name: agent.name, role: t(agent.role), color: agent.color, tasks: byPriority(pool.filter((task) => task.owner === agent.name)) }))
+        .filter((cell) => showAll || cell.tasks.length);
+      const orphans = byPriority(pool.filter((task) => !known.has(task.owner)));
+      if (orphans.length) agentCells.push({ key: UNASSIGNED, name: t("미배정"), role: t("프로젝트에 없는 담당자"), color: undefined, tasks: orphans });
+      return { key, parent, agents: agentCells };
+    };
+    const direct = childTasks.filter((task) => !task.parentTaskId || !parentIds.has(task.parentTaskId));
+    return [
+      build('direct', null, direct, true),
+      ...managerTasks.map((parent) => build(parent.id, parent, childTasks.filter((task) => task.parentTaskId === parent.id), false)),
+    ];
+  }, [group, tasks, members, agents]);
+  const managerAgent = (members.length ? members : agents).find((agent) => agent.isManager) ?? null;
+  const [openCells, setOpenCells] = useState<Set<string>>(() => new Set());
+  const toggleCell = useCallback((key: string) => {
+    setOpenCells((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  }, []);
+
   const openTask = tasks.find((task) => task.id === openTaskId) ?? null;
 
   const createDialog = <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -745,6 +787,60 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
 
       {loading
         ? <div className="view-loading"><LoaderCircle className="spin" /><span>{t("보드를 불러오는 중")}</span></div>
+        : group === '담당자' && managerAgent
+          ? <div className="board-sections">{sections.map((section) => <div className="board-section-row" key={section.key}>
+              <section className="board-column board-parent">
+                {section.parent
+                  ? <BoardCard task={section.parent} fields={cardFields} values={values[section.parent.id]} counts={counts[section.parent.id]}
+                      onOpen={() => setOpenTaskId(section.parent!.id)} onChat={() => openTaskChat(section.parent!)} />
+                  : <>
+                    <header className="board-column-head">
+                      <span className="board-column-avatar" style={{ background: managerAgent.color }}><Bot size={15} aria-hidden="true" /></span>
+                      <div><b>{managerAgent.name}</b><small>{t(managerAgent.role)}</small></div>
+                    </header>
+                    <div className="board-column-body">
+                      <button className="board-chat" onClick={() => openManagerChat(managerAgent.name)}><MessageSquare size={13} /> {t("매니저와 대화하기")}</button>
+                      <button className="board-add" onClick={() => openCreate(managerAgent.name)}><Plus size={13} /> {t("작업 추가")}</button>
+                    </div>
+                  </>}
+              </section>
+              {section.agents.map((cell) => {
+                const cellKey = `${section.key}:${cell.key}`;
+                const open = openCells.has(cellKey);
+                return <section className={open ? 'board-column board-agent open' : 'board-column board-agent collapsed'} key={cell.key}>
+                  <button className="board-column-head board-column-toggle" onClick={() => toggleCell(cellKey)} aria-expanded={open}
+                    aria-label={tf(open ? "{0} 업무 접기" : "{0} 업무 펼치기", cell.name)}>
+                    {cell.color
+                      ? <span className="board-column-avatar" style={{ background: cell.color }}>{cell.name.slice(0, 1)}</span>
+                      : <span className="board-column-mark" />}
+                    <div><b>{cell.name}</b><small>{cell.role}</small></div>
+                    <em>{cell.tasks.length}</em>
+                    <ChevronDown size={15} className="board-column-chevron" aria-hidden="true" />
+                  </button>
+                  {!open && cell.tasks.length > 0 && (() => {
+                    const brief = briefOf(cell.tasks);
+                    return <div className="board-column-brief">
+                      <div className="board-brief-counts">{brief.counts.map((item) => <span className={`board-chip ${item.status === '진행 중' ? 'doing' : item.status === '검토' ? 'review' : ''}`} key={item.status}>{t(item.status)} {item.count}</span>)}</div>
+                      {brief.latest && <button className="board-brief-latest" onClick={() => setOpenTaskId(brief.latest!.id)} aria-label={tf("{0} 상세 열기", brief.latest.title)}>
+                        <small>{t("최근")}</small>
+                        <b>{brief.latest.title}</b>
+                        {brief.latest.blockedReason
+                          ? <p className="is-blocked">{brief.latest.blockedReason}</p>
+                          : brief.latest.summary ? <p>{brief.latest.summary}</p> : null}
+                      </button>}
+                    </div>;
+                  })()}
+                  {open && <div className="board-column-body">
+                    {cell.tasks.map((task) => <BoardCard
+                      key={task.id} task={task} fields={cardFields} values={values[task.id]} counts={counts[task.id]}
+                      onOpen={() => setOpenTaskId(task.id)}
+                      onChat={() => openTaskChat(task)}
+                    />)}
+                    {!cell.tasks.length && <p className="board-column-empty">{t("아직 맡은 업무가 없습니다.")}</p>}
+                  </div>}
+                </section>;
+              })}
+            </div>)}</div>
         : columns.length
           ? <div className="board-columns">{columns.map((column) => <section className="board-column" key={column.key}>
               <header className="board-column-head">
@@ -1417,7 +1513,9 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // 압축된 이전 대화 요약 (lib/compaction). 있으면 메시지 목록 위에 접힌 배너로 보여 줍니다.
   const [summary, setSummary] = useState<ChatSummaryInfo | null>(null);
-  const [draft, setDraft] = useState(initial?.draft ?? '');
+  const [draft, setDraft] = useState('');
+  // '대화하기'·업무 목록에서 넘어온 제안 문장. 입력란에 회색(placeholder)으로만 보이고, 사용자가 아무것도 안 적고 보내면 이 문장이 나갑니다.
+  const [suggestion, setSuggestion] = useState(initial?.draft ?? '');
   const [sending, setSending] = useState(false);
   const appliedTarget = useRef(initial?.key);
   // Keep an active stream alive; apply a requested conversation after it finishes.
@@ -1425,7 +1523,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
     if (!initial || initial.key === appliedTarget.current || sending) return;
     appliedTarget.current = initial.key;
     setProjectId(initial.projectId); setAgentId(''); setWantedAgent(initial.agentName ?? '');
-    setDraft(initial.draft ?? '');
+    setDraft(''); setSuggestion(initial.draft ?? '');
   }, [initial, sending]);
 
   const [streamText, setStreamText] = useState('');
@@ -1565,13 +1663,13 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
   }, [draft, sending, onNotice]);
 
   async function sendMessage() {
-    const typed = draft.trim();
+    const typed = draft.trim() || suggestion.trim();
     // 파일만 보내도 되게, 글이 비어 있으면 한 줄을 대신 넣습니다.
     const message = typed || (attachments.length ? t("첨부한 파일을 확인해 주세요.") : '');
     if (!message || !selectedAgentId || sending) return;
     tutorialEvent('message-sent');
     const sent = attachments;
-    setDraft(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
+    setDraft(''); setSuggestion(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
     const shown = sent.length ? `${message}\n\n📎 ${sent.map((item) => item.name).join(', ')}` : message;
     const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: shown, createdAt: Date.now() };
     setMessages((current) => [...current, optimistic]);
@@ -1710,7 +1808,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
       <strong className="chat-tasks-title">{t("이 프로젝트의 업무")}<em>{boardTasks.length}</em></strong>
       <div className="chat-tasks">
         {boardTasks.map((task) => <button className="chat-task" key={task.id} title={`${task.owner} · ${t(task.status)}`}
-          onClick={() => setDraft(tf("'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.", task.title))}>
+          onClick={() => setSuggestion(tf("'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.", task.title))}>
           <b>{task.title}</b>
           <span>
             <i className={`chat-task-dot ${task.status === '진행 중' ? 'doing' : task.status === '검토' ? 'review' : ''}`} />{t(task.status)}
@@ -1754,8 +1852,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
             title={t("파일·사진 첨부")} aria-label={t("파일·사진 첨부")}><Plus size={18} /></button>
           <input className="composer-file" ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT}
             onChange={(event) => void pickAttachments(event)} tabIndex={-1} aria-hidden="true" />
-          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
-          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !attachments.length) || sending}>{sending ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
+          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={suggestion || tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
+          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !suggestion.trim() && !attachments.length) || sending}>{sending ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
           <div className="composer-bar">
             <button className="composer-tool" type="button" onClick={() => void addChatFolder()} disabled={!projectId || !pickerReady || folderBusy}
               title={pickerReady ? t("이 프로젝트에 작업 폴더를 연결합니다.") : t("이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.")}>
