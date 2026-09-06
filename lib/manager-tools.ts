@@ -16,6 +16,8 @@ import { recallDocUpsert } from '@/lib/recall';
 
 export const MAX_RECRUITS = 4;
 export const MAX_DELEGATIONS = 4;
+/** delegate_task brief 상한. 검토 대상 파일 전문(수만 자)이 들어가도 잘리지 않을 만큼 넉넉하게 잡습니다. */
+export const MAX_BRIEF_CHARS = 60_000;
 /** 매니저에게 돌려주는 하위 결과 본문 길이 상한 */
 const REPORT_CLIP = 48_000;
 
@@ -51,7 +53,7 @@ export const DELEGATE_TOOL: ToolDefinition = {
     properties: {
       agent_name: { type: 'string', description: '팀에 있는 에이전트 이름 (recruit_agent 가 돌려준 이름)' },
       title: { type: 'string', description: '업무 제목 (1~100자)' },
-      brief: { type: 'string', description: '배경, 해야 할 일, 완료 조건' },
+      brief: { type: 'string', description: `배경, 해야 할 일, 완료 조건. 검토·수정을 맡길 때는 대상 코드나 문서 전문을 그대로 넣어도 됩니다 (최대 ${MAX_BRIEF_CHARS.toLocaleString()}자 — 넘으면 거부되니 나눠 맡기세요).` },
       label: { type: 'string', description: "분류 태그 (예: '리서치', '마케팅')" },
       priority: { type: 'string', enum: ['높음', '중간', '낮음'], description: "중요도. 목표 달성에 먼저 필요한 일일수록 '높음'. 생략하면 '중간'." },
     },
@@ -198,6 +200,10 @@ export async function executeManagerTool(
     const brief = typeof input.brief === 'string' ? input.brief.trim() : '';
     if (!title || title.length > 100) return { ok: false, error: 'title 은 1~100자여야 합니다.' };
     if (!brief) return { ok: false, error: 'brief 를 비워 두면 팀원이 무엇을 해야 할지 알 수 없습니다.' };
+    // 예전엔 8,000자에서 조용히 잘라 팀원이 반쪽짜리 코드를 받았습니다. 이제는 잘라 보내지 않고 매니저에게 되돌립니다.
+    if (brief.length > MAX_BRIEF_CHARS) {
+      return { ok: false, error: `brief 가 ${brief.length.toLocaleString()}자로 상한 ${MAX_BRIEF_CHARS.toLocaleString()}자를 넘습니다. 잘라 보내지 않았습니다 — 파일별로 나눠 맡기거나 불필요한 부분을 줄이세요.` };
+    }
 
     const members = await loadMembers(db, userId, projectId);
     const member = members.find((item) => item.name === agentName && !item.isManager);
@@ -215,7 +221,7 @@ export async function executeManagerTool(
     const priority = toPriority(input.priority);
     // 하위 실행은 수십 초가 걸립니다 — 시작을 먼저 알려 화면이 멈춘 것처럼 보이지 않게 합니다.
     context.onEvent?.({ kind: 'delegate_start', agent: member.name, role: member.role, title });
-    const result = await runWorker(context, member, { title, brief: brief.slice(0, 8000), label, priority });
+    const result = await runWorker(context, member, { title, brief, label, priority });
     const outcome = result.blocked ? 'blocked' as const : 'completed' as const;
     log.delegated.push({ taskId: result.taskId, title, agent: member.name, outcome, summary: result.summary });
     context.onEvent?.({
