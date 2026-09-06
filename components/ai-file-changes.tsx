@@ -7,6 +7,7 @@ import { readLocalFile } from '@/lib/local-files';
 import { validateFileChange } from '@/lib/ai-file-changes';
 import { applyFileRows, type FileRow } from '@/lib/ai-file-storage';
 import { folderApproval } from '@/lib/folder-permissions';
+import { recordArtifact } from '@/lib/project-artifacts';
 type Root = { id: string; name: string; handle: FsDirHandle; originals: Map<string, string> };
 type Session = { projectId: string; roots: Root[]; automatic: boolean; received?: boolean };
 type Row = FileRow;
@@ -40,6 +41,8 @@ export function useAIFileChanges(projectId: string) {
       const connected = await fetchProjectFolders(batch.session.projectId);
       const roots = batch.session.roots.filter(root => connected.some(folder => folder.id === root.id));
       await applyFileRows(batch.rows, roots, true, () => update(batch));
+      // 저장이 끝난 파일은 '결과보기' 목록에 올립니다 (같은 경로는 최신 저장으로 갱신).
+      for (const row of batch.rows) if (row.status === 'saved') recordArtifact(batch.session.projectId, row.change.folderId, row.change.path);
     } finally { batch.busy = false; update(batch); }
   }
   function receive(session: Session, raw: unknown) {

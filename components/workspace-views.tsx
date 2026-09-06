@@ -4,6 +4,8 @@
 import { FolderPermissions } from '@/components/folder-permissions';
 import { useAIFileChanges } from '@/components/ai-file-changes';
 import { LocalFileWorkspace, SaveCodeFiles } from '@/components/local-file-workspace';
+import { ProjectFileButtons } from '@/components/project-files';
+import { forgetFolderArtifacts } from '@/lib/project-artifacts';
 import { ProjectTutorialFields } from '@/components/project-tutorial-fields';
 import { tutorialEvent, tutorialExample } from '@/components/tutorial';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -215,6 +217,7 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
         throw new Error(data?.error || t("폴더 연결을 해제하지 못했습니다."));
       }
       await forgetHandle(folder.id);
+      forgetFolderArtifacts(projectId, folder.id);
       await load();
       onNotice('폴더 연결을 해제했습니다. 컴퓨터의 파일은 그대로입니다.');
     } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더 연결을 해제하지 못했습니다.")); }
@@ -701,6 +704,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
         <span className="section-kicker">Project</span>
         <h1>{project.name}</h1>
         <p>{project.description || t("프로젝트 설명이 없습니다.")}</p>
+        <ProjectFileButtons projectId={project.id} onNotice={onNotice} />
       </div>
       <div className="view-actions">
         <span className="project-status"><i />{t(project.status)}</span>
