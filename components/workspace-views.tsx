@@ -1513,7 +1513,9 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // 압축된 이전 대화 요약 (lib/compaction). 있으면 메시지 목록 위에 접힌 배너로 보여 줍니다.
   const [summary, setSummary] = useState<ChatSummaryInfo | null>(null);
-  const [draft, setDraft] = useState(initial?.draft ?? '');
+  const [draft, setDraft] = useState('');
+  // '대화하기'·업무 목록에서 넘어온 제안 문장. 입력란에 회색(placeholder)으로만 보이고, 사용자가 아무것도 안 적고 보내면 이 문장이 나갑니다.
+  const [suggestion, setSuggestion] = useState(initial?.draft ?? '');
   const [sending, setSending] = useState(false);
   const appliedTarget = useRef(initial?.key);
   // Keep an active stream alive; apply a requested conversation after it finishes.
@@ -1521,7 +1523,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
     if (!initial || initial.key === appliedTarget.current || sending) return;
     appliedTarget.current = initial.key;
     setProjectId(initial.projectId); setAgentId(''); setWantedAgent(initial.agentName ?? '');
-    setDraft(initial.draft ?? '');
+    setDraft(''); setSuggestion(initial.draft ?? '');
   }, [initial, sending]);
 
   const [streamText, setStreamText] = useState('');
@@ -1661,13 +1663,13 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
   }, [draft, sending, onNotice]);
 
   async function sendMessage() {
-    const typed = draft.trim();
+    const typed = draft.trim() || suggestion.trim();
     // 파일만 보내도 되게, 글이 비어 있으면 한 줄을 대신 넣습니다.
     const message = typed || (attachments.length ? t("첨부한 파일을 확인해 주세요.") : '');
     if (!message || !selectedAgentId || sending) return;
     tutorialEvent('message-sent');
     const sent = attachments;
-    setDraft(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
+    setDraft(''); setSuggestion(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
     const shown = sent.length ? `${message}\n\n📎 ${sent.map((item) => item.name).join(', ')}` : message;
     const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: shown, createdAt: Date.now() };
     setMessages((current) => [...current, optimistic]);
@@ -1806,7 +1808,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
       <strong className="chat-tasks-title">{t("이 프로젝트의 업무")}<em>{boardTasks.length}</em></strong>
       <div className="chat-tasks">
         {boardTasks.map((task) => <button className="chat-task" key={task.id} title={`${task.owner} · ${t(task.status)}`}
-          onClick={() => setDraft(tf("'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.", task.title))}>
+          onClick={() => setSuggestion(tf("'{0}' 업무를 진행해 주세요. 현재 상태와 다음에 할 일을 알려주고, 바로 처리할 수 있으면 이어서 진행해 주세요.", task.title))}>
           <b>{task.title}</b>
           <span>
             <i className={`chat-task-dot ${task.status === '진행 중' ? 'doing' : task.status === '검토' ? 'review' : ''}`} />{t(task.status)}
@@ -1850,8 +1852,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
             title={t("파일·사진 첨부")} aria-label={t("파일·사진 첨부")}><Plus size={18} /></button>
           <input className="composer-file" ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT}
             onChange={(event) => void pickAttachments(event)} tabIndex={-1} aria-hidden="true" />
-          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
-          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !attachments.length) || sending}>{sending ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
+          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={suggestion || tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
+          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !suggestion.trim() && !attachments.length) || sending}>{sending ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
           <div className="composer-bar">
             <button className="composer-tool" type="button" onClick={() => void addChatFolder()} disabled={!projectId || !pickerReady || folderBusy}
               title={pickerReady ? t("이 프로젝트에 작업 폴더를 연결합니다.") : t("이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.")}>
