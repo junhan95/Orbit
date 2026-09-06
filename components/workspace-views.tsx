@@ -1544,11 +1544,15 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
 
   // 메시지 목록 자체를 스크롤합니다 — scrollIntoView 는 바깥 page-content 까지 끌어올려 입력창을 밀어냈습니다.
   // 'auto' 는 CSS scroll-behavior:smooth 를 따르는데, 렌더가 잦으면 부드러운 스크롤이 시작도 못 하고 취소돼 제자리에 머뭅니다 — 항상 즉시 붙입니다.
+  // 말풍선은 렌더 뒤에도 자랍니다(마크다운 파싱·이미지·스트리밍) — 자식 크기 변화를 감시해 바닥에 붙어 있던 동안은 계속 따라갑니다.
   useEffect(() => {
-    if (!pinnedRef.current || !visible) return;
     const node = listRef.current;
-    if (!node) return;
-    node.scrollTo({ top: node.scrollHeight, behavior: 'instant' });
+    if (!node || !visible) return;
+    const pin = () => { if (pinnedRef.current) node.scrollTo({ top: node.scrollHeight, behavior: 'instant' }); };
+    pin();
+    const observer = new ResizeObserver(pin);
+    for (const child of Array.from(node.children)) observer.observe(child);
+    return () => observer.disconnect();
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- 숨겨져 있다가 다시 보일 때(높이 0 → 실제 높이) 한 번 더 붙입니다.
   }, [messages, streamText, sending, steps, visible]);
 
