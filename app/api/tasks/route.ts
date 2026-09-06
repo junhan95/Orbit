@@ -6,12 +6,12 @@ import { recallDocUpsert } from '@/lib/recall';
 
 type TaskRow = {
   id: string; title: string; label: string; owner: string; status: string;
-  priority: string; accent: string; result: string | null; summary: string | null; blockedReason: string | null; reviewVerdict: string | null; projectId: string | null;
+  priority: string; accent: string; result: string | null; summary: string | null; blockedReason: string | null; reviewVerdict: string | null; projectId: string | null; parentTaskId: string | null;
 };
 
 // 중요도 높은 카드가 위에 오고, 같은 중요도면 만든 순서를 지킵니다.
-const SELECT_TASKS = `SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId FROM tasks WHERE user_id = ? ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC`;
-const SELECT_PROJECT_TASKS = `SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId FROM tasks WHERE user_id = ? AND project_id = ? ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC`;
+const SELECT_TASKS = `SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId, parent_task_id AS parentTaskId FROM tasks WHERE user_id = ? ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC`;
+const SELECT_PROJECT_TASKS = `SELECT id, title, label, owner, status, priority, accent, result, summary, blocked_reason AS blockedReason, review_verdict AS reviewVerdict, project_id AS projectId, parent_task_id AS parentTaskId FROM tasks WHERE user_id = ? AND project_id = ? ORDER BY ${PRIORITY_ORDER_SQL}, created_at ASC`;
 
 /**
  * 업무 목록.
@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     blockedReason: null,
     reviewVerdict: null,
     projectId,
+    parentTaskId: null,
   };
 
   const description = typeof body.description === 'string' ? body.description.slice(0, 8000) : '';

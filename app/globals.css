@@ -660,6 +660,18 @@ p { color:var(--c-text); }
 .board-card .detail-task-actions{margin-top:0}
 .board-add{display:flex;align-items:center;justify-content:center;gap:5px;border:1px dashed var(--c-line);background:transparent;border-radius:var(--r-md);padding:9px;color:var(--c-text-muted);font-size:11px;font-weight:500;cursor:pointer}
 .board-add:hover{background:var(--c-surface-card);border-color:var(--c-line-strong);color:var(--c-ink)}
+/* 담당자 보기: 매니저 지시(업무 칸)마다 한 행, 에이전트 열은 접힘이 기본 */
+.board-sections{display:flex;flex-direction:column;gap:14px}
+.board-section-row{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;padding-bottom:4px}
+.board-section-row+.board-section-row{padding-top:14px;border-top:1px dashed var(--c-line)}
+.board-column.board-agent.collapsed .board-column-head{margin-bottom:0}
+.board-column-toggle{width:100%;border:0;background:none;padding:0;text-align:left;color:inherit;cursor:pointer;font:inherit}
+.board-column-toggle>div{flex:1;min-width:0;display:flex;flex-direction:column}
+.board-column-toggle .board-column-chevron{flex:0 0 auto;color:var(--c-text-muted);transition:transform .16s ease}
+.board-column.board-agent.open .board-column-chevron{transform:rotate(180deg)}
+.board-column-toggle:hover .board-column-chevron{color:var(--c-ink)}
+.board-column-empty{margin:0;padding:6px 2px;font-size:11px;color:var(--c-text-muted)}
+.board-parent .board-card{margin:0}
 .board-chat{display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--c-line);background:var(--c-surface-card);border-radius:var(--r-md);padding:9px;color:var(--c-ink);font-size:11px;font-weight:600;cursor:pointer}
 .board-chat:hover{background:var(--c-surface-soft);border-color:var(--c-line-mid)}
 
@@ -677,7 +689,13 @@ p { color:var(--c-text); }
 .project-files-preview{border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-surface-soft);overflow:hidden}
 .project-files-preview>div{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--c-line);font-size:12px}
 .project-files-preview>div button{border:0;background:none;color:var(--c-link);cursor:pointer;font-size:12px}
-.project-files-preview pre{margin:0;padding:11px;max-height:40vh;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all}
+.project-files-preview pre{margin:0;padding:11px;max-height:60vh;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all}
+.project-files-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.55;color:var(--c-text)}
+.project-files-command{display:flex;align-items:center;gap:8px;margin-top:8px;border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-inverse);color:var(--c-on-inverse);padding:8px 10px}
+.project-files-command code{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+.project-files-command button{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:var(--r-sm);background:var(--c-overlay-33);color:var(--c-on-inverse);cursor:pointer}
+.project-files-note{margin:0;font-size:12px;line-height:1.55;color:var(--c-text-muted)}
+.project-files-note a{display:inline-flex;align-items:center;gap:3px;color:var(--c-link)}
 
 /* ── TASK 상세 패널 ──────────────────────────────────────────────────────── */
 .task-detail-dialog{max-width:720px!important;border-radius:var(--r-xl);padding:0;overflow:hidden}

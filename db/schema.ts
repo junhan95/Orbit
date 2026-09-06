@@ -41,8 +41,11 @@ export const tasks = sqliteTable('tasks', {
   blockedReason: text('blocked_reason'),
   // 검토 에이전트의 마지막 판정 'approve' | 'changes_requested' (lib/reviewer.ts). 발견은 상태를 바꾸지 않습니다.
   reviewVerdict: text('review_verdict'), reviewedAt: integer('reviewed_at'),
+  // 매니저 카드 실행 중 위임된 카드는 그 매니저 카드를 가리킵니다 (보드의 '업무 칸' 묶음 기준). 대화 위임은 NULL.
+  parentTaskId: text('parent_task_id'),
   createdAt: integer('created_at').notNull(), updatedAt: integer('updated_at').notNull(),
 }, (table) => [
+  index('idx_tasks_user_parent').on(table.userId, table.parentTaskId),
   index('idx_tasks_user_status').on(table.userId, table.status),
   index('idx_tasks_user_created').on(table.userId, table.createdAt),
   index('idx_tasks_user_priority').on(table.userId, table.priority),

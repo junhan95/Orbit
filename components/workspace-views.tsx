@@ -9,7 +9,7 @@ import { forgetFolderArtifacts } from '@/lib/project-artifacts';
 import { ProjectTutorialFields } from '@/components/project-tutorial-fields';
 import { tutorialEvent, tutorialExample } from '@/components/tutorial';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronDown, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -59,7 +59,7 @@ type Agent = {
   projectId?: string | null; isManager?: number; roleKey?: string | null;
 };
 type Assignment = { projectId: string; agentId: string };
-type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null };
+type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null; parentTaskId?: string | null };
 type FieldValueRow = { taskId: string; fieldId: string; value: string };
 type TaskCounts = { taskId: string; subtasks: number; doneSubtasks: number; comments: number };
 type Subtask = { id: string; title: string; done: number; owner: string | null; position: number };
@@ -492,6 +492,11 @@ const BOARD_GROUP_KEY = 'cowork.board.group';
 const UNASSIGNED = '__none__';
 
 type BoardColumn = { key: string; title: string; subtitle?: string; color?: string; owner?: string; isManager?: boolean; status?: TaskStatus; label?: string; tasks: ProjectTask[] };
+/**
+ * 담당자 보기의 한 행('업무 칸'). parent 가 있으면 매니저 카드 하나에서 위임된 카드들, 없으면 대화에서 바로 위임된 카드들입니다.
+ * 각 에이전트 열은 접혀 있는 것이 기본이고, 머리를 누르면 그 칸의 카드가 펼쳐집니다.
+ */
+type BoardSection = { key: string; parent: ProjectTask | null; agents: { key: string; name: string; role: string; color: string | undefined; tasks: ProjectTask[] }[] };
 
 function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRename, onDelete, onOpenChat }: { project: Project; agents: Agent[]; assignments: Assignment[]; onBack: () => void; onNotice: (message: string) => void; onRename: () => void; onDelete: () => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -669,6 +674,36 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
     return columnList;
   }, [group, tasks, members, agents]);
 
+  // 담당자 보기: 매니저 카드(지시)마다 한 행, 그 아래 위임된 카드를 에이전트별로 묶습니다.
+  const sections = useMemo<BoardSection[]>(() => {
+    if (group !== '담당자') return [];
+    const roster = members.length ? members : agents;
+    const manager = roster.find((agent) => agent.isManager) ?? null;
+    const workers = roster.filter((agent) => !agent.isManager);
+    const known = new Set(roster.map((agent) => agent.name));
+    const managerTasks = manager ? byPriority(tasks.filter((task) => task.owner === manager.name)) : [];
+    const parentIds = new Set(managerTasks.map((task) => task.id));
+    const childTasks = tasks.filter((task) => !manager || task.owner !== manager.name);
+    const build = (key: string, parent: ProjectTask | null, pool: ProjectTask[], showAll: boolean): BoardSection => {
+      const agentCells: BoardSection['agents'] = workers
+        .map((agent) => ({ key: agent.id, name: agent.name, role: t(agent.role), color: agent.color, tasks: byPriority(pool.filter((task) => task.owner === agent.name)) }))
+        .filter((cell) => showAll || cell.tasks.length);
+      const orphans = byPriority(pool.filter((task) => !known.has(task.owner)));
+      if (orphans.length) agentCells.push({ key: UNASSIGNED, name: t("미배정"), role: t("프로젝트에 없는 담당자"), color: undefined, tasks: orphans });
+      return { key, parent, agents: agentCells };
+    };
+    const direct = childTasks.filter((task) => !task.parentTaskId || !parentIds.has(task.parentTaskId));
+    return [
+      build('direct', null, direct, true),
+      ...managerTasks.map((parent) => build(parent.id, parent, childTasks.filter((task) => task.parentTaskId === parent.id), false)),
+    ];
+  }, [group, tasks, members, agents]);
+  const managerAgent = (members.length ? members : agents).find((agent) => agent.isManager) ?? null;
+  const [openCells, setOpenCells] = useState<Set<string>>(() => new Set());
+  const toggleCell = useCallback((key: string) => {
+    setOpenCells((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  }, []);
+
   const openTask = tasks.find((task) => task.id === openTaskId) ?? null;
 
   const createDialog = <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -745,6 +780,47 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
 
       {loading
         ? <div className="view-loading"><LoaderCircle className="spin" /><span>{t("보드를 불러오는 중")}</span></div>
+        : group === '담당자' && managerAgent
+          ? <div className="board-sections">{sections.map((section) => <div className="board-section-row" key={section.key}>
+              <section className="board-column board-parent">
+                {section.parent
+                  ? <BoardCard task={section.parent} fields={cardFields} values={values[section.parent.id]} counts={counts[section.parent.id]}
+                      onOpen={() => setOpenTaskId(section.parent!.id)} onChat={() => openTaskChat(section.parent!)} />
+                  : <>
+                    <header className="board-column-head">
+                      <span className="board-column-avatar" style={{ background: managerAgent.color }}><Bot size={15} aria-hidden="true" /></span>
+                      <div><b>{managerAgent.name}</b><small>{t(managerAgent.role)}</small></div>
+                    </header>
+                    <div className="board-column-body">
+                      <button className="board-chat" onClick={() => openManagerChat(managerAgent.name)}><MessageSquare size={13} /> {t("매니저와 대화하기")}</button>
+                      <button className="board-add" onClick={() => openCreate(managerAgent.name)}><Plus size={13} /> {t("작업 추가")}</button>
+                    </div>
+                  </>}
+              </section>
+              {section.agents.map((cell) => {
+                const cellKey = `${section.key}:${cell.key}`;
+                const open = openCells.has(cellKey);
+                return <section className={open ? 'board-column board-agent open' : 'board-column board-agent collapsed'} key={cell.key}>
+                  <button className="board-column-head board-column-toggle" onClick={() => toggleCell(cellKey)} aria-expanded={open}
+                    aria-label={tf(open ? "{0} 업무 접기" : "{0} 업무 펼치기", cell.name)}>
+                    {cell.color
+                      ? <span className="board-column-avatar" style={{ background: cell.color }}>{cell.name.slice(0, 1)}</span>
+                      : <span className="board-column-mark" />}
+                    <div><b>{cell.name}</b><small>{cell.role}</small></div>
+                    <em>{cell.tasks.length}</em>
+                    <ChevronDown size={15} className="board-column-chevron" aria-hidden="true" />
+                  </button>
+                  {open && <div className="board-column-body">
+                    {cell.tasks.map((task) => <BoardCard
+                      key={task.id} task={task} fields={cardFields} values={values[task.id]} counts={counts[task.id]}
+                      onOpen={() => setOpenTaskId(task.id)}
+                      onChat={() => openTaskChat(task)}
+                    />)}
+                    {!cell.tasks.length && <p className="board-column-empty">{t("아직 맡은 업무가 없습니다.")}</p>}
+                  </div>}
+                </section>;
+              })}
+            </div>)}</div>
         : columns.length
           ? <div className="board-columns">{columns.map((column) => <section className="board-column" key={column.key}>
               <header className="board-column-head">
