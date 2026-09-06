@@ -662,7 +662,9 @@ p { color:var(--c-text); }
 .board-add:hover{background:var(--c-surface-card);border-color:var(--c-line-strong);color:var(--c-ink)}
 /* 담당자 보기: 매니저 지시(업무 칸)마다 한 행, 에이전트 열은 접힘이 기본 */
 .board-sections{display:flex;flex-direction:column;gap:14px}
-.board-section-row{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;padding-bottom:4px}
+.board-section-row{display:flex;gap:12px;align-items:stretch;overflow-x:auto;padding-bottom:4px}
+.board-section-row>.board-column{display:flex;flex-direction:column}
+.board-section-row>.board-parent>.board-column-body{flex:1}
 .board-section-row+.board-section-row{padding-top:14px;border-top:1px dashed var(--c-line)}
 .board-column.board-agent.collapsed .board-column-head{margin-bottom:0}
 .board-column-toggle{width:100%;border:0;background:none;padding:0;text-align:left;color:inherit;cursor:pointer;font:inherit}
