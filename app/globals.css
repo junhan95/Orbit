@@ -673,6 +673,15 @@ p { color:var(--c-text); }
 .board-column.board-agent.open .board-column-chevron{transform:rotate(180deg)}
 .board-column-toggle:hover .board-column-chevron{color:var(--c-ink)}
 .board-column-empty{margin:0;padding:6px 2px;font-size:11px;color:var(--c-text-muted)}
+/* 접힌 팀원 칸의 요약: 상태 건수 + 최근 카드 */
+.board-column-brief{display:flex;flex-direction:column;gap:8px;margin-top:10px;flex:1;min-height:0}
+.board-brief-counts{display:flex;flex-wrap:wrap;gap:4px}
+.board-brief-latest{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-surface-card);padding:8px 10px;color:inherit;cursor:pointer;min-height:0}
+.board-brief-latest:hover{border-color:var(--c-line-strong)}
+.board-brief-latest small{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--c-text-muted)}
+.board-brief-latest b{font-size:12px;line-height:1.4;color:var(--c-ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.board-brief-latest p{margin:0;font-size:11px;line-height:1.5;color:var(--c-text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.board-brief-latest p.is-blocked{color:var(--c-coral-ink)}
 .board-parent .board-card{margin:0}
 .board-chat{display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--c-line);background:var(--c-surface-card);border-radius:var(--r-md);padding:9px;color:var(--c-ink);font-size:11px;font-weight:600;cursor:pointer}
 .board-chat:hover{background:var(--c-surface-soft);border-color:var(--c-line-mid)}

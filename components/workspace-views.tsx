@@ -59,7 +59,14 @@ type Agent = {
   projectId?: string | null; isManager?: number; roleKey?: string | null;
 };
 type Assignment = { projectId: string; agentId: string };
-type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null; parentTaskId?: string | null };
+type ProjectTask = { id: string; title: string; label: string; owner: string; status: string; priority: string; accent: string; result: string | null; summary?: string | null; description?: string; projectId: string | null; blockedReason?: string | null; reviewVerdict?: string | null; parentTaskId?: string | null; updatedAt?: number };
+
+/** 접힌 팀원 칸에 보여 줄 요약 — 상태별 건수와 가장 최근에 움직인 카드. */
+function briefOf(tasks: ProjectTask[]) {
+  const counts = TASK_STATUSES.map((status) => ({ status, count: tasks.filter((task) => task.status === status).length })).filter((item) => item.count > 0);
+  const latest = [...tasks].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0] ?? null;
+  return { counts, latest };
+}
 type FieldValueRow = { taskId: string; fieldId: string; value: string };
 type TaskCounts = { taskId: string; subtasks: number; doneSubtasks: number; comments: number };
 type Subtask = { id: string; title: string; done: number; owner: string | null; position: number };
@@ -810,6 +817,19 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
                     <em>{cell.tasks.length}</em>
                     <ChevronDown size={15} className="board-column-chevron" aria-hidden="true" />
                   </button>
+                  {!open && cell.tasks.length > 0 && (() => {
+                    const brief = briefOf(cell.tasks);
+                    return <div className="board-column-brief">
+                      <div className="board-brief-counts">{brief.counts.map((item) => <span className={`board-chip ${item.status === '진행 중' ? 'doing' : item.status === '검토' ? 'review' : ''}`} key={item.status}>{t(item.status)} {item.count}</span>)}</div>
+                      {brief.latest && <button className="board-brief-latest" onClick={() => setOpenTaskId(brief.latest!.id)} aria-label={tf("{0} 상세 열기", brief.latest.title)}>
+                        <small>{t("최근")}</small>
+                        <b>{brief.latest.title}</b>
+                        {brief.latest.blockedReason
+                          ? <p className="is-blocked">{brief.latest.blockedReason}</p>
+                          : brief.latest.summary ? <p>{brief.latest.summary}</p> : null}
+                      </button>}
+                    </div>;
+                  })()}
                   {open && <div className="board-column-body">
                     {cell.tasks.map((task) => <BoardCard
                       key={task.id} task={task} fields={cardFields} values={values[task.id]} counts={counts[task.id]}
