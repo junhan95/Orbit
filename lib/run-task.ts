@@ -285,6 +285,7 @@ async function runTaskInternal(params: RunTaskParams): Promise<RunTaskFailure | 
       apiKey, model, system,
       messages: [{ role: 'user', content: prompt }],
       maxTokens: 8000,
+      maxOutputRetries: 2,
       maxIterations: managerContext ? MANAGER_MAX_ITERATIONS : MAX_ITERATIONS,
       webSearchMaxUses: 3,
       tools: [
@@ -353,7 +354,7 @@ async function runTaskInternal(params: RunTaskParams): Promise<RunTaskFailure | 
     const output = [
       blocked ? `⛔ 진행 불가: ${blockedReason}\n` : '',
       outputBody,
-      truncated ? '\n\n---\n※ 출력 토큰 한도에 걸려 여기서 끊겼습니다. 더 긴 결과가 필요하면 app/api/agents/run/route.ts 의 maxTokens 를 올리세요.' : '',
+      truncated ? '\n\n---\n※ 출력 토큰 한도에 걸려 여기서 끊겼습니다. 자동 재시도 한도에 도달했습니다. 작업을 더 작은 파일이나 기능으로 나누어 다시 요청해 주세요.' : '',
       result.stopReason === 'max_iterations' ? '\n\n---\n※ 툴 호출 반복 상한에 도달해 중단했습니다.' : '',
       result.stopReason === 'insufficient_credits' ? '\n\n---\n※ 크레딧 잔액이 부족해 여기서 중단했습니다. 충전하거나 본인 API 키를 연결한 뒤 다시 실행해 주세요.' : '',
     ].join('').trim();

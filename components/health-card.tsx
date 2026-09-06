@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, LoaderCircle, RefreshCw, ShieldAlert, Stethoscope } from 'lucide-react';
-import { t, tf } from '@/lib/i18n';
+import { t, tf, locale, getLang } from '@/lib/i18n';
 import './governance.css';
 
 /**
  * 실행 건강 카드 — 대쉬보드용.
- *   GET  /api/health : 지표 5개(오늘 vs 14일 기준선, σ 등급), 최근 7일 게이트 요약, 열린 '진단' 카드, 마지막 검사
+ *   GET  /api/health : 지표 5개(오늘 vs 14일 기준선, σ 등급), 최근 7일 실행 제어 요약, 열린 '진단' 카드, 마지막 검사
  *   POST /api/health : 지금 검사 → 2σ 이상 지표마다 진단 카드 생성(24시간 내 중복 없음)
  * 지표 계산에는 모델을 쓰지 않습니다. 이 카드는 숫자를 보여 주고, 판단은 진단 카드를 실행하는 에이전트와 사람이 합니다.
  */
@@ -25,7 +25,7 @@ const GATE_LABEL: Record<string, string> = {
 };
 
 function formatWhen(timestamp: number) {
-  return new Date(timestamp).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(timestamp).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export function HealthCard({ onNotice, onOpenTask, compact = false }: {
@@ -58,7 +58,7 @@ export function HealthCard({ onNotice, onOpenTask, compact = false }: {
       const response = await fetch('/api/health', { method: 'POST' });
       const result = await response.json() as { raised: { key: string }[]; skipped: { key: string; reason: string }[]; error?: string };
       if (!response.ok) throw new Error(result.error ?? t('검사하지 못했습니다.'));
-      onNotice(result.raised.length ? tf('진단 카드 {0}장을 만들었습니다.', result.raised.length) : t('2σ 이상 벗어난 지표가 없습니다.'));
+      onNotice(result.raised.length ? tf('진단 카드 {0}장을 만들었습니다.', result.raised.length) : t('평소 범위를 벗어난 실행 지표가 없습니다.'));
       await load();
     } catch (error) { onNotice(error instanceof Error ? error.message : t('검사하지 못했습니다.')); }
     finally { setChecking(false); }
@@ -92,7 +92,7 @@ export function HealthCard({ onNotice, onOpenTask, compact = false }: {
       {metrics.map((metric) => <div className="gov-metric" key={metric.key}>
         <div>
           <b>{t(metric.label)}</b>
-          <small>{metric.note || t('아직 표본이 없습니다.')}</small>
+          <small>{healthNote(metric.note) || t('아직 표본이 없습니다.')}</small>
         </div>
         <span className={`gov-chip ${metric.tier}`} title={metric.sigma === null ? '' : `${metric.sigma}σ`}>{t(TIER_LABEL[metric.tier])}</span>
       </div>)}
@@ -100,7 +100,7 @@ export function HealthCard({ onNotice, onOpenTask, compact = false }: {
     </div>
 
     {!compact && (blocks.length > 0 || asks.length > 0) && <div className="gov-inline">
-      <small className="gov-usage" style={{ marginLeft: 0 }}>{t('최근 7일 게이트')}</small>
+      <small className="gov-usage" style={{ marginLeft: 0 }}>{t('최근 7일 실행 제어')}</small>
       {blocks.map((row) => <span className="gov-chip blocked" key={`${row.gate}-b`}>{t(GATE_LABEL[row.gate] ?? row.gate)} {t('차단')} {row.count}</span>)}
       {asks.map((row) => <span className="gov-chip pending" key={`${row.gate}-a`}>{t(GATE_LABEL[row.gate] ?? row.gate)} {t('승인 요청')} {row.count}</span>)}
     </div>}
@@ -109,4 +109,11 @@ export function HealthCard({ onNotice, onOpenTask, compact = false }: {
 
 function rank(tier: Tier): number {
   return tier === 'act' ? 4 : tier === 'diagnose' ? 3 : tier === 'watch' ? 2 : tier === 'ok' ? 1 : 0;
+}
+
+function healthNote(note: string) {
+  if (getLang() !== 'en') return note;
+  return note.replace(/기준선 부족 \((\d+)\/(\d+)일\)/, 'Insufficient baseline ($1/$2 days)')
+    .replace(/오늘 표본 부족 \((\d+)\/(\d+)\)/, 'Insufficient samples today ($1/$2)')
+    .replace('오늘 ', 'Today ').replace('표본 ', 'samples: ').replace('기준 ', 'baseline ');
 }

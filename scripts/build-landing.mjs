@@ -81,6 +81,8 @@ try {
   await server.close();
 }
 
+// Relative asset URL also works when the static landing is hosted in a subdirectory.
+body = body.replaceAll('/orbit-space.webp', './orbit-space.webp').replaceAll('/orbit-star.webp', './orbit-star.webp');
 if (APP_URL) body = body.replaceAll('href="/login"', `href="${APP_URL}/login"`);
 for (const path of ['/privacy', '/terms']) body = body.replaceAll(`href="${path}"`, `href="${SITE_URL}${path}"`);
 
@@ -89,10 +91,10 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>orbitcrew.ai — One manager runs your whole team</title>
-<meta name="description" content="A project-manager agent hires the teammates it needs, splits the work, reviews the results, and reports back. An AI agent workspace with memory, recall, and verification. 매니저 한 명이 팀 전체를 굴립니다.">
+<title>orbitcrew.ai — 혼자 하던 일에 AI 팀이 생깁니다</title>
+<meta name="description" content="목표를 알려주면 AI 팀이 조사부터 작성·검토까지. 300 크레딧으로 무료 체험하고, 본인 Anthropic API 키 연결 시 서비스 이용료 없이 시작하세요. AI 사용료 별도.">
 <meta property="og:title" content="orbitcrew.ai — AI Agent Command Center">
-<meta property="og:description" content="One manager runs your whole team.">
+<meta property="og:description" content="혼자 하던 일에 AI 팀이 생깁니다.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -128,5 +130,5 @@ mkdirSync(OUT, { recursive: true });
 writeFileSync(`${OUT}/index.html`, html);
 writeFileSync(`${OUT}/404.html`, html);
 writeFileSync(`${OUT}/.nojekyll`, '');
-for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png']) copyFileSync(`public/${f}`, `${OUT}/${f}`);
+for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'orbit-space.webp', 'orbit-star.webp']) copyFileSync(`public/${f}`, `${OUT}/${f}`);
 console.log(`랜딩 정적 빌드 완료 → ${OUT}/index.html (${(html.length / 1024).toFixed(1)} KB)${APP_URL ? `, 앱 주소 ${APP_URL}` : ', 앱 링크는 상대 경로(/login) 그대로'}`);

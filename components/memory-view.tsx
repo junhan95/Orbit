@@ -62,7 +62,7 @@ export function MemoryView({ onNotice, onChanged }: { onNotice: (message: string
   }
 
   const json = (body: unknown) => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  const approve = (entry: Entry) => request(entry.id, () => fetch(`/api/memory/${entry.id}`, { method: 'PATCH', ...json({ status: 'active' }) }), t('기억을 승인했습니다. 다음 실행부터 주입됩니다.'));
+  const approve = (entry: Entry) => request(entry.id, () => fetch(`/api/memory/${entry.id}`, { method: 'PATCH', ...json({ status: 'active' }) }), t('기억을 승인했습니다. 다음 작업부터 반영됩니다.'));
   const remove = (entry: Entry) => request(entry.id, () => fetch(`/api/memory/${entry.id}`, { method: 'DELETE' }), t('기억을 삭제했습니다.'));
   const saveEdit = () => editing && request(editing.id, () => fetch(`/api/memory/${editing.id}`, { method: 'PATCH', ...json({ content: editing.content }) }), t('기억을 수정했습니다.'));
   const saveNew = () => adding && request('new', () => fetch('/api/memory', { method: 'POST', ...json({ scope: adding.scope, scopeId: adding.scope === 'user' ? undefined : adding.scopeId, content: adding.content }) }), t('기억을 추가했습니다.'));
@@ -77,7 +77,7 @@ export function MemoryView({ onNotice, onChanged }: { onNotice: (message: string
       <div>
         <span className="section-kicker">{t('장기 기억')}</span>
         <h1>{t('기억')}</h1>
-        <p>{t('에이전트가 매 실행마다 프롬프트로 받는 사실들입니다. 사용자 프로필은 모두에게, 프로젝트 기억은 그 프로젝트 팀에게, 에이전트 노트는 그 에이전트에게만 주입됩니다.')}</p>
+        <p>{t('선호하는 작업 방식과 중요한 정보를 저장하세요. 사용자 프로필은 모든 에이전트가, 프로젝트 기억은 해당 팀이, 에이전트 노트는 해당 에이전트만 참고합니다.')}</p>
       </div>
       <div className="view-actions gov-toolbar">
         <button className="gov-button" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />} {t('새로고침')}</button>
@@ -97,7 +97,7 @@ export function MemoryView({ onNotice, onChanged }: { onNotice: (message: string
             {scopeTargets.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}
           </select>}
         </div>
-        <textarea value={adding.content} placeholder={t('한 줄로 된 확정된 사실. 예) 보고서는 항상 한국어로, 표는 마크다운으로.')} onChange={(event) => setAdding({ ...adding, content: event.target.value })} />
+        <textarea value={adding.content} placeholder={t('기억할 내용을 적어주세요. 예: 보고서는 한국어로, 표는 마크다운으로 작성')} onChange={(event) => setAdding({ ...adding, content: event.target.value })} />
         <div className="gov-item-actions">
           <button className="gov-button primary" disabled={busy === 'new' || !adding.content.trim() || (adding.scope !== 'user' && !adding.scopeId)} onClick={() => void saveNew()}>{busy === 'new' ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />} {t('저장')}</button>
           <button className="gov-button ghost" onClick={() => setAdding(null)}>{t('취소')}</button>
@@ -144,13 +144,10 @@ export function MemoryView({ onNotice, onChanged }: { onNotice: (message: string
                     </div>
                   </>}
             </li>)}
-            {group.entries.length === 0 && <li><p className="gov-empty">{t('아직 기억이 없습니다.')}</p></li>}
+            {group.entries.length === 0 && <li><p className="gov-empty">{t('기억해 둘 선호나 정보를 추가해 보세요.')}</p></li>}
           </ul>
         </article>;
       })}
     </div>
-    {!loading && shown.length === 1 && shown[0].entries.length === 0 && <p className="gov-empty" style={{ marginTop: 12 }}>
-      {t('에이전트가 실행 중 memory 도구로 남기거나, 실행이 끝난 뒤 검토 모델이 대화에서 사실을 뽑아 여기에 채웁니다.')}
-    </p>}
   </section>;
 }

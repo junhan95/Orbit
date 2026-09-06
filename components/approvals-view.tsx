@@ -19,15 +19,16 @@ type Approval = {
 type MemoryEntry = { id: string; content: string; status: 'active' | 'pending'; createdBy: string; createdAt: number };
 type MemoryGroup = { scope: 'user' | 'project' | 'agent'; scopeId: string | null; label: string; entries: MemoryEntry[]; pendingCount: number };
 
-export type InboxCount = { approvals: number; memories: number; total: number };
+export type InboxCount = { approvals: number; memories: number; total: number; pendingIds?: string[] };
 
 /** 사이드바 배지용 — 두 큐의 대기 수를 합칩니다. 실패하면 0. */
 export async function fetchInboxCount(): Promise<InboxCount> {
   try {
     const [approvals, memory] = await Promise.all([fetch('/api/approvals'), fetch('/api/memory')]);
-    const a = approvals.ok ? (await approvals.json() as { pendingCount: number }).pendingCount : 0;
-    const m = memory.ok ? (await memory.json() as { pendingTotal: number }).pendingTotal : 0;
-    return { approvals: a, memories: m, total: a + m };
+    const a = approvals.ok ? await approvals.json() as { pendingCount: number; approvals: Approval[] } : null;
+    const m = memory.ok ? await memory.json() as { pendingTotal: number; groups: MemoryGroup[] } : null;
+    return { approvals: a?.pendingCount ?? 0, memories: m?.pendingTotal ?? 0, total: (a?.pendingCount ?? 0) + (m?.pendingTotal ?? 0),
+      pendingIds: a && m ? [...a.approvals.filter(item => item.status === 'pending').map(item => `approval:${item.id}`), ...m.groups.flatMap(group => group.entries.filter(entry => entry.status === 'pending').map(entry => `memory:${entry.id}`))] : undefined };
   } catch { return { approvals: 0, memories: 0, total: 0 }; }
 }
 
@@ -85,7 +86,7 @@ export function ApprovalsView({ onNotice, onChanged }: { onNotice: (message: str
         : await fetch(`/api/memory/${entry.id}`, { method: 'DELETE' });
       const data = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? t('처리하지 못했습니다.'));
-      onNotice(approve ? t('기억을 승인했습니다. 다음 실행부터 주입됩니다.') : t('기억을 거절했습니다.'));
+      onNotice(approve ? t('기억을 승인했습니다. 다음 작업부터 반영됩니다.') : t('기억을 거절했습니다.'));
       await load();
       onChanged?.();
     } catch (error) {
@@ -149,7 +150,7 @@ export function ApprovalsView({ onNotice, onChanged }: { onNotice: (message: str
       {pendingMemories.length > 0 && <article className="gov-card wide">
         <header className="gov-card-head">
           <h2><Brain size={16} /> {t("프로젝트 기억 승인")} <em>{tf('{0}건', pendingMemories.length)}</em></h2>
-          <p>{t("에이전트가 '확정된 사실'이라고 저장한 것입니다. 승인해야 모든 에이전트의 프롬프트에 들어갑니다.")}</p>
+          <p>{t("에이전트가 함께 기억할 정보를 제안했습니다. 승인하면 해당 프로젝트 팀이 다음 작업부터 참고합니다.")}</p>
         </header>
         <ul className="gov-list">
           {pendingMemories.map(({ group, entry }) => <li className="gov-item pending" key={entry.id}>

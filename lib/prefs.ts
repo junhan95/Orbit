@@ -19,7 +19,9 @@ export type NavMode = (typeof NAV_MODES)[number];
 
 export type Prefs = {
   notifications: boolean;
+  toastNotifications: boolean;
   autoAssign: boolean;
+  showTutorial: boolean;
   theme: ThemeChoice;
   lang: Lang;
   nav: NavMode;
@@ -29,8 +31,10 @@ export const PREFS_KEY = 'orbit-preferences';
 
 export const DEFAULT_PREFS: Prefs = {
   notifications: true,
+  toastNotifications: true,
   autoAssign: true,
-  theme: 'system',
+  showTutorial: true,
+  theme: 'dark',
   lang: 'ko',
   nav: 'expanded',
 };
@@ -55,7 +59,9 @@ export function readPrefs(): Prefs {
     const saved = JSON.parse(window.localStorage.getItem(PREFS_KEY) || '{}') as Partial<Prefs>;
     return {
       notifications: typeof saved.notifications === 'boolean' ? saved.notifications : DEFAULT_PREFS.notifications,
+      toastNotifications: typeof saved.toastNotifications === 'boolean' ? saved.toastNotifications : DEFAULT_PREFS.toastNotifications,
       autoAssign: typeof saved.autoAssign === 'boolean' ? saved.autoAssign : DEFAULT_PREFS.autoAssign,
+      showTutorial: typeof saved.showTutorial === 'boolean' ? saved.showTutorial : DEFAULT_PREFS.showTutorial,
       theme: isTheme(saved.theme) ? saved.theme : DEFAULT_PREFS.theme,
       lang: isLang(saved.lang) ? saved.lang : DEFAULT_PREFS.lang,
       nav: isNav(saved.nav) ? saved.nav : DEFAULT_PREFS.nav,

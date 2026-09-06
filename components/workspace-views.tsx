@@ -1,8 +1,13 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- Preserve the composite component element/ref contract and explicit ARIA semantics. */
 'use client';
 
+import { FolderPermissions } from '@/components/folder-permissions';
+import { useAIFileChanges } from '@/components/ai-file-changes';
+import { LocalFileWorkspace, SaveCodeFiles } from '@/components/local-file-workspace';
+import { ProjectTutorialFields } from '@/components/project-tutorial-fields';
+import { tutorialEvent, tutorialExample } from '@/components/tutorial';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronDown, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
+import { ArrowLeft, Bot, BriefcaseBusiness, Check, ChevronRight, CirclePlus, Clock3, Cpu, EllipsisVertical, FileImage, FileText, Flag, FolderKanban, FolderPlus, KeyRound, LayoutGrid, Languages, List, ListChecks, LoaderCircle, MessageSquare, Monitor, Moon, Pencil, Plus, Send, Settings2, ShieldCheck, Sparkles, Sun, Trash2, UserRound, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -18,7 +23,7 @@ import { TASK_STATUSES, type TaskStatus } from '@/lib/task-status';
 import { FIELD_TYPES, FIELD_TYPE_LABELS, type FieldType, type ProjectField } from '@/lib/fields';
 import {
   type FolderLinkState, type FsDirHandle, type ProjectFolder,
-  buildProjectFolderContext, ensureReadPermission, fetchProjectFolders, forgetHandle, getHandle,
+  ensureReadPermission, fetchProjectFolders, forgetHandle, getHandle,
   inspectFolder, pickDirectory, saveHandle, scanDirectory, supportsFolderPicker,
 } from '@/lib/folder-access';
 import { AGENT_MODELS, DEFAULT_MODEL_FALLBACK, agentModelLabel } from '@/lib/models';
@@ -26,7 +31,7 @@ import {
   ATTACHMENT_ACCEPT, type ChatAttachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_TOTAL_BYTES,
   formatBytes, readAttachment, toPayload,
 } from '@/lib/attachments';
-import { AUTONOMY_HINT, AUTONOMY_LABEL, AUTONOMY_LEVELS, type Autonomy, DEFAULT_AUTONOMY, isAutonomy } from '@/lib/autonomy';
+import { type Autonomy, DEFAULT_AUTONOMY, isAutonomy } from '@/lib/autonomy';
 import { LANGUAGES, LANGUAGE_LABEL, type Lang, t, tf } from '@/lib/i18n';
 import {
   AVATAR_MAX_CHARS, AVATAR_SIZE, EMPTY_PROFILE, PROFILE_LIMITS,
@@ -69,7 +74,8 @@ type TaskDetail = {
 };
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: number };
 
-export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat, onProfileSaved }: {
+export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat, onProfileSaved, visible = true }: {
+  visible?: boolean;
   section: WorkspaceSection; displayName: string; email: string; onNotice: (message: string) => void;
   chatTarget?: ChatTarget | null; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void;
   /** 계정 화면에서 프로필을 저장했을 때 — 사이드바 아바타·인사말을 바로 맞춥니다. */
@@ -94,12 +100,12 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
   }, [onNotice]);
 
   // oxlint-disable-next-line react/react-compiler -- async server hydration is intentional here
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (visible) void refresh(); }, [refresh, visible]);
 
   if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t("워크스페이스를 불러오는 중")}</span></div>;
   if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
   if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} defaultModel={defaultModel} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
-  if (section === '대화') return <ChatView key={chatTarget?.key ?? 'chat'} projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
+  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
   return <AccountView displayName={displayName} email={email} onNotice={onNotice} onProfileSaved={onProfileSaved} />;
 }
@@ -217,7 +223,7 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
 
   return <section className="detail-section">
     <div className="folder-section-head">
-      <h2>{t("작업 폴더")}</h2>
+      <h2>{t("작업 폴더")}</h2><LocalFileWorkspace projectId={projectId} />
       <button className="folder-add" onClick={() => void addFolder()} disabled={!pickerReady || busy}>
         {busy ? <LoaderCircle className="spin" size={14} /> : <CirclePlus size={14} />} {t("폴더 추가")}
       </button>
@@ -354,7 +360,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
         <label className="entity-field delete-confirm">
           <span>{t("확인을 위해 프로젝트 이름")} <b>{removing?.name}</b> {t("을(를) 그대로 입력하세요")}</span>
           <input value={confirmName} onChange={(event) => { setConfirmName(event.target.value); stopHold(); }}
-            placeholder={removing?.name ?? ''} autoComplete="off" spellCheck={false} aria-label={t("삭제 확인용 프로젝트 이름")} />
+            data-tab-example={removing?.name ?? ''} placeholder={removing?.name ?? ''} autoComplete="off" spellCheck={false} aria-label={t("삭제 확인용 프로젝트 이름")} />
         </label>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose>
@@ -402,7 +408,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, folders: pendingFolders.map((folder) => ({ name: folder.name, fileCount: folder.fileCount })) }),
       });
-      const data = await response.json() as { manager?: { name: string }; folders?: { id: string }[]; error?: string };
+      const data = await response.json() as { project?: { id: string }; manager?: { name: string }; folders?: { id: string }[]; error?: string };
       if (!response.ok) throw new Error(data.error || t("프로젝트를 만들지 못했습니다."));
       // 서버가 보낸 순서 = 우리가 보낸 순서. 그 id 로 디렉터리 핸들을 이 브라우저에 저장합니다.
       await Promise.all((data.folders ?? []).map((folder, index) => {
@@ -412,6 +418,8 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
       const folderCount = pendingFolders.length;
       setName(''); setDescription(''); setPendingFolders([]);
       await onCreated();
+      if (data.project?.id && document.body.dataset.tutorial) { try { localStorage.setItem('orbit.tutorial-project', data.project.id); } catch {} }
+      tutorialEvent('project-created');
       onNotice(tf('{0}가 배정되었습니다{1}.', data.manager?.name ?? t('프로젝트 매니저'), folderCount ? tf(' · 폴더 {0}개 연결', folderCount) : ''));
     } catch (error) { onNotice(error instanceof Error ? error.message : t("프로젝트를 만들지 못했습니다.")); }
     finally { setSaving(false); }
@@ -420,14 +428,13 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
     <button className={layout === 'card' ? 'active' : ''} aria-pressed={layout === 'card'} onClick={() => changeLayout('card')} title={t("카드 보기")}><LayoutGrid size={15} /> {t("카드")}</button>
     <button className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => changeLayout('list')} title={t("리스트 보기")}><List size={15} /> {t("리스트")}</button>
   </div>;
-  const createDialog = <Dialog><DialogTrigger render={<Button className="view-primary" />}><Plus size={16} /> {t("프로젝트 만들기")}</DialogTrigger><DialogContent className="create-entity-dialog">
+  const createDialog = <Dialog><DialogTrigger render={<Button className="view-primary" data-tour="create-project" />}><Plus size={16} /> {t("프로젝트 만들기")}</DialogTrigger><DialogContent className="create-entity-dialog">
     <DialogHeader><DialogTitle>{t("새 프로젝트")}</DialogTitle><DialogDescription>{t("목표와 작업 폴더만 정하면 됩니다. 전담 프로젝트 매니저가 배정되고, 필요한 에이전트는 매니저가 합류시킵니다.")}</DialogDescription></DialogHeader>
-    <label className="entity-field"><span>{t("프로젝트 이름")}</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("예: 신규 서비스 출시")} /></label>
-    <label className="entity-field"><span>{t("설명")}</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("달성하려는 목표를 간단히 적어주세요.")} /></label>
+    <ProjectTutorialFields name={name} description={description} onName={setName} onDescription={setDescription} />
     <div className="folder-picker">
       <div className="folder-picker-head">
         <span>{t("작업 폴더")} <em>{t("선택")}</em></span>
-        <button type="button" className="folder-add" onClick={() => void addPendingFolder()} disabled={!pickerReady || folderBusy}>
+        <button type="button" className="folder-add" data-tour="project-folder" onClick={() => void addPendingFolder()} disabled={!pickerReady || folderBusy}>
           {folderBusy ? <LoaderCircle className="spin" size={13} /> : <CirclePlus size={13} />} {t("폴더 선택")}
         </button>
       </div>
@@ -441,7 +448,7 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
           : <p className="folder-hint">{t("폴더를 연결하면 에이전트가 업무를 실행할 때 그 안의 파일을 함께 읽습니다. 파일은 이 브라우저에서만 읽히고 서버에는 폴더 이름만 저장됩니다.")}</p>}
     </div>
     {name.trim() && <p className="manager-preview"><UserRound size={13} /> {t("배정될 매니저:")} <b>{name.trim()} {t("프로젝트 매니저")}</b></p>}
-    <DialogFooter><DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose><DialogClose render={<Button disabled={!name.trim() || saving} onClick={createProject} />}>{saving ? t("생성 중") : t("프로젝트 생성")}</DialogClose></DialogFooter>
+    <DialogFooter><DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose><DialogClose render={<Button data-tour="project-submit" disabled={!name.trim() || saving} onClick={createProject} />}>{saving ? t("생성 중") : t("프로젝트 생성")}</DialogClose></DialogFooter>
   </DialogContent></Dialog>;
   const action = <div className="view-actions">{projects.length > 0 && layoutToggle}{createDialog}</div>;
   const opened = projects.find((project) => project.id === openedId) || null;
@@ -1130,7 +1137,7 @@ function FieldManagerDialog({ open, onOpenChange, projectId, fields, onChanged, 
         </label>
       </div>
       {type === 'select' && <label className="entity-field"><span>{t("옵션 (쉼표로 구분)")}</span>
-        <input value={options} onChange={(event) => setOptions(event.target.value)} placeholder={t("높음, 보통, 낮음")} />
+        <input value={options} onChange={(event) => setOptions(event.target.value)} data-tab-example={t("높음, 보통, 낮음")} placeholder={t("높음, 보통, 낮음")} />
       </label>}
       <span className="field-card-toggle standalone">
         <Switch checked={showOnCard} aria-label={t("보드 카드에 배지로 표시")} onCheckedChange={(checked) => setShowOnCard(Boolean(checked))} />
@@ -1263,7 +1270,7 @@ function AgentsView({ agents, projects, assignments, defaultModel, onCreated, on
       <label className="entity-field">
         <span>{t("실행 지침")}</span>
         <textarea className="entity-instructions" value={draft.instructions} onChange={(event) => setDraft((current) => ({ ...current, instructions: event.target.value }))} placeholder={t("이 에이전트가 항상 지켜야 할 작업 방식")} />
-        <small className="entity-hint">{t("매 실행·대화의 시스템 프롬프트 맨 앞에 그대로 들어갑니다.")}</small>
+        <small className="entity-hint">{t("에이전트가 업무와 대화에서 따를 기본 지침입니다.")}</small>
       </label>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>{t("취소")}</DialogClose>
@@ -1390,6 +1397,7 @@ const CHAT_TOOL_LABELS: Record<string, string> = {
 function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null }) {
   // 업무 카드에서 '대화하기' 로 들어오면 그 문맥으로 시작합니다 (WorkspaceView 가 key 를 바꿔 새로 마운트합니다).
   const [projectId, setProjectId] = useState(initial?.projectId || projects[0]?.id || '');
+  const aiFiles = useAIFileChanges(projectId);
   const availableAgents = useMemo(() => agents.filter((agent) => assignments.some((item) => item.projectId === projectId && item.agentId === agent.id)), [agents, assignments, projectId]);
   const [agentId, setAgentId] = useState('');
   // 업무 카드에서 '대화하기' 로 들어오면 그 업무의 담당자를 이름으로 먼저 잡아 둡니다 (에이전트 목록이 늦게 와도 안전).
@@ -1399,6 +1407,15 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
   const [summary, setSummary] = useState<ChatSummaryInfo | null>(null);
   const [draft, setDraft] = useState(initial?.draft ?? '');
   const [sending, setSending] = useState(false);
+  const appliedTarget = useRef(initial?.key);
+  // Keep an active stream alive; apply a requested conversation after it finishes.
+  useEffect(() => {
+    if (!initial || initial.key === appliedTarget.current || sending) return;
+    appliedTarget.current = initial.key;
+    setProjectId(initial.projectId); setAgentId(''); setWantedAgent(initial.agentName ?? '');
+    setDraft(initial.draft ?? '');
+  }, [initial, sending]);
+
   const [streamText, setStreamText] = useState('');
   const [toolNote, setToolNote] = useState('');
   const [steps, setSteps] = useState<ManagerStep[]>([]);
@@ -1443,11 +1460,6 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
     if (!isAutonomy(stored)) return;
     // oxlint-disable-next-line react/react-compiler -- 브라우저에서만 읽을 수 있는 저장값이라 마운트 후에 한 번 반영합니다.
     setAutonomy(stored);
-  }, []);
-
-  const changeAutonomy = useCallback((next: Autonomy) => {
-    setAutonomy(next);
-    try { window.localStorage.setItem(CHAT_AUTONOMY_KEY, next); } catch { /* 저장 실패는 무시 */ }
   }, []);
 
   /** 대화창의 '폴더 추가' — 프로젝트 상세의 작업 폴더와 같은 목록을 씁니다. */
@@ -1509,7 +1521,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
     };
   }, [loadBoardTasks]);
 
-  useEffect(() => { if (!projectId || !selectedAgentId) return; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[]; summary?: ChatSummaryInfo | null }).then((data) => { setMessages(data.messages || []); setSummary(data.summary ?? null); }).catch(() => { setMessages([]); setSummary(null); }); }, [projectId, selectedAgentId]);
+  useEffect(() => { if (!projectId || !selectedAgentId) return; let canceled = false; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[]; summary?: ChatSummaryInfo | null }).then((data) => { if (canceled) return; setMessages(data.messages || []); setSummary(data.summary ?? null); }).catch(() => { if (canceled) return; setMessages([]); setSummary(null); }); return () => { canceled = true; }; }, [projectId, selectedAgentId]);
 
   // 사용자가 위로 스크롤해 지난 대화를 보고 있으면 자동 스크롤을 멈춥니다.
   const handleScroll = useCallback(() => {
@@ -1525,38 +1537,52 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
 
   useEffect(() => { pinnedRef.current = true; }, [projectId, selectedAgentId]);
 
+  useEffect(() => {
+    const insert = (event: Event) => { if ((event as CustomEvent<string>).detail === 'insert-example' && !sending) { if (draft.trim()) { onNotice(t('입력한 내용이 있습니다. 예시를 참고해 직접 수정하세요.')); return; } setDraft(tutorialExample()); } };
+    window.addEventListener('orbit-tutorial', insert);
+    return () => window.removeEventListener('orbit-tutorial', insert);
+  }, [draft, sending, onNotice]);
+
   async function sendMessage() {
     const typed = draft.trim();
     // 파일만 보내도 되게, 글이 비어 있으면 한 줄을 대신 넣습니다.
     const message = typed || (attachments.length ? t("첨부한 파일을 확인해 주세요.") : '');
     if (!message || !selectedAgentId || sending) return;
+    tutorialEvent('message-sent');
     const sent = attachments;
     setDraft(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
     const shown = sent.length ? `${message}\n\n📎 ${sent.map((item) => item.name).join(', ')}` : message;
     const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: shown, createdAt: Date.now() };
     setMessages((current) => [...current, optimistic]);
     let boardChanged = false;
+    let requestAccepted = false;
+    let streamed = "";
+    let replyRetained = false;
+    let finished = false;
     try {
       // 연결된 폴더가 있으면 브라우저에서 읽어 함께 보냅니다 (서버는 파일시스템에 접근할 수 없습니다).
-      const folderContext = await buildProjectFolderContext(projectId);
+      const fileSession = await aiFiles.prepare();
+      const folderContext = JSON.stringify(fileSession.roots.map(root => ({ folderId: root.id, name: root.name, files: Object.fromEntries(root.originals) })));
       const response = await fetch('/api/chat/stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, agentId: selectedAgentId, message, folderContext, autonomy, attachments: toPayload(sent) }),
+        body: JSON.stringify({ projectId, agentId: selectedAgentId, message, folderContext, writableFolders: fileSession.roots.map(root => root.id), autonomy, attachments: toPayload(sent) }),
       });
       if (!response.ok || !response.body) {
-        const failure = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(failure?.error || t("메시지를 보내지 못했습니다."));
+        const failure = await response.json().catch(() => null) as { error?: string; code?: string } | null;
+        throw Object.assign(new Error(failure?.error || t("메시지를 보내지 못했습니다.")), { code: failure?.code });
       }
+      requestAccepted = true;
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let streamed = '';
+
       let failure = '';
+      let failureCode: string | undefined;
       const consume = (line: string) => {
         const trimmed = line.trim();
         if (!trimmed) return;
         let event: {
-          type?: string; text?: string; error?: string; name?: string; message?: ChatMessage;
+          fileChanges?: unknown; type?: string; text?: string; error?: string; code?: string; name?: string; message?: ChatMessage;
           kind?: string; agent?: string; role?: string; title?: string; outcome?: string; summary?: string;
           recruited?: Array<{ name: string; role: string }>; delegated?: Array<{ agent: string; title: string }>; createdTasks?: Array<{ title: string }>;
         };
@@ -1569,6 +1595,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
         if (event.type === 'manager') {
           const agent = event.agent ?? t("팀원");
           if (event.kind === 'recruited') {
+            onNotice(tf('{0} 에이전트가 {1} 역할로 임명되었습니다.', agent, event.role ?? ''));
             setToolNote('');
             setSteps((current) => [...current, { id: `r-${agent}-${current.length}`, kind: 'recruited', agent, role: event.role ?? '' }]);
           }
@@ -1579,6 +1606,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
             }]);
           }
           if (event.kind === 'delegate_done') {
+            onNotice(event.outcome === 'blocked' ? tf('{0} 에이전트가 진행 중 문제를 매니저에게 보고했습니다.', agent) : tf('{0} 에이전트가 업무를 완료하고 매니저에게 보고했습니다.', agent));
             const state = event.outcome === 'blocked' ? 'blocked' as const : 'completed' as const;
             setSteps((current) => {
               // 같은 담당자의 '진행 중' 항목 중 가장 마지막 것을 결과로 바꿉니다.
@@ -1600,9 +1628,19 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
           setStreamText(streamed);
           setToolNote('');
         }
-        if (event.type === 'done' && event.message) {
+        if (event.type === 'partial' && event.message) {
+          replyRetained = true;
           const saved = event.message;
-          setMessages((current) => [...current, saved]);
+          setMessages(current => [...current.filter(item => item.id !== saved.id), saved]);
+          setStreamText('');
+        }
+        if (event.type === 'done' && event.message) {
+          finished = true; replyRetained = true;
+          aiFiles.receive(fileSession, event.fileChanges);
+          window.dispatchEvent(new Event('orbit-approvals-refresh'));
+          tutorialEvent('reply-ready');
+          const saved = event.message;
+          setMessages((current) => [...current.filter(item => item.id !== saved.id), saved]);
           setStreamText(''); setToolNote('');
           // 매니저가 대화 중에 팀을 꾸리거나 카드를 만들었으면 사이드바·보드를 다시 읽습니다.
           const notes = [
@@ -1612,7 +1650,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
           ].filter(Boolean);
           if (notes.length) { boardChanged = true; onNotice(notes.join(' · ')); }
         }
-        if (event.type === 'error') failure = event.error || t("답변 생성에 실패했습니다.");
+        if (event.type === 'error') { failure = event.error || t("답변 생성에 실패했습니다."); failureCode = event.code; }
       };
       while (true) {
         const { done, value } = await reader.read();
@@ -1626,15 +1664,28 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
         }
       }
       if (buffer) consume(buffer);
-      if (failure) throw new Error(failure);
+      if (!finished && !failure) failure = t("답변 생성에 실패했습니다.");
+      if (failure) throw Object.assign(new Error(failure), { code: failureCode });
       if (boardChanged) { await onRefresh(); loadBoardTasks(); }
     }
-    catch (error) { onNotice(error instanceof Error ? error.message : t("메시지를 보내지 못했습니다.")); }
+    catch (error) {
+      if (streamed && !replyRetained) {
+        const partialReply: ChatMessage = { id: `partial-${optimistic.id}`, role: 'assistant', content: streamed, createdAt: Date.now() };
+        setMessages(current => [...current, partialReply]);
+      }
+      if (!requestAccepted) {
+        setMessages((current) => current.filter((item) => item.id !== optimistic.id));
+        setDraft(typed); setAttachments(sent);
+      }
+      const busy = (error as { code?: string })?.code === 'billing_busy';
+      tutorialEvent(busy ? 'billing-busy' : 'message-failed');
+      onNotice(error instanceof Error ? error.message : t("메시지를 보내지 못했습니다."));
+    }
     finally { setSending(false); setStreamText(''); setToolNote(''); }
   }
 
   return <div className="workspace-view chat-page"><ViewHeading eyebrow="Agent Chat" title={t("대화")} description={t("매니저에게 지시하면 대화 중에 팀을 꾸리고 업무를 맡겨 결과까지 가져옵니다.")} />
-    <div className="chat-shell"><aside className="chat-context"><label>{t("프로젝트")}<NativeSelect value={projectId} onChange={(event) => { setProjectId(event.target.value); setAgentId(''); setWantedAgent(''); }}><NativeSelectOption value="">{t("프로젝트 선택")}</NativeSelectOption>{projects.map((project) => <NativeSelectOption key={project.id} value={project.id}>{project.name}</NativeSelectOption>)}</NativeSelect></label><strong>{t("참여 에이전트")}</strong>{availableAgents.map((agent) => <button className={selectedAgentId === agent.id ? 'chat-agent active' : 'chat-agent'} key={agent.id} onClick={() => { setAgentId(agent.id); setWantedAgent(''); }}><span style={{ background: agent.color }}>{agent.name[0]}</span><div><b>{agent.name}</b><small>{t(agent.role)}</small></div></button>)}
+    <div className="chat-shell"><aside className="chat-context"><label>{t("프로젝트")}<NativeSelect data-tour="chat-project" value={projectId} onChange={(event) => { setProjectId(event.target.value); setAgentId(''); setWantedAgent(''); }}><NativeSelectOption value="">{t("프로젝트 선택")}</NativeSelectOption>{projects.map((project) => <NativeSelectOption key={project.id} value={project.id}>{project.name}</NativeSelectOption>)}</NativeSelect></label><strong>{t("참여 에이전트")}</strong>{availableAgents.map((agent) => <button data-tour={agent.isManager ? 'chat-manager' : undefined} aria-pressed={selectedAgentId === agent.id} className={selectedAgentId === agent.id ? 'chat-agent active' : 'chat-agent'} key={agent.id} onClick={() => { setAgentId(agent.id); setWantedAgent(''); if (agent.isManager) tutorialEvent('manager-selected'); }}><span style={{ background: agent.color }}>{agent.isManager ? <Bot size={17} aria-hidden="true" /> : agent.name[0]}</span><div><b>{agent.name}</b><small>{t(agent.role)}</small></div></button>)}
       <strong className="chat-tasks-title">{t("이 프로젝트의 업무")}<em>{boardTasks.length}</em></strong>
       <div className="chat-tasks">
         {boardTasks.map((task) => <button className="chat-task" key={task.id} title={`${task.owner} · ${t(task.status)}`}
@@ -1648,10 +1699,10 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
         {!boardTasks.length && <p className="chat-tasks-empty">{t("아직 업무가 없습니다. 매니저에게 목표를 알려주면 카드를 만들어 나눠 맡깁니다.")}</p>}
       </div>
     </aside>
-      <section className="conversation"><header><span style={{ background: selectedAgent?.color || 'var(--c-inverse)' }}>{selectedAgent?.name[0] || <Bot size={17} />}</span><div><strong>{selectedAgent?.name || t("에이전트를 선택하세요")}</strong><small>{selectedAgent ? t(selectedAgent.role) : t("프로젝트 참여 에이전트")}</small></div><em><i /> {t("대화 가능")}</em></header>
+      <section className="conversation"><header><span style={{ background: selectedAgent?.color || 'var(--c-inverse)' }}>{selectedAgent?.isManager || !selectedAgent ? <Bot size={17} aria-hidden="true" /> : selectedAgent.name[0]}</span><div><strong>{selectedAgent?.name || t("에이전트를 선택하세요")}</strong><small>{selectedAgent ? t(selectedAgent.role) : t("프로젝트 참여 에이전트")}</small></div><em><i /> {t("대화 가능")}</em></header>
         <div className="message-list" ref={listRef} onScroll={handleScroll}>{summary && <details className="chat-summary"><summary><Sparkles size={13} /> {tf("이전 대화 {0}개 메시지가 요약으로 압축됨", summary.messageCount)}<em>{t("펼쳐서 보기")}</em></summary><div><Markdown text={summary.content} /><small>{t("세부 문구가 필요하면 에이전트에게 물어보세요 — recall_history 로 원문을 찾습니다.")}</small></div></details>}{!messages.length && !streamText && !summary && <div className="chat-welcome"><Sparkles size={24} /><h2>{selectedAgent?.name || t("AI 에이전트")}{t("에게 무엇을 맡길까요?")}</h2><p>{selectedAgent?.isManager
             ? t("목표와 원하는 결과물을 알려주면 필요한 에이전트를 합류시켜 맡기고, 결과를 검토해 보고합니다.")
-            : t("목표, 배경, 원하는 결과물을 알려주면 프로젝트 맥락에 맞춰 답합니다.")}</p></div>}{messages.map((message) => <div className={`message ${message.role}`} key={message.id}><span>{message.role === 'assistant' ? selectedAgent?.name[0] : t("나")}</span>{message.role === 'assistant' ? <div className="bubble"><Markdown text={message.content} /></div> : <div className="bubble">{message.content}</div>}</div>)}{Boolean(steps.length) && <div className="manager-trace" aria-live="polite">
+            : t("목표, 배경, 원하는 결과물을 알려주면 프로젝트 맥락에 맞춰 답합니다.")}</p></div>}{messages.map((message) => <div className={`message ${message.role}`} key={message.id}><span>{message.role === 'assistant' ? (selectedAgent?.isManager ? <Bot size={17} aria-hidden="true" /> : selectedAgent?.name[0]) : t("나")}</span>{message.role === 'assistant' ? <div className="bubble"><Markdown text={message.content} /><SaveCodeFiles projectId={projectId} message={message.content} /></div> : <div className="bubble">{message.content}</div>}</div>)}{aiFiles.view}{Boolean(steps.length) && <div className="manager-trace" aria-live="polite">
           <strong>{sending ? t("매니저가 일하는 중") : t("이번 답변에서 한 일")}</strong>
           <ol>{steps.map((step) => step.kind === 'recruited'
             ? <li className="done" key={step.id}><UserRound size={12} /><span><b>{step.agent}</b>{step.role ? ` · ${t(step.role)}` : ''} {t("합류")}</span></li>
@@ -1665,8 +1716,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
               </li>)}</ol>
         </div>}
         {sending && (streamText
-          ? <div className="message assistant"><span>{selectedAgent?.name[0]}</span><div className="bubble streaming"><Markdown text={streamText} /><i className="caret" /></div></div>
-          : <div className="message assistant"><span>{selectedAgent?.name[0]}</span>{toolNote
+          ? <div className="message assistant"><span>{selectedAgent?.isManager ? <Bot size={17} aria-hidden="true" /> : selectedAgent?.name[0]}</span><div className="bubble streaming"><Markdown text={streamText} /><i className="caret" /></div></div>
+          : <div className="message assistant"><span>{selectedAgent?.isManager ? <Bot size={17} aria-hidden="true" /> : selectedAgent?.name[0]}</span>{toolNote
               ? <div className="bubble tool-note"><LoaderCircle className="spin" size={13} /> {toolNote}</div>
               : <div className="bubble thinking"><i /><i /><i /></div>}</div>)}<div ref={bottomRef} className="message-anchor" /></div>
         <div className="chat-composer">
@@ -1682,25 +1733,15 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
             title={t("파일·사진 첨부")} aria-label={t("파일·사진 첨부")}><Plus size={18} /></button>
           <input className="composer-file" ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT}
             onChange={(event) => void pickAttachments(event)} tabIndex={-1} aria-hidden="true" />
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
-          <button onClick={() => void sendMessage()} disabled={(!draft.trim() && !attachments.length) || sending}><Send size={17} /></button>
+          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
+          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !attachments.length) || sending}>{sending ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
           <div className="composer-bar">
             <button className="composer-tool" type="button" onClick={() => void addChatFolder()} disabled={!projectId || !pickerReady || folderBusy}
               title={pickerReady ? t("이 프로젝트에 작업 폴더를 연결합니다.") : t("이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.")}>
               {folderBusy ? <LoaderCircle className="spin" size={13} /> : <FolderPlus size={13} />} {t("폴더 추가")}
               {Boolean(folders.length) && <em>{folders.length}</em>}
             </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<button className="composer-tool" type="button" aria-label={t("자율도 선택")} title={t(AUTONOMY_HINT[autonomy])} />}>
-                <ShieldCheck size={13} /> {t(AUTONOMY_LABEL[autonomy])} <ChevronDown size={12} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="autonomy-menu" align="start">
-                {AUTONOMY_LEVELS.map((level) => <DropdownMenuItem key={level} onClick={() => changeAutonomy(level)}>
-                  <span className="autonomy-check">{autonomy === level ? <Check size={13} /> : null}</span>
-                  <span><b>{t(AUTONOMY_LABEL[level])}</b><small>{t(AUTONOMY_HINT[level])}</small></span>
-                </DropdownMenuItem>)}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <FolderPermissions onNotice={onNotice} />
             <small>{t("Enter 전송 · Shift+Enter 줄바꿈")}</small>
           </div>
         </div></section>
@@ -1713,9 +1754,11 @@ const THEME_LABEL: Record<ThemeChoice, string> = { system: '시스템', dark: '�
 const THEME_ICON: Record<ThemeChoice, typeof Monitor> = { system: Monitor, dark: Moon, light: Sun };
 
 /** 켜고 끄는 항목들. 라벨은 t() 로 번역합니다. */
-const PREF_SWITCHES: [key: 'notifications' | 'autoAssign', title: string, description: string][] = [
+const PREF_SWITCHES: [key: 'notifications' | 'autoAssign' | 'showTutorial' | 'toastNotifications', title: string, description: string][] = [
+  ['toastNotifications', '토스트 알림 표시', '에이전트 임명·업무 완료·보고 등의 알림을 표시합니다. 승인 요청은 항상 모달로 표시됩니다.'],
   ['notifications', '실행 완료 알림', '에이전트가 업무를 마치면 알려줍니다.'],
   ['autoAssign', '에이전트 자동 추천', '새 업무에 가장 적합한 역할을 추천합니다.'],
+  ['showTutorial', '튜토리얼 메뉴 표시', '네브바의 튜토리얼 버튼을 보이거나 숨깁니다.'],
 ];
 
 /**
@@ -1731,7 +1774,7 @@ function SettingsView({ onNotice }: { onNotice: (message: string) => void }) {
 
   return <div className="workspace-view narrow-view">
     <ViewHeading eyebrow="Preferences" title={t('환경 설정')} description={t('화면 테마와 언어, 업무 방식 기본값을 조정합니다.')} />
-    <section className="settings-card">
+    <section className="settings-card" data-preferences-card>
       <div className="settings-title"><Settings2 size={19} /><div><strong>{t('워크스페이스')}</strong><p>{t('이 기기의 인터페이스와 자동화 기본값')}</p></div></div>
       {PREF_SWITCHES.map(([key, title, description]) => <div className="setting-row" key={key}>
         <div><strong>{t(title)}</strong><p>{t(description)}</p></div>

@@ -66,8 +66,8 @@
 .credits-title{flex-wrap:wrap}
 .credits-title>div:not(.credits-beta){flex:1 1 auto;min-width:0}
 .credits-beta{margin-left:auto;display:inline-flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border:1px solid var(--c-line);border-radius:99px;background:var(--c-surface-soft);font-size:11px;line-height:1.4;color:var(--c-text);white-space:nowrap}
-.credits-beta-badge{padding:2px 7px;border-radius:99px;background:#ffd02f;color:#050038;font-size:9.5px;font-weight:700;letter-spacing:.1em}
+.credits-beta-badge{padding:2px 7px;border-radius:99px;background:var(--c-brand);color:var(--c-on-brand);font-size:9.5px;font-weight:700;letter-spacing:.1em}
 .credits-beta-quota{display:flex;align-items:center;gap:10px;margin:10px 0 0;font-size:11px;color:var(--c-text-muted);font-variant-numeric:tabular-nums}
 .credits-beta-quota i{flex:1 1 auto;height:4px;border-radius:99px;background:var(--c-line);overflow:hidden}
-.credits-beta-quota b{display:block;height:100%;border-radius:99px;background:#ffd02f}
+.credits-beta-quota b{display:block;height:100%;border-radius:99px;background:var(--c-brand)}
 @media(max-width:640px){.credits-beta{margin-left:0;white-space:normal}}

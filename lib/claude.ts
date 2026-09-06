@@ -241,6 +241,7 @@ export async function runClaudeAgent(options: {
   webSearchMaxUses?: number;
   beforeIteration?: () => Promise<void>;
   toolChoice?: string;
+  maxOutputRetries?: number;
 }): Promise<AgentRunResult> {
   const initial = normalizeMessages(options.messages);
   if (!initial.length) throw new Error('Claude에 보낼 메시지가 없습니다.');
@@ -259,6 +260,7 @@ export async function runClaudeAgent(options: {
   let stopReason: string | null = null;
   const turns: AgentTurn[] = [];
   const usagePerIteration: ClaudeUsage[] = [];
+  let outputRetries = 0;
 
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
     await options.beforeIteration?.();
@@ -273,8 +275,18 @@ export async function runClaudeAgent(options: {
     const toolUses = (data.content ?? []).filter((block) => block.type === 'tool_use' && block.name && block.id);
     turns.push({ text: lastText, toolNames: toolUses.map((use) => use.name as string) });
     // 크레딧이 바닥나면 툴 결과를 이어 보내지 않고 여기까지의 결과로 멈춥니다 (docs/pricing-credits.md §4).
-    if (verdict?.stop && stopReason === 'tool_use') {
+    if (verdict?.stop && (stopReason === 'tool_use' || stopReason === 'max_tokens')) {
       return { id: lastId, model: lastModel, text: lastText, stopReason: 'insufficient_credits', usage, iterations: iteration, toolCalls, turns, usagePerIteration };
+    }
+    // Retry the same model turn only: never execute incomplete tool inputs.
+    // Earlier successful tools remain in conversation and are not replayed.
+    if (stopReason === 'max_tokens' && outputRetries < Math.min(2, options.maxOutputRetries ?? 0)
+      && request.maxTokens < 32000 && iteration < maxIterations) {
+      outputRetries += 1;
+      request.maxTokens = Math.min(32000, request.maxTokens * 2);
+      turns.pop(); // A discarded partial artifact must not win longest/report-turn selection.
+      traceEvent('model.output_retry', { attempt: outputRetries, maxTokens: request.maxTokens });
+      continue;
     }
     if (stopReason !== 'tool_use' || !toolUses.length) {
       return { id: lastId, model: lastModel, text: lastText, stopReason, usage, iterations: iteration, toolCalls, turns, usagePerIteration };
@@ -296,8 +308,9 @@ export async function runClaudeAgent(options: {
         isError = true;
         content = JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
       }
-      if (content.length > TOOL_RESULT_MAX_CHARS) {
-        content = `${content.slice(0, TOOL_RESULT_MAX_CHARS)}\n…[${content.length - TOOL_RESULT_MAX_CHARS}자 잘림]`;
+      const resultLimit = name === 'delegate_task' ? 96_000 : TOOL_RESULT_MAX_CHARS;
+      if (content.length > resultLimit) {
+        content = `${content.slice(0, resultLimit)}\n…[${content.length - resultLimit}자 잘림]`;
       }
       toolCalls.push({ name, input, ok: !isError, chars: content.length });
       results.push({ type: 'tool_result', tool_use_id: use.id, content, ...(isError ? { is_error: true } : {}) });
@@ -487,7 +500,8 @@ export async function streamClaudeAgent(options: StreamOptions): Promise<AgentRu
         isError = true;
         content = JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
       }
-      if (content.length > TOOL_RESULT_MAX_CHARS) content = `${content.slice(0, TOOL_RESULT_MAX_CHARS)}\n…[${content.length - TOOL_RESULT_MAX_CHARS}자 잘림]`;
+      const resultLimit = name === 'delegate_task' ? 96_000 : TOOL_RESULT_MAX_CHARS;
+      if (content.length > resultLimit) content = `${content.slice(0, resultLimit)}\n…[${content.length - resultLimit}자 잘림]`;
       toolCalls.push({ name, input, ok: !isError, chars: content.length });
       results.push({ type: 'tool_result', tool_use_id: use.id, content, ...(isError ? { is_error: true } : {}) });
     }
