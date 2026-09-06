@@ -748,7 +748,8 @@ export default function Home() {
             ? <SkillsView onNotice={flash} />
             : activeNav === '대화' ? null : <WorkspaceView section={activeNav} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat}
                 onProfileSaved={(next) => { if (next.displayName) setDisplayName(next.displayName.split('@')[0]); setEmail(next.email); setAvatar(next.avatar); }} />}
-          {(chatVisited || activeNav === '대화') && <div hidden={activeNav !== '대화'} style={activeNav !== '대화' ? { display: 'none' } : undefined}>
+          {/* 대화 화면은 탭을 오가도 살려 둡니다. 이 래퍼가 page-content 의 직접 자식이라 세로 공간을 여기서 이어받아야 입력창이 화면 아래에 고정됩니다 (.chat-host). */}
+          {(chatVisited || activeNav === '대화') && <div className="chat-host" hidden={activeNav !== '대화'} style={activeNav !== '대화' ? { display: 'none' } : undefined}>
             <WorkspaceView section="대화" visible={activeNav === '대화'} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat} />
           </div>}
         </div>

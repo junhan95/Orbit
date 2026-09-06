@@ -4,6 +4,8 @@
 import { FolderPermissions } from '@/components/folder-permissions';
 import { useAIFileChanges } from '@/components/ai-file-changes';
 import { LocalFileWorkspace, SaveCodeFiles } from '@/components/local-file-workspace';
+import { ProjectFileButtons } from '@/components/project-files';
+import { forgetFolderArtifacts } from '@/lib/project-artifacts';
 import { ProjectTutorialFields } from '@/components/project-tutorial-fields';
 import { tutorialEvent, tutorialExample } from '@/components/tutorial';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -105,7 +107,7 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
   if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t("워크스페이스를 불러오는 중")}</span></div>;
   if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
   if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} defaultModel={defaultModel} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
-  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
+  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} visible={visible} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
   return <AccountView displayName={displayName} email={email} onNotice={onNotice} onProfileSaved={onProfileSaved} />;
 }
@@ -215,6 +217,7 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
         throw new Error(data?.error || t("폴더 연결을 해제하지 못했습니다."));
       }
       await forgetHandle(folder.id);
+      forgetFolderArtifacts(projectId, folder.id);
       await load();
       onNotice('폴더 연결을 해제했습니다. 컴퓨터의 파일은 그대로입니다.');
     } catch (error) { onNotice(error instanceof Error ? error.message : t("폴더 연결을 해제하지 못했습니다.")); }
@@ -701,6 +704,7 @@ function ProjectDetail({ project, agents, assignments, onBack, onNotice, onRenam
         <span className="section-kicker">Project</span>
         <h1>{project.name}</h1>
         <p>{project.description || t("프로젝트 설명이 없습니다.")}</p>
+        <ProjectFileButtons projectId={project.id} onNotice={onNotice} />
       </div>
       <div className="view-actions">
         <span className="project-status"><i />{t(project.status)}</span>
@@ -1402,7 +1406,7 @@ const CHAT_TOOL_LABELS: Record<string, string> = {
   create_task: '업무 카드를 만드는 중…',
 };
 
-function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null }) {
+function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial, visible = true }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null; visible?: boolean }) {
   // 업무 카드에서 '대화하기' 로 들어오면 그 문맥으로 시작합니다 (WorkspaceView 가 key 를 바꿔 새로 마운트합니다).
   const [projectId, setProjectId] = useState(initial?.projectId || projects[0]?.id || '');
   const aiFiles = useAIFileChanges(projectId);
@@ -1538,10 +1542,19 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
     pinnedRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
   }, []);
 
+  // 메시지 목록 자체를 스크롤합니다 — scrollIntoView 는 바깥 page-content 까지 끌어올려 입력창을 밀어냈습니다.
+  // 'auto' 는 CSS scroll-behavior:smooth 를 따르는데, 렌더가 잦으면 부드러운 스크롤이 시작도 못 하고 취소돼 제자리에 머뭅니다 — 항상 즉시 붙입니다.
+  // 말풍선은 렌더 뒤에도 자랍니다(마크다운 파싱·이미지·스트리밍) — 자식 크기 변화를 감시해 바닥에 붙어 있던 동안은 계속 따라갑니다.
   useEffect(() => {
-    if (!pinnedRef.current) return;
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages, streamText, sending, steps]);
+    const node = listRef.current;
+    if (!node || !visible) return;
+    const pin = () => { if (pinnedRef.current) node.scrollTo({ top: node.scrollHeight, behavior: 'instant' }); };
+    pin();
+    const observer = new ResizeObserver(pin);
+    for (const child of Array.from(node.children)) observer.observe(child);
+    return () => observer.disconnect();
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- 숨겨져 있다가 다시 보일 때(높이 0 → 실제 높이) 한 번 더 붙입니다.
+  }, [messages, streamText, sending, steps, visible]);
 
   useEffect(() => { pinnedRef.current = true; }, [projectId, selectedAgentId]);
 

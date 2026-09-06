@@ -254,7 +254,7 @@ button:not(:where([class*='group/button'])) { color:inherit; }
 .icon-button:hover { background:var(--c-surface-soft); } .notification-dot { position:absolute; right:7px; top:6px; width:6px; height:6px; border-radius:50%; background:var(--c-coral); border:1px solid var(--c-surface-card); }
 .presence-stack { display:flex; padding-left:10px; } .presence-stack span { width:31px; height:31px; border-radius:50%; display:grid; place-items:center; margin-left:-10px; border:2px solid var(--c-surface-card); background:var(--c-inverse); color:var(--c-on-inverse); font-size:9px; font-weight:500; }
 .presence-stack span:nth-child(2){background:var(--c-coral)}.presence-stack span:nth-child(3){background:var(--c-surface-strong);color:var(--c-text)}.create-button{height:38px;border-radius:var(--r-lg);background:var(--c-inverse);color:var(--c-on-inverse);padding:0 15px;box-shadow:none}
-.page-content{width:100%;max-width:1510px;margin:0 auto;padding:38px clamp(24px,3vw,52px) 56px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;scrollbar-width:thin;scrollbar-color:var(--c-inverse-4) var(--c-surface-strong)}.page-content::-webkit-scrollbar{width:12px}.page-content::-webkit-scrollbar-thumb{background:var(--c-surface-strong);border-radius:var(--r-sm);border:4px solid var(--c-line-soft)}.page-content::-webkit-scrollbar-thumb:hover{background:var(--c-surface-tertiary)}.page-content::-webkit-scrollbar-track{background:transparent}.page-content>*{flex-shrink:0}.page-content>.chat-page{flex:1 1 auto;min-height:0}.page-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:26px}.page-heading h1{margin:8px 0 6px;font-size:clamp(26px,2.6vw,36px);letter-spacing:-.012em;line-height:1.08}.page-heading p:last-child{margin:0;color:var(--c-text-muted);font-size:15px}
+.page-content{width:100%;max-width:1510px;margin:0 auto;padding:38px clamp(24px,3vw,52px) 56px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;scrollbar-width:thin;scrollbar-color:var(--c-inverse-4) var(--c-surface-strong)}.page-content::-webkit-scrollbar{width:12px}.page-content::-webkit-scrollbar-thumb{background:var(--c-surface-strong);border-radius:var(--r-sm);border:4px solid var(--c-line-soft)}.page-content::-webkit-scrollbar-thumb:hover{background:var(--c-surface-tertiary)}.page-content::-webkit-scrollbar-track{background:transparent}.page-content>*{flex-shrink:0}.page-content>.chat-page,.page-content>.chat-host{flex:1 1 auto;min-height:0}.page-content>.chat-host{display:flex;flex-direction:column}.chat-host>.chat-page{flex:1 1 auto;min-height:0}.page-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:26px}.page-heading h1{margin:8px 0 6px;font-size:clamp(26px,2.6vw,36px);letter-spacing:-.012em;line-height:1.08}.page-heading p:last-child{margin:0;color:var(--c-text-muted);font-size:15px}
 .view-switch{padding:4px;border:0;margin:0;border-radius:var(--r-lg);display:flex;background:var(--c-surface-strong)}.view-switch button{height:30px;border:0;border-radius:var(--r-sm);padding:0 13px;color:var(--c-text-muted);background:transparent;font-size:13px;font-weight:500;cursor:pointer}.view-switch button.selected{color:var(--c-ink);background:var(--c-surface-card);box-shadow:0 1px 5px var(--c-shadow)}
 /* 대쉬보드 그리드 — Figma BankDash 실측 이식: 콘텐츠 1110 기준 2컬럼 3행, 거터 30, 카드 라운드 25/패딩 25. 색·타이포는 기존 토큰 그대로. */
 .overview-grid{display:flex;flex-direction:column;gap:24px}
@@ -662,6 +662,22 @@ p { color:var(--c-text); }
 .board-add:hover{background:var(--c-surface-card);border-color:var(--c-line-strong);color:var(--c-ink)}
 .board-chat{display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--c-line);background:var(--c-surface-card);border-radius:var(--r-md);padding:9px;color:var(--c-ink);font-size:11px;font-weight:600;cursor:pointer}
 .board-chat:hover{background:var(--c-surface-soft);border-color:var(--c-line-mid)}
+
+/* ── 프로젝트 상세 머리: 결과보기 · 폴더열기 ─────────────────────────────── */
+.detail-file-actions{display:flex;gap:8px;margin-top:12px}
+.detail-file-actions .detail-file-count{margin-left:2px;padding:1px 6px;border-radius:var(--r-lg);background:var(--c-surface-strong);color:var(--c-text-muted);font-size:10px;font-weight:600;font-style:normal}
+.project-files-dialog[data-slot='dialog-content']{width:640px;max-width:calc(100vw - 28px);max-height:calc(100dvh - 28px);overflow:auto;padding:24px}
+.project-files-empty{font-size:13px;color:var(--c-text-muted);margin:0}
+.project-files-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.project-files-list button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-surface-card);color:var(--c-ink);padding:9px 11px;cursor:pointer}
+.project-files-list button:hover{background:var(--c-surface-soft);border-color:var(--c-line-mid)}
+.project-files-list button span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.project-files-list button b{font-size:13px;font-weight:600;word-break:break-all}
+.project-files-list button small{font-size:11px;color:var(--c-text-muted)}
+.project-files-preview{border:1px solid var(--c-line);border-radius:var(--r-md);background:var(--c-surface-soft);overflow:hidden}
+.project-files-preview>div{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--c-line);font-size:12px}
+.project-files-preview>div button{border:0;background:none;color:var(--c-link);cursor:pointer;font-size:12px}
+.project-files-preview pre{margin:0;padding:11px;max-height:40vh;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all}
 
 /* ── TASK 상세 패널 ──────────────────────────────────────────────────────── */
 .task-detail-dialog{max-width:720px!important;border-radius:var(--r-xl);padding:0;overflow:hidden}
