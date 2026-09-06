@@ -107,7 +107,7 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
   if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t("워크스페이스를 불러오는 중")}</span></div>;
   if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
   if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} defaultModel={defaultModel} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
-  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} />;
+  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} visible={visible} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
   return <AccountView displayName={displayName} email={email} onNotice={onNotice} onProfileSaved={onProfileSaved} />;
 }
@@ -1406,7 +1406,7 @@ const CHAT_TOOL_LABELS: Record<string, string> = {
   create_task: '업무 카드를 만드는 중…',
 };
 
-function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null }) {
+function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial, visible = true }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null; visible?: boolean }) {
   // 업무 카드에서 '대화하기' 로 들어오면 그 문맥으로 시작합니다 (WorkspaceView 가 key 를 바꿔 새로 마운트합니다).
   const [projectId, setProjectId] = useState(initial?.projectId || projects[0]?.id || '');
   const aiFiles = useAIFileChanges(projectId);
@@ -1542,10 +1542,15 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial 
     pinnedRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
   }, []);
 
+  // 메시지 목록 자체를 스크롤합니다 — scrollIntoView 는 바깥 page-content 까지 끌어올려 입력창을 밀어냈습니다.
+  // 스트리밍 중에는 부드러운 스크롤을 끄고 바로 붙여 글자가 흐르는 동안 화면이 뒤처지지 않게 합니다.
   useEffect(() => {
-    if (!pinnedRef.current) return;
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages, streamText, sending, steps]);
+    if (!pinnedRef.current || !visible) return;
+    const node = listRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior: sending ? 'auto' : 'smooth' });
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- 숨겨져 있다가 다시 보일 때(높이 0 → 실제 높이) 한 번 더 붙입니다.
+  }, [messages, streamText, sending, steps, visible]);
 
   useEffect(() => { pinnedRef.current = true; }, [projectId, selectedAgentId]);
 
