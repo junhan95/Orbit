@@ -83,10 +83,13 @@ type TaskDetail = {
 };
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: number };
 
-export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat, onProfileSaved, visible = true }: {
+export function WorkspaceView({ section, displayName, email, onNotice, chatTarget, onOpenChat, onProfileSaved, projectTarget, onOpenProject, visible = true }: {
   visible?: boolean;
   section: WorkspaceSection; displayName: string; email: string; onNotice: (message: string) => void;
   chatTarget?: ChatTarget | null; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void;
+  /** 프로젝트 화면이 이 프로젝트 상세로 바로 들어가야 할 때 (대화의 '프로젝트 바로가기'). key 가 바뀔 때마다 다시 엽니다. */
+  projectTarget?: { projectId: string; key: number } | null;
+  onOpenProject?: (projectId: string) => void;
   /** 계정 화면에서 프로필을 저장했을 때 — 사이드바 아바타·인사말을 바로 맞춥니다. */
   onProfileSaved?: (next: { displayName: string; email: string; avatar: string }) => void;
 }) {
@@ -112,9 +115,9 @@ export function WorkspaceView({ section, displayName, email, onNotice, chatTarge
   useEffect(() => { if (visible) void refresh(); }, [refresh, visible]);
 
   if (loading) return <div className="view-loading"><LoaderCircle className="spin" /><span>{t("워크스페이스를 불러오는 중")}</span></div>;
-  if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
+  if (section === '프로젝트') return <ProjectsView projects={projects} agents={agents} assignments={assignments} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} projectTarget={projectTarget} />;
   if (section === '에이전트') return <AgentsView agents={agents} projects={projects} assignments={assignments} defaultModel={defaultModel} onCreated={refresh} onNotice={onNotice} onOpenChat={onOpenChat} />;
-  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} visible={visible} />;
+  if (section === '대화') return <ChatView projects={projects} agents={agents} assignments={assignments} onNotice={onNotice} onRefresh={refresh} initial={chatTarget ?? null} visible={visible} onOpenProject={onOpenProject} />;
   if (section === '설정') return <SettingsView onNotice={onNotice} />;
   return <AccountView displayName={displayName} email={email} onNotice={onNotice} onProfileSaved={onProfileSaved} />;
 }
@@ -253,7 +256,7 @@ function ProjectFolders({ projectId, onNotice }: { projectId: string; onNotice: 
   </section>;
 }
 
-function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOpenChat }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onCreated: () => Promise<void>; onNotice: (message: string) => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void }) {
+function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOpenChat, projectTarget }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onCreated: () => Promise<void>; onNotice: (message: string) => void; onOpenChat?: (target: Omit<ChatTarget, 'key'>) => void; projectTarget?: { projectId: string; key: number } | null }) {
   const [name, setName] = useState(''); const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   // 새 프로젝트 다이얼로그에서 고른 폴더들. 프로젝트가 만들어진 뒤에 핸들을 저장합니다.
@@ -261,7 +264,14 @@ function ProjectsView({ projects, agents, assignments, onCreated, onNotice, onOp
   const [folderBusy, setFolderBusy] = useState(false);
   const pickerReady = useFolderPicker();
   const [layout, setLayout] = useState<ProjectLayout>('card');
-  const [openedId, setOpenedId] = useState<string | null>(null);
+  const [openedId, setOpenedId] = useState<string | null>(projectTarget?.projectId ?? null);
+  // 대화의 '프로젝트 바로가기' 로 들어오면 그 프로젝트 상세를 바로 엽니다 (key 가 바뀔 때마다).
+  const appliedProjectTarget = useRef<number | null>(projectTarget?.key ?? null);
+  useEffect(() => {
+    if (!projectTarget || projectTarget.key === appliedProjectTarget.current) return;
+    appliedProjectTarget.current = projectTarget.key;
+    setOpenedId(projectTarget.projectId);
+  }, [projectTarget]);
   const [editing, setEditing] = useState<Project | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -1502,7 +1512,7 @@ const CHAT_TOOL_LABELS: Record<string, string> = {
   create_task: '업무 카드를 만드는 중…',
 };
 
-function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial, visible = true }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null; visible?: boolean }) {
+function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial, visible = true, onOpenProject }: { projects: Project[]; agents: Agent[]; assignments: Assignment[]; onNotice: (message: string) => void; onRefresh: () => Promise<void>; initial?: ChatTarget | null; visible?: boolean; onOpenProject?: (projectId: string) => void }) {
   // 업무 카드에서 '대화하기' 로 들어오면 그 문맥으로 시작합니다 (WorkspaceView 가 key 를 바꿔 새로 마운트합니다).
   const [projectId, setProjectId] = useState(initial?.projectId || projects[0]?.id || '');
   const aiFiles = useAIFileChanges(projectId);
@@ -1803,7 +1813,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
     finally { setSending(false); setStreamText(''); setToolNote(''); }
   }
 
-  return <div className="workspace-view chat-page"><ViewHeading eyebrow="Agent Chat" title={t("대화")} description={t("매니저에게 지시하면 대화 중에 팀을 꾸리고 업무를 맡겨 결과까지 가져옵니다.")} />
+  return <div className="workspace-view chat-page"><ViewHeading eyebrow="Agent Chat" title={t("대화")} description={t("매니저에게 지시하면 대화 중에 팀을 꾸리고 업무를 맡겨 결과까지 가져옵니다.")}
+    action={<div className="view-actions"><Button variant="outline" disabled={!projectId || !onOpenProject} onClick={() => { if (projectId) onOpenProject?.(projectId); }}><FolderKanban size={15} /> {t("프로젝트 바로가기")}</Button></div>} />
     <div className="chat-shell"><aside className="chat-context"><label>{t("프로젝트")}<NativeSelect data-tour="chat-project" value={projectId} onChange={(event) => { setProjectId(event.target.value); setAgentId(''); setWantedAgent(''); }}><NativeSelectOption value="">{t("프로젝트 선택")}</NativeSelectOption>{projects.map((project) => <NativeSelectOption key={project.id} value={project.id}>{project.name}</NativeSelectOption>)}</NativeSelect></label><strong>{t("참여 에이전트")}</strong>{availableAgents.map((agent) => <button data-tour={agent.isManager ? 'chat-manager' : undefined} aria-pressed={selectedAgentId === agent.id} className={selectedAgentId === agent.id ? 'chat-agent active' : 'chat-agent'} key={agent.id} onClick={() => { setAgentId(agent.id); setWantedAgent(''); if (agent.isManager) tutorialEvent('manager-selected'); }}><span style={{ background: agent.color }}>{agent.isManager ? <Bot size={17} aria-hidden="true" /> : agent.name[0]}</span><div><b>{agent.name}</b><small>{t(agent.role)}</small></div></button>)}
       <strong className="chat-tasks-title">{t("이 프로젝트의 업무")}<em>{boardTasks.length}</em></strong>
       <div className="chat-tasks">

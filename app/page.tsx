@@ -58,7 +58,7 @@ function weekdayLabel(timestamp: number) {
   return new Intl.DateTimeFormat(locale(), { weekday: 'short' }).format(new Date(timestamp));
 }
 
-const NAV_ITEMS = [['대쉬보드', LayoutDashboard], ['프로젝트', ListChecks], ['에이전트', Bot], ['대화', MessageSquareText], ['승인함', Inbox], ['기억', Brain], ['스킬', BookOpen], ['사용량', ChartColumn]] as const;
+const NAV_ITEMS = [['대쉬보드', LayoutDashboard], ['프로젝트', ListChecks], ['대화', MessageSquareText], ['에이전트', Bot], ['승인함', Inbox], ['기억', Brain], ['스킬', BookOpen], ['사용량', ChartColumn]] as const;
 
 type NavSection = '대쉬보드' | '사용량' | '승인함' | '기억' | '스킬' | WorkspaceSection;
 
@@ -120,6 +120,8 @@ export default function Home() {
   const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
+  // 대화 화면의 '프로젝트 바로가기' — 프로젝트 화면을 열면서 그 프로젝트 상세로 바로 들어갑니다.
+  const [projectTarget, setProjectTarget] = useState<{ projectId: string; key: number } | null>(null);
   const [selectedResult, setSelectedResult] = useState<Task | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [mountedAt, setMountedAt] = useState<Date | null>(null);
@@ -414,6 +416,10 @@ export default function Home() {
   const openChat = useCallback((target: Omit<ChatTarget, 'key'>) => {
     setChatTarget({ ...target, key: Date.now() });
     goTo('대화');
+  }, [goTo]);
+  const openProject = useCallback((projectId: string) => {
+    setProjectTarget({ projectId, key: Date.now() });
+    goTo('프로젝트');
   }, [goTo]);
 
   async function deleteTask(task: Task) {
@@ -746,11 +752,11 @@ export default function Home() {
             ? <MemoryView onNotice={flash} onChanged={refreshInbox} />
             : activeNav === '스킬'
             ? <SkillsView onNotice={flash} />
-            : activeNav === '대화' ? null : <WorkspaceView section={activeNav} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat}
+            : activeNav === '대화' ? null : <WorkspaceView section={activeNav} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat} projectTarget={projectTarget}
                 onProfileSaved={(next) => { if (next.displayName) setDisplayName(next.displayName.split('@')[0]); setEmail(next.email); setAvatar(next.avatar); }} />}
           {/* 대화 화면은 탭을 오가도 살려 둡니다. 이 래퍼가 page-content 의 직접 자식이라 세로 공간을 여기서 이어받아야 입력창이 화면 아래에 고정됩니다 (.chat-host). */}
           {(chatVisited || activeNav === '대화') && <div className="chat-host" hidden={activeNav !== '대화'} style={activeNav !== '대화' ? { display: 'none' } : undefined}>
-            <WorkspaceView section="대화" visible={activeNav === '대화'} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat} />
+            <WorkspaceView section="대화" visible={activeNav === '대화'} displayName={displayName} email={email} onNotice={flash} chatTarget={chatTarget} onOpenChat={openChat} onOpenProject={openProject} />
           </div>}
         </div>
       </section>
