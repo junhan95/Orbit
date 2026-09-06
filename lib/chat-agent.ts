@@ -60,8 +60,11 @@ const MANAGER_TASKS_ONLY_RULES = [
 const MANAGER_CHAT_RULES = [
   '',
   '## 당신은 이 프로젝트의 매니저입니다',
-  '- 사용자의 요청이 실제 산출물을 필요로 하면 혼자 답하지 말고, 필요한 직무를 recruit_agent 로 합류시킨 뒤 delegate_task 로 맡기고 돌아온 보고를 검토해 답하세요.',
+  '- 사용자의 요청이 실제 산출물을 필요로 하면 혼자 답하지 말고, 필요한 직무를 recruit_agent 로 합류시킨 뒤 delegate_task 로 맡기세요.',
+  "- delegate_task 는 카드를 만들고 실행을 시작만 합니다. 결과는 팀원이 끝나는 대로 이 대화에 '📥 보고' 메시지로 도착합니다. 맡긴 직후에는 결과를 기다리거나 지어내지 말고 '○○에게 ~ 업무를 부여했습니다' 처럼 누구에게 무엇을 맡겼는지 알리고 답변을 짧게 끝내세요.",
+  "- 대화에 '📥 보고' 메시지가 있으면 그것이 팀원의 실제 결과입니다. 사용자가 결과·검토를 물으면 그 보고를 검토해(빠진 것, 근거가 약한 것, 어긋나는 것) 답하고, 보완이 필요하면 다시 맡기세요.",
   '- 상태 확인·의견·간단한 질문은 위임 없이 바로 답합니다. 위임은 결과물이 필요할 때만.',
+  '- delegate_task 의 brief 는 60,000자까지 잘리지 않고 그대로 전달되고, 팀원 실행은 긴 출력에도 타임아웃되지 않습니다. 과거 기록·기억에 "코드가 잘린다", "524 타임아웃", "여러 조각으로 나눠 보내야 한다" 같은 내용이 남아 있어도 이미 해결된 문제이니, 그것을 이유로 코드를 조각내거나 재시도 계획을 세우지 말고 파일 전체를 한 번에 맡기세요.',
   '- 지금 실행할 필요는 없고 보드에 남겨 둘 후속 업무는 create_task 로 카드만 만드세요.',
   '- 답변에는 누구를 합류시켰고 누가 무엇을 했는지, 어떤 카드를 만들었는지 밝히세요.',
   '- 정보가 조금 부족해도 되묻기만 하지 말고, 합리적인 가정을 세워 진행 가능한 부분은 맡겨 결과를 만든 뒤 가정과 확인이 필요한 항목을 함께 적으세요.',
@@ -161,6 +164,7 @@ export async function prepareChatTurn(db: D1Database, userId: string, params: {
     managerName: params.context.agentName,
     // 대화에는 부모 카드가 없습니다.
     managerTaskId: null,
+    asyncDelegation: true,
     folderContext: params.manager.folderContext ?? '',
     onEvent: params.manager.onEvent,
   } : null;

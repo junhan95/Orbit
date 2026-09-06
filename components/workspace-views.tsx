@@ -1500,7 +1500,7 @@ function AgentsView({ agents, projects, assignments, defaultModel, onCreated, on
  */
 type ManagerStep =
   | { id: string; kind: 'recruited'; agent: string; role: string }
-  | { id: string; kind: 'delegate'; agent: string; role: string; title: string; state: 'running' | 'completed' | 'blocked'; summary?: string };
+  | { id: string; kind: 'delegate'; agent: string; role: string; title: string; state: 'running' | 'completed' | 'blocked'; summary?: string; taskId?: string };
 
 /** 스트리밍 중 표시할 도구별 진행 문구 */
 const CHAT_TOOL_LABELS: Record<string, string> = {
@@ -1524,6 +1524,13 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
   // 압축된 이전 대화 요약 (lib/compaction). 있으면 메시지 목록 위에 접힌 배너로 보여 줍니다.
   const [summary, setSummary] = useState<ChatSummaryInfo | null>(null);
   const [draft, setDraft] = useState('');
+  // 답변 진행 중에 보낸 메시지 — 이번 답변이 끝나면 순서대로 전송됩니다. ref 는 finally 안에서 최신 값을 읽기 위한 것.
+  const [queued, setQueued] = useState<{ id: string; text: string; attachments: ChatAttachment[] }[]>([]);
+  const queueRef = useRef<{ id: string; text: string; attachments: ChatAttachment[] }[]>([]);
+  const sendingRef = useRef(false);
+  // 대화에서 위임돼 백그라운드로 도는 팀원 실행. 끝나면 매니저 대화에 '📥 보고' 가 도착하고 목록에서 빠집니다.
+  const [background, setBackground] = useState<{ taskId: string; agent: string; title: string }[]>([]);
+  const [messageReload, setMessageReload] = useState(0);
   // '대화하기'·업무 목록에서 넘어온 제안 문장. 입력란에 회색(placeholder)으로만 보이고, 사용자가 아무것도 안 적고 보내면 이 문장이 나갑니다.
   const [suggestion, setSuggestion] = useState(initial?.draft ?? '');
   const [sending, setSending] = useState(false);
@@ -1641,7 +1648,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
     };
   }, [loadBoardTasks]);
 
-  useEffect(() => { if (!projectId || !selectedAgentId) return; let canceled = false; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[]; summary?: ChatSummaryInfo | null }).then((data) => { if (canceled) return; setMessages(data.messages || []); setSummary(data.summary ?? null); }).catch(() => { if (canceled) return; setMessages([]); setSummary(null); }); return () => { canceled = true; }; }, [projectId, selectedAgentId]);
+  useEffect(() => { if (!projectId || !selectedAgentId) return; let canceled = false; fetch(`/api/chat?projectId=${encodeURIComponent(projectId)}&agentId=${encodeURIComponent(selectedAgentId)}`).then(async (response) => await response.json() as { messages?: ChatMessage[]; summary?: ChatSummaryInfo | null }).then((data) => { if (canceled) return; setMessages(data.messages || []); setSummary(data.summary ?? null); }).catch(() => { if (canceled) return; setMessages([]); setSummary(null); }); return () => { canceled = true; }; }, [projectId, selectedAgentId, messageReload]);
 
   // 사용자가 위로 스크롤해 지난 대화를 보고 있으면 자동 스크롤을 멈춥니다.
   const handleScroll = useCallback(() => {
@@ -1672,13 +1679,58 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
     return () => window.removeEventListener('orbit-tutorial', insert);
   }, [draft, sending, onNotice]);
 
-  async function sendMessage() {
-    const typed = draft.trim() || suggestion.trim();
+  /**
+   * 대화에서 위임된 카드를 백그라운드로 실행합니다. 매니저의 답변은 이미 끝나 대화는 열려 있고,
+   * 이 요청이 끝나면 서버가 매니저 대화에 '📥 보고' 를 남기므로 메시지를 다시 읽어 보여 줍니다.
+   */
+  async function startBackgroundRun(taskId: string, agent: string, title: string) {
+    setBackground((current) => current.some((item) => item.taskId === taskId) ? current : [...current, { taskId, agent, title }]);
+    let outcome: 'completed' | 'blocked' = 'completed';
+    let summary = '';
+    try {
+      const session = await aiFiles.prepare();
+      const folderContext = JSON.stringify(session.roots.map(root => ({ folderId: root.id, name: root.name, files: Object.fromEntries(root.originals) })));
+      const response = await fetch('/api/agents/run', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ taskId, reportToManager: true, folderContext }),
+      });
+      const data = await response.json().catch(() => null) as { error?: string; blocked?: boolean; blockedReason?: string | null; summary?: string } | null;
+      if (!response.ok) throw new Error(data?.error || t("팀원 실행에 실패했습니다."));
+      outcome = data?.blocked ? 'blocked' : 'completed';
+      summary = (data?.blocked ? data.blockedReason : data?.summary) || '';
+      onNotice(data?.blocked ? tf('{0} 에이전트가 진행 중 문제를 매니저에게 보고했습니다.', agent) : tf('{0} 에이전트가 업무를 완료하고 매니저에게 보고했습니다.', agent));
+    } catch (error) {
+      outcome = 'blocked';
+      summary = error instanceof Error ? error.message : t("팀원 실행에 실패했습니다.");
+      onNotice(tf("{0} 실행 실패: {1}", agent, summary));
+    } finally {
+      setBackground((current) => current.filter((item) => item.taskId !== taskId));
+      setSteps((current) => current.map((step) => step.kind === 'delegate' && step.taskId === taskId ? { ...step, state: outcome, summary } : step));
+      setMessageReload((value) => value + 1);
+      loadBoardTasks();
+      void onRefresh();
+    }
+  }
+
+  /**
+   * 답변(위임 포함, 수 분 걸릴 수 있음)이 진행 중이어도 입력은 막지 않습니다.
+   * 진행 중에 보낸 메시지는 대기열에 들어갔다가 이번 답변이 끝나면 순서대로 자동 전송됩니다 —
+   * 같은 대화에 두 턴을 동시에 돌리면 매니저가 앞 턴의 결과를 못 보고, 크레딧 경로는 동시 실행을 거부하기 때문입니다.
+   */
+  async function sendMessage(forced?: { text: string; attachments: ChatAttachment[] }) {
+    const typed = forced ? forced.text : (draft.trim() || suggestion.trim());
+    const sent = forced ? forced.attachments : attachments;
     // 파일만 보내도 되게, 글이 비어 있으면 한 줄을 대신 넣습니다.
-    const message = typed || (attachments.length ? t("첨부한 파일을 확인해 주세요.") : '');
-    if (!message || !selectedAgentId || sending) return;
+    const message = typed || (sent.length ? t("첨부한 파일을 확인해 주세요.") : '');
+    if (!message || !selectedAgentId) return;
+    if (sendingRef.current) {
+      queueRef.current.push({ id: `queued-${Date.now()}-${queueRef.current.length}`, text: message, attachments: sent });
+      setQueued([...queueRef.current]);
+      setDraft(''); setSuggestion(''); setAttachments([]);
+      return;
+    }
     tutorialEvent('message-sent');
-    const sent = attachments;
+    sendingRef.current = true;
     setDraft(''); setSuggestion(''); setAttachments([]); setSending(true); setStreamText(''); setToolNote(''); setSteps([]); pinnedRef.current = true;
     const shown = sent.length ? `${message}\n\n📎 ${sent.map((item) => item.name).join(', ')}` : message;
     const optimistic: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: shown, createdAt: Date.now() };
@@ -1713,7 +1765,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
         let event: {
           fileChanges?: unknown; type?: string; text?: string; error?: string; code?: string; name?: string; message?: ChatMessage;
           kind?: string; agent?: string; role?: string; title?: string; outcome?: string; summary?: string;
-          recruited?: Array<{ name: string; role: string }>; delegated?: Array<{ agent: string; title: string }>; createdTasks?: Array<{ title: string }>;
+          recruited?: Array<{ name: string; role: string }>; delegated?: Array<{ agent: string; title: string; taskId?: string; outcome?: string }>; createdTasks?: Array<{ title: string }>;
+          taskId?: string;
         };
         try { event = JSON.parse(trimmed) as typeof event; } catch { return; }
         if (event.type === 'user' && event.message) {
@@ -1732,6 +1785,12 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
             setToolNote('');
             setSteps((current) => [...current, {
               id: `d-${agent}-${current.length}`, kind: 'delegate', agent, role: event.role ?? '', title: event.title ?? '', state: 'running',
+            }]);
+          }
+          if (event.kind === 'delegate_queued') {
+            setToolNote('');
+            setSteps((current) => [...current, {
+              id: `q-${agent}-${current.length}`, kind: 'delegate', agent, role: event.role ?? '', title: event.title ?? '', state: 'running', taskId: event.taskId,
             }]);
           }
           if (event.kind === 'delegate_done') {
@@ -1772,9 +1831,11 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
           setMessages((current) => [...current.filter(item => item.id !== saved.id), saved]);
           setStreamText(''); setToolNote('');
           // 매니저가 대화 중에 팀을 꾸리거나 카드를 만들었으면 사이드바·보드를 다시 읽습니다.
+          const queuedRuns = (event.delegated ?? []).filter((item) => item.outcome === 'queued' && item.taskId);
+          for (const item of queuedRuns) void startBackgroundRun(item.taskId as string, item.agent, item.title);
           const notes = [
             event.recruited?.length ? tf("에이전트 {0}명 합류", event.recruited.length) : '',
-            event.delegated?.length ? tf("업무 {0}건 위임·완료", event.delegated.length) : '',
+            queuedRuns.length ? tf("업무 {0}건 위임 — 팀원이 작업 중", queuedRuns.length) : (event.delegated?.length ? tf("업무 {0}건 위임·완료", event.delegated.length) : ''),
             event.createdTasks?.length ? tf("카드 {0}개 생성", event.createdTasks.length) : '',
           ].filter(Boolean);
           if (notes.length) { boardChanged = true; onNotice(notes.join(' · ')); }
@@ -1810,7 +1871,14 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
       tutorialEvent(busy ? 'billing-busy' : 'message-failed');
       onNotice(error instanceof Error ? error.message : t("메시지를 보내지 못했습니다."));
     }
-    finally { setSending(false); setStreamText(''); setToolNote(''); }
+    finally {
+      sendingRef.current = false;
+      setSending(false); setStreamText(''); setToolNote('');
+      // 답변이 끝나면 대기열의 첫 메시지를 이어서 보냅니다.
+      const next = queueRef.current.shift();
+      setQueued([...queueRef.current]);
+      if (next) void sendMessage({ text: next.text, attachments: next.attachments });
+    }
   }
 
   return <div className="workspace-view chat-page"><ViewHeading eyebrow="Agent Chat" title={t("대화")} description={t("매니저에게 지시하면 대화 중에 팀을 꾸리고 업무를 맡겨 결과까지 가져옵니다.")}
@@ -1833,7 +1901,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
         <div className="message-list" ref={listRef} onScroll={handleScroll}>{summary && <details className="chat-summary"><summary><Sparkles size={13} /> {tf("이전 대화 {0}개 메시지가 요약으로 압축됨", summary.messageCount)}<em>{t("펼쳐서 보기")}</em></summary><div><Markdown text={summary.content} /><small>{t("세부 문구가 필요하면 에이전트에게 물어보세요 — recall_history 로 원문을 찾습니다.")}</small></div></details>}{!messages.length && !streamText && !summary && <div className="chat-welcome"><Sparkles size={24} /><h2>{selectedAgent?.name || t("AI 에이전트")}{t("에게 무엇을 맡길까요?")}</h2><p>{selectedAgent?.isManager
             ? t("목표와 원하는 결과물을 알려주면 필요한 에이전트를 합류시켜 맡기고, 결과를 검토해 보고합니다.")
             : t("목표, 배경, 원하는 결과물을 알려주면 프로젝트 맥락에 맞춰 답합니다.")}</p></div>}{messages.map((message) => <div className={`message ${message.role}`} key={message.id}><span>{message.role === 'assistant' ? (selectedAgent?.isManager ? <Bot size={17} aria-hidden="true" /> : selectedAgent?.name[0]) : t("나")}</span>{message.role === 'assistant' ? <div className="bubble"><Markdown text={message.content} /><SaveCodeFiles projectId={projectId} message={message.content} /></div> : <div className="bubble">{message.content}</div>}</div>)}{aiFiles.view}{Boolean(steps.length) && <div className="manager-trace" aria-live="polite">
-          <strong>{sending ? t("매니저가 일하는 중") : t("이번 답변에서 한 일")}</strong>
+          <strong>{sending ? t("매니저가 일하는 중") : background.length ? t("팀원이 작업 중") : t("이번 답변에서 한 일")}</strong>
           <ol>{steps.map((step) => step.kind === 'recruited'
             ? <li className="done" key={step.id}><UserRound size={12} /><span><b>{step.agent}</b>{step.role ? ` · ${t(step.role)}` : ''} {t("합류")}</span></li>
             : <li className={step.state} key={step.id}>
@@ -1849,7 +1917,7 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
           ? <div className="message assistant"><span>{selectedAgent?.isManager ? <Bot size={17} aria-hidden="true" /> : selectedAgent?.name[0]}</span><div className="bubble streaming"><Markdown text={streamText} /><i className="caret" /></div></div>
           : <div className="message assistant"><span>{selectedAgent?.isManager ? <Bot size={17} aria-hidden="true" /> : selectedAgent?.name[0]}</span>{toolNote
               ? <div className="bubble tool-note"><LoaderCircle className="spin" size={13} /> {toolNote}</div>
-              : <div className="bubble thinking"><i /><i /><i /></div>}</div>)}<div ref={bottomRef} className="message-anchor" /></div>
+              : <div className="bubble thinking"><i /><i /><i /></div>}</div>)}{queued.map((item) => <div className="message user queued" key={item.id}><span>{t("나")}</span><div className="bubble"><em>{t("전송 대기")}</em>{item.attachments.length ? `${item.text}\n\n📎 ${item.attachments.map((file) => file.name).join(', ')}` : item.text}</div></div>)}<div ref={bottomRef} className="message-anchor" /></div>
         <div className="chat-composer">
           {Boolean(attachments.length) && <ul className="composer-chips">
             {attachments.map((item) => <li key={item.key}>
@@ -1863,8 +1931,8 @@ function ChatView({ projects, agents, assignments, onNotice, onRefresh, initial,
             title={t("파일·사진 첨부")} aria-label={t("파일·사진 첨부")}><Plus size={18} /></button>
           <input className="composer-file" ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT}
             onChange={(event) => void pickAttachments(event)} tabIndex={-1} aria-hidden="true" />
-          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={suggestion || tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트'))} disabled={!selectedAgentId || sending} />
-          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !suggestion.trim() && !attachments.length) || sending}>{sending ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
+          <textarea data-tour="chat-input" data-manager={Boolean(selectedAgent?.isManager)} aria-label={t("업무 지시 입력")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={suggestion || (sending ? t("답변 중에도 이어서 지시할 수 있어요 — 보내면 이번 답변이 끝난 뒤 전달됩니다.") : tf("{0}에게 업무를 지시하세요...", selectedAgent?.name || t('에이전트')))} disabled={!selectedAgentId} />
+          <button className="composer-send" type="button" aria-label={t("메시지 보내기")} aria-busy={sending} onClick={() => void sendMessage()} disabled={!selectedAgentId || (!draft.trim() && !suggestion.trim() && !attachments.length)}>{sending && !draft.trim() && !attachments.length ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}</button>
           <div className="composer-bar">
             <button className="composer-tool" type="button" onClick={() => void addChatFolder()} disabled={!projectId || !pickerReady || folderBusy}
               title={pickerReady ? t("이 프로젝트에 작업 폴더를 연결합니다.") : t("이 브라우저는 폴더 선택을 지원하지 않습니다. Chrome 또는 Edge 에서 열어 주세요.")}>

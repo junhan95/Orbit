@@ -72,6 +72,7 @@ export const MANAGER_TOOL_NAMES = new Set(MANAGER_TOOLS.map((tool) => tool.name)
 export type ManagerEvent =
   | { kind: 'recruited'; agent: string; role: string }
   | { kind: 'delegate_start'; agent: string; role: string; title: string }
+  | { kind: 'delegate_queued'; agent: string; role: string; title: string; taskId: string }
   | { kind: 'delegate_done'; agent: string; title: string; taskId: string; outcome: 'completed' | 'blocked'; summary: string };
 
 export type ManagerContext = {
@@ -89,6 +90,11 @@ export type ManagerContext = {
   folderContext: string;
   /** 진행 이벤트 구독자 (스트리밍 대화용). 없으면 아무 데도 흘리지 않습니다. */
   onEvent?: (event: ManagerEvent) => void;
+  /**
+   * true 면 delegate_task 가 카드만 만들고 바로 돌아옵니다 (실행은 브라우저가 /api/agents/run 으로 따로 시작, 결과는 대화에 보고로 도착).
+   * 대화 모드가 이렇게 동작해 매니저가 "맡겼습니다" 하고 곧장 대화 가능 상태로 돌아옵니다. 카드 실행(부모 카드가 있는 경우)은 동기 위임 그대로.
+   */
+  asyncDelegation?: boolean;
 };
 
 export type ManagerLog = {
@@ -128,22 +134,26 @@ function clip(text: string | null | undefined, max: number): string {
  * 하위 에이전트 한 명을 실제로 실행합니다.
  * 카드 생성 → 실행 → 카드/실행기록/댓글/사용량/회상 저장까지 끝내고 매니저에게 줄 보고를 돌려줍니다.
  */
-async function runWorker(context: ManagerContext, member: MemberRow, params: { title: string; brief: string; label: string; priority: Priority }) {
+/** 위임 카드를 만듭니다. 실행은 /api/agents/run 과 같은 코어(lib/run-task.ts)가 맡습니다 — 기억·회상·스킬·검증·관제·승인 게이트가 똑같이 적용되도록. */
+async function createWorkerCard(context: ManagerContext, member: MemberRow, params: { title: string; brief: string; label: string; priority: Priority }, status: '진행 중' | '대기') {
   const { db, userId } = context;
   const now = Date.now();
   const taskId = crypto.randomUUID();
-
-  // 카드를 만들고, 실행은 /api/agents/run 과 같은 코어(lib/run-task.ts)에 맡깁니다.
-  // 그래야 위임 실행에도 기억·회상·스킬·검증 근거·검토·관제·승인 게이트가 똑같이 적용됩니다.
   await db.batch([
     db.prepare(`INSERT INTO tasks (id, user_id, title, label, owner, status, priority, accent, project_id, description, parent_task_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(taskId, userId, params.title, params.label, member.name, '진행 중', params.priority, member.color, context.projectId, params.brief, context.managerTaskId, now, now),
+      .bind(taskId, userId, params.title, params.label, member.name, status, params.priority, member.color, context.projectId, params.brief, context.managerTaskId, now, now),
     recallDocUpsert(db, {
       userId, kind: 'task', refId: taskId, projectId: context.projectId, agentName: member.name, title: params.title,
       content: `[${params.label}] ${params.title} — 담당 ${member.name} (${context.managerName} 위임)\n${params.brief}`, createdAt: now,
     }),
   ]);
+  return taskId;
+}
+
+async function runWorker(context: ManagerContext, member: MemberRow, params: { title: string; brief: string; label: string; priority: Priority }) {
+  const { db, userId } = context;
+  const taskId = await createWorkerCard(context, member, params, '진행 중');
 
   const outcome = await runTask({
     db, userId, taskId, apiKey: context.apiKey, fallbackModel: context.fallbackModel,
@@ -219,6 +229,19 @@ export async function executeManagerTool(
 
     const label = typeof input.label === 'string' && input.label.trim() ? input.label.trim().slice(0, 20) : member.role.slice(0, 20);
     const priority = toPriority(input.priority);
+    if (context.asyncDelegation) {
+      // 대화 위임: 카드만 만들고 바로 돌아갑니다. 실행 시작은 브라우저가, 결과 보고는 lib/manager-report 가 대화에 남깁니다.
+      const taskId = await createWorkerCard(context, member, { title, brief, label, priority }, '대기');
+      log.delegated.push({ taskId, title, agent: member.name, outcome: 'queued', summary: '' });
+      context.onEvent?.({ kind: 'delegate_queued', agent: member.name, role: member.role, title, taskId });
+      return {
+        ok: true,
+        task_id: taskId,
+        agent: member.name,
+        status: 'queued',
+        note: `${member.name} 에게 맡겼고 실행이 곧 시작됩니다. 결과는 팀원이 끝나는 대로 이 대화에 '📥 보고' 메시지로 도착합니다. 지금은 결과를 기다리거나 추측하지 말고, 누구에게 무엇을 맡겼는지 사용자에게 알린 뒤 답변을 끝내세요.`,
+      };
+    }
     // 하위 실행은 수십 초가 걸립니다 — 시작을 먼저 알려 화면이 멈춘 것처럼 보이지 않게 합니다.
     context.onEvent?.({ kind: 'delegate_start', agent: member.name, role: member.role, title });
     const result = await runWorker(context, member, { title, brief, label, priority });
